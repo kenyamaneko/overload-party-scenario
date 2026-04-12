@@ -1,0 +1,47 @@
+# ─── Endpoint groups (drives docs/API_REFERENCE.md generation) ───
+endpoint_groups:
+  - name: ヘルスチェック
+    endpoints:
+      - method: GET
+        path: /health
+        summary: サービス死活監視
+        auth: なし（ClusterIP 内部のみ）
+        response_type: null
+        response_example: '{"status": "ok"}'
+
+  - name: シナリオ (internal REST — gateway → scenario)
+    description: >
+      gateway が ClusterIP 経由で呼び出す内部 API。
+      認証は gateway 側 Firebase Auth → X-Player-Id ヘッダ。
+    endpoints:
+      - method: GET
+        path: /internal/v1/players/:playerId/scenarios
+        summary: プレイヤーに表示するエピソード一覧（ロック状態・進捗付き）
+        auth: ClusterIP（gateway 経由）
+        query_params:
+          - {name: lang, type: string, default: "ja", description: "表示言語 (ja / en)"}
+        response_type: EpisodeWithStatus
+        response_wrapper: '{"episodes": [...]}'
+
+      - method: GET
+        path: /internal/v1/players/:playerId/scenarios/:episodeId/script
+        summary: エピソードのスクリプト本文を取得（GCS からロード）
+        auth: ClusterIP（gateway 経由）
+        query_params:
+          - {name: lang, type: string, default: "ja", description: "スクリプト言語 (ja / en)"}
+        response_type: ScenarioScriptResponse
+        response_example: '{"episode_id": "ep_001", "script": "..."}'
+        errors:
+          - {status: 403, reason: "エピソードがロック中"}
+          - {status: 404, reason: "エピソードが存在しない / スクリプトが見つからない"}
+          - {status: 500, reason: "GCS 等インフラ障害"}
+
+      - method: POST
+        path: /internal/v1/players/:playerId/scenarios/:episodeId/complete
+        summary: エピソードをクリア済みとしてマーク
+        auth: ClusterIP（gateway 経由）
+        response_type: ScenarioCompleteResponse
+        response_example: '{"message": "episode completed", "episode_id": "ep_001"}'
+        errors:
+          - {status: 403, reason: "エピソードがロック中"}
+          - {status: 404, reason: "エピソードが存在しない"}
