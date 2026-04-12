@@ -16,11 +16,6 @@ require (
 // api-scenario lives inside this repo; publish/tag happens via CI (no manual tag).
 replace github.com/kenyamaneko/overload-party-scenario/packages/api-scenario => ./packages/api-scenario
 
-// pubsub-events package lives in overload-party-common but is not yet published
-// at the required version from the perspective of this repo's go.sum. The
-// replace directive lets local builds resolve it from a sibling checkout;
-// CI uses the tag published by common/publish.yaml.
-replace github.com/kenyamaneko/overload-party-common/packages/pubsub-events => ../overload-party-common/packages/pubsub-events
 
 require (
 	cel.dev/expr v0.24.0 // indirect
