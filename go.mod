@@ -16,7 +16,6 @@ require (
 // api-scenario lives inside this repo; publish/tag happens via CI (no manual tag).
 replace github.com/kenyamaneko/overload-party-scenario/packages/api-scenario => ./packages/api-scenario
 
-
 require (
 	cel.dev/expr v0.24.0 // indirect
 	cloud.google.com/go v0.121.6 // indirect
