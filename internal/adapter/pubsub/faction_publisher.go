@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"time"
 
-	gpubsub "cloud.google.com/go/pubsub"
+	gpubsub "cloud.google.com/go/pubsub/v2"
 	"github.com/google/uuid"
 
 	pubsubevents "github.com/kenyamaneko/overload-party-common/packages/pubsub-events"
@@ -25,12 +25,11 @@ import (
 // ラップする。port.FactionPublisher を実装する。
 type FactionPublisher struct {
 	client *gpubsub.Client
-	topic  *gpubsub.Topic
+	pub    *gpubsub.Publisher
 }
 
 // NewFactionPublisher は指定 Pub/Sub project + topic 名に紐づく publisher を構築する。
 // topic は環境ごとに Terraform（modules/pubsub）で事前作成されている前提。
-// topic ハンドルの検証に失敗した場合は fail-fast する。
 func NewFactionPublisher(ctx context.Context, projectID, topicName string) (*FactionPublisher, error) {
 	if projectID == "" {
 		return nil, errors.New("pubsub: projectID is empty")
@@ -42,23 +41,13 @@ func NewFactionPublisher(ctx context.Context, projectID, topicName string) (*Fac
 	if err != nil {
 		return nil, fmt.Errorf("pubsub: new pubsub client: %w", err)
 	}
-	topic := client.Topic(topicName)
-	ok, err := topic.Exists(ctx)
-	if err != nil {
-		_ = client.Close()
-		return nil, fmt.Errorf("pubsub: check topic %q: %w", topicName, err)
-	}
-	if !ok {
-		_ = client.Close()
-		return nil, fmt.Errorf("pubsub: topic %q does not exist in project %q", topicName, projectID)
-	}
-	return &FactionPublisher{client: client, topic: topic}, nil
+	return &FactionPublisher{client: client, pub: client.Publisher(topicName)}, nil
 }
 
 // Close は topic を停止（in-flight メッセージを flush）し Pub/Sub client を閉じる。
 // 複数回呼び出しても安全。
 func (p *FactionPublisher) Close() error {
-	p.topic.Stop()
+	p.pub.Stop()
 	return p.client.Close()
 }
 
@@ -82,17 +71,17 @@ func (p *FactionPublisher) PublishFactionSelected(ctx context.Context, playerID,
 		Faction:   faction,
 		Source:    pubsubevents.FactionSourceScenarioInitial,
 	}
-	return publishJSON(ctx, p.topic, ev)
+	return publishJSON(ctx, p.pub, ev)
 }
 
-func publishJSON(ctx context.Context, topic *gpubsub.Topic, event any) error {
+func publishJSON(ctx context.Context, pub *gpubsub.Publisher, event any) error {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("pubsub: marshal %T: %w", event, err)
 	}
-	result := topic.Publish(ctx, &gpubsub.Message{Data: data})
+	result := pub.Publish(ctx, &gpubsub.Message{Data: data})
 	if _, err := result.Get(ctx); err != nil {
-		return fmt.Errorf("pubsub: publish to %s: %w", topic.ID(), err)
+		return fmt.Errorf("pubsub: publish to %s: %w", pub.ID(), err)
 	}
 	return nil
 }
