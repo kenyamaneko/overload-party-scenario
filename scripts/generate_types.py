@@ -120,38 +120,6 @@ def _generate_go_file(file_def: dict) -> None:
     print(f"wrote {out_path.relative_to(REPO_ROOT)}")
 
 
-# ─── Go: LockReason constructors ─────────────────────────
-# These are hand-written helpers that depend on generated types. We emit them
-# at the end of the scenario_gen.go file so they stay in sync.
-
-_LOCK_REASON_HELPERS = '''
-// NewLockReasonLevel builds a LockReason for an unmet level requirement.
-func NewLockReasonLevel(required, current int64) LockReason {
-\treturn LockReason{Type: "level", Required: required, Current: current}
-}
-
-// NewLockReasonFaction builds a LockReason for a missing required faction.
-func NewLockReasonFaction(faction string) LockReason {
-\treturn LockReason{Type: "faction", Required: faction}
-}
-
-// NewLockReasonEpisode builds a LockReason for an uncompleted prerequisite episode.
-func NewLockReasonEpisode(episodeID string) LockReason {
-\treturn LockReason{Type: "episode", Required: episodeID}
-}
-'''
-
-
-def _append_lock_reason_helpers() -> None:
-    """Append the LockReason constructor helpers to scenario_gen.go."""
-    gen_path = GO_PACKAGE_DIR / "scenario_gen.go"
-    if not gen_path.exists():
-        return
-    with open(gen_path, "a", encoding="utf-8") as f:
-        f.write(_LOCK_REASON_HELPERS)
-    print(f"appended LockReason helpers → {gen_path.relative_to(REPO_ROOT)}")
-
-
 # ─── Main ─────────────────────────────────────────────────
 
 
@@ -167,9 +135,6 @@ def main() -> int:
     # Go models
     for file_def in sections:
         _generate_go_file(file_def)
-
-    # Append LockReason helper constructors
-    _append_lock_reason_helpers()
 
     return 0
 
