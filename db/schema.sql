@@ -5,10 +5,22 @@
 --   scenario.episode_required_factions - エピソード必須ファクション
 --   scenario.player_story_progress    - プレイヤーのストーリー完了履歴
 --
--- psqldef 互換。shared.update_updated_at() を先に作成しておくこと。
+-- psqldef 互換。
 -- Cross-schema reference（player_id -> account.players）は FK を張らない。
 
 CREATE SCHEMA IF NOT EXISTS scenario;
+
+-- =============================================================================
+-- Schema-local helpers
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION scenario.update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 -- =============================================================================
 -- Story Scenarios (schema: scenario)
@@ -33,7 +45,7 @@ CREATE TABLE scenario.scenario_episodes (
 );
 
 CREATE INDEX idx_scenario_episodes_sort ON scenario.scenario_episodes(sort_order);
-CREATE TRIGGER trg_scenario_episodes_updated_at BEFORE UPDATE ON scenario.scenario_episodes FOR EACH ROW EXECUTE FUNCTION shared.update_updated_at();
+CREATE TRIGGER trg_scenario_episodes_updated_at BEFORE UPDATE ON scenario.scenario_episodes FOR EACH ROW EXECUTE FUNCTION scenario.update_updated_at();
 
 CREATE TABLE scenario.episode_required_factions (
   episode_id  VARCHAR(50) NOT NULL REFERENCES scenario.scenario_episodes(episode_id) ON DELETE CASCADE, -- エピソード参照

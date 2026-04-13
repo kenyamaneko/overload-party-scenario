@@ -25,6 +25,10 @@ type Config struct {
 	// サービス横断 faction 選択イベントの topic 名。
 	// デフォルト "faction-selected"。クロスプロジェクトテスト用にのみ変更する。
 	FactionSelectedTopic string
+
+	// FirestoreProjectID は game_config の読み取り先プロジェクト ID。
+	// ローカル/CI では FIRESTORE_EMULATOR_HOST を別途設定することでエミュレーターに接続。
+	FirestoreProjectID string
 }
 
 // FromEnv は環境変数から Config を構築する。
@@ -36,6 +40,7 @@ func FromEnv() (*Config, error) {
 		StoryBucket:          os.Getenv("STORY_BUCKET"),
 		PubsubProjectID:      os.Getenv("PUBSUB_PROJECT_ID"),
 		FactionSelectedTopic: getEnv("FACTION_SELECTED_TOPIC", "faction-selected"),
+		FirestoreProjectID:   os.Getenv("FIRESTORE_PROJECT_ID"),
 	}
 
 	if raw := os.Getenv("PORT"); raw != "" {
@@ -57,6 +62,9 @@ func FromEnv() (*Config, error) {
 	}
 	if cfg.PubsubProjectID == "" {
 		return nil, fmt.Errorf("config: PUBSUB_PROJECT_ID is required (scenario publishes faction-selected events to Pub/Sub)")
+	}
+	if cfg.FirestoreProjectID == "" {
+		return nil, fmt.Errorf("config: FIRESTORE_PROJECT_ID is required (game_config)")
 	}
 	return cfg, nil
 }

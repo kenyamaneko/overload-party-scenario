@@ -14,3 +14,9 @@ type StoryRepo interface {
 	GetUnlockContext(ctx context.Context, playerID string) (*apiscenario.StoryUnlockContext, error)
 	MarkComplete(ctx context.Context, playerID, episodeID string) error
 }
+
+// GameConfigRepo はゲーム設定値の読み取りを抽象化するインターフェースです。
+// キーが存在しない場合は ErrNotFound を返す（fail-fast）。
+type GameConfigRepo interface {
+	GetInt64(ctx context.Context, key string) (int64, error)
+}

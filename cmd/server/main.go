@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"cloud.google.com/go/firestore"
 	"cloud.google.com/go/storage"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -44,7 +45,16 @@ func run() error {
 	}
 	defer pool.Close()
 
+	fsClient, err := firestore.NewClient(ctx, cfg.FirestoreProjectID)
+	if err != nil {
+		return fmt.Errorf("firestore new client: %w", err)
+	}
+	defer func() { _ = fsClient.Close() }()
+
 	storyRepo := repository.NewPgStoryRepository(pool)
+	// game_config は現在 scenario の runtime パスから参照していない。
+	// クライアント到達性は起動時に検証するため、repo を生成だけしておく。
+	_ = repository.NewFirestoreGameConfigRepository(fsClient)
 
 	factionPublisher, err := scenariopubsub.NewFactionPublisher(ctx, cfg.PubsubProjectID, cfg.FactionSelectedTopic)
 	if err != nil {
