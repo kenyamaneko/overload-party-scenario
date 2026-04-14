@@ -39,7 +39,7 @@ Scenario (このサービス, :9007)
 | `PORT` | `9007` | リッスンポート |
 | `ENV` | `dev` | `dev` / `stg` / `prod` |
 | `STORY_BUCKET` | (必須) | GCS バケット名、または `local:<path>` (開発時) |
-| `PUBSUB_PROJECT_ID` | (必須) | Pub/Sub GCP プロジェクト |
+| `PUBSUB_PROJECT_ID` | (必須) | Pub/Sub Google Cloud プロジェクト |
 | `FACTION_SELECTED_TOPIC` | `faction-selected` | faction-selected Pub/Sub トピック名 |
 
 `DATABASE_URL` / `STORY_BUCKET` / `PUBSUB_PROJECT_ID` が未設定なら起動時に即 fail する。

@@ -18,7 +18,7 @@ type Config struct {
 	// 必須 — scenario がサイレントに no-op 状態で起動することを防ぐ。
 	StoryBucket string
 
-	// faction-selected topic をホストする GCP project。必須 — 初期 faction 選択の
+	// faction-selected topic をホストする Google Cloud project。必須 — 初期 faction 選択の
 	// hand-off を静かにドロップせず fail-fast する。
 	PubsubProjectID string
 
