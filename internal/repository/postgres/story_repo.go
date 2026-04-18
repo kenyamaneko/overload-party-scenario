@@ -1,4 +1,4 @@
-package repository
+package postgres
 
 import (
 	"context"
@@ -12,27 +12,34 @@ import (
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 )
 
-var _ port.StoryRepo = (*PgStoryRepository)(nil)
+var _ port.StoryRepo = (*StoryRepository)(nil)
 
-// PgStoryRepository は PostgreSQL で StoryRepo を実装する。
-type PgStoryRepository struct {
+// StoryRepository は PostgreSQL で StoryRepo を実装する。
+type StoryRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewPgStoryRepository は pgxpool.Pool を受け取り PgStoryRepository を構築する。
-func NewPgStoryRepository(pool *pgxpool.Pool) *PgStoryRepository {
-	return &PgStoryRepository{pool: pool}
+// NewStoryRepository は pgxpool.Pool を受け取り StoryRepository を構築する。
+func NewStoryRepository(pool *pgxpool.Pool) *StoryRepository {
+	return &StoryRepository{pool: pool}
 }
 
-// ListActiveEpisodes はアクティ��なエピソード一覧を返す。
-func (r *PgStoryRepository) ListActiveEpisodes(ctx context.Context) ([]*apiscenario.ScenarioEpisode, error) {
+// ListActiveEpisodes はアクティブなエピソード一覧を返す。
+// required_factions は正規化された episode_required_factions テーブルから
+// 集約して返す（schema 上 scenario_episodes に列は存在しない）。
+func (r *StoryRepository) ListActiveEpisodes(ctx context.Context) ([]*apiscenario.ScenarioEpisode, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT episode_id, faction, episode_number, title_ja, title_en,
-		        required_level, required_factions, required_episodes,
-		        script_path, thumbnail_path, sort_order, is_active, created_at
-		 FROM scenario_episodes
-		 WHERE is_active = true
-		 ORDER BY sort_order`)
+		`SELECT e.episode_id, e.faction, e.episode_number, e.title_ja, e.title_en,
+		        e.required_level,
+		        COALESCE(ARRAY(
+		          SELECT faction_id FROM episode_required_factions
+		          WHERE episode_id = e.episode_id ORDER BY faction_id
+		        ), '{}') AS required_factions,
+		        e.required_episodes,
+		        e.script_path, e.thumbnail_path, e.sort_order, e.is_active, e.created_at
+		 FROM scenario_episodes e
+		 WHERE e.is_active = true
+		 ORDER BY e.sort_order`)
 	if err != nil {
 		return nil, fmt.Errorf("query episodes: %w", err)
 	}
@@ -57,13 +64,20 @@ func (r *PgStoryRepository) ListActiveEpisodes(ctx context.Context) ([]*apiscena
 }
 
 // FindEpisodeByID は指定 ID のエピソードを返す。
-func (r *PgStoryRepository) FindEpisodeByID(ctx context.Context, episodeID string) (*apiscenario.ScenarioEpisode, error) {
+// required_factions は正規化された episode_required_factions テーブルから
+// 集約して返す（ListActiveEpisodes と同様）。
+func (r *StoryRepository) FindEpisodeByID(ctx context.Context, episodeID string) (*apiscenario.ScenarioEpisode, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT episode_id, faction, episode_number, title_ja, title_en,
-		        required_level, required_factions, required_episodes,
-		        script_path, thumbnail_path, sort_order, is_active, created_at
-		 FROM scenario_episodes
-		 WHERE episode_id = $1`,
+		`SELECT e.episode_id, e.faction, e.episode_number, e.title_ja, e.title_en,
+		        e.required_level,
+		        COALESCE(ARRAY(
+		          SELECT faction_id FROM episode_required_factions
+		          WHERE episode_id = e.episode_id ORDER BY faction_id
+		        ), '{}') AS required_factions,
+		        e.required_episodes,
+		        e.script_path, e.thumbnail_path, e.sort_order, e.is_active, e.created_at
+		 FROM scenario_episodes e
+		 WHERE e.episode_id = $1`,
 		episodeID)
 
 	var ep apiscenario.ScenarioEpisode
@@ -82,7 +96,7 @@ func (r *PgStoryRepository) FindEpisodeByID(ctx context.Context, episodeID strin
 }
 
 // GetCompletedEpisodeIDs はプレイヤーの完了済みエピソード ID 一覧を返す。
-func (r *PgStoryRepository) GetCompletedEpisodeIDs(ctx context.Context, playerID string) ([]string, error) {
+func (r *StoryRepository) GetCompletedEpisodeIDs(ctx context.Context, playerID string) ([]string, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT episode_id FROM player_story_progress WHERE player_id = $1`,
 		playerID)
@@ -108,7 +122,7 @@ func (r *PgStoryRepository) GetCompletedEpisodeIDs(ctx context.Context, playerID
 // GetUnlockContext は players, player_factions, player_story_progress を結合して返す。
 // 暫定: スキーマ分割後は accountclient（players + player_factions）とローカル repo
 // （player_story_progress）に分離する必要がある。
-func (r *PgStoryRepository) GetUnlockContext(ctx context.Context, playerID string) (*apiscenario.StoryUnlockContext, error) {
+func (r *StoryRepository) GetUnlockContext(ctx context.Context, playerID string) (*apiscenario.StoryUnlockContext, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT
 		   p.level,
@@ -142,7 +156,7 @@ func (r *PgStoryRepository) GetUnlockContext(ctx context.Context, playerID strin
 }
 
 // MarkComplete はエピソードの完了を記録する。重複は ON CONFLICT でべき等に処理する。
-func (r *PgStoryRepository) MarkComplete(ctx context.Context, playerID, episodeID string) error {
+func (r *StoryRepository) MarkComplete(ctx context.Context, playerID, episodeID string) error {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO player_story_progress (player_id, episode_id)
 		 VALUES ($1, $2)

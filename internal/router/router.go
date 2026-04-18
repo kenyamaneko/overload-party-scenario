@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/kenyamaneko/overload-party-scenario/internal/adapter/rest"
+	"github.com/kenyamaneko/overload-party-scenario/internal/handler/rest"
 )
 
 // New は scenario の HTTP ルーターを構築する。

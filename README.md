@@ -1,55 +1,37 @@
 # overload-party-scenario
 
-ストーリーエピソード / 進行管理 / スクリプト配信を担う内部マイクロサービス。
+ストーリーエピソード・進行管理・スクリプト配信を担う内部マイクロサービス。ポート 9007 で起動する。
 
-## サービス間連携
+詳細は [機能仕様書](docs/FEATURE_SPEC.md) / [サービス設計書](docs/ARCHITECTURE.md) / [API仕様書](docs/API_REFERENCE.md) / [データ設計書](docs/DATA_DESIGN.md) を参照。
+
+## アーキテクチャ概要
 
 ```
-Gateway (唯一の呼び出し元)
-  ├─ GET  /players/:playerId/scenarios
-  ├─ GET  /players/:playerId/scenarios/:episodeId/script
-  └─ POST /players/:playerId/scenarios/:episodeId/complete
-                │
-                ▼
-Scenario (このサービス, :9007)
-  ├─ PostgreSQL (scenario スキーマ所有)
-  ├─ GCS or ローカルファイルシステム (スクリプト配信)
-  └─ Pub/Sub publisher
-       └─ faction-selected → account / card / gateway が subscribe
+Gateway
+  └─ Scenario (:9007)
+       ├─ PostgreSQL (scenario スキーマ)
+       ├─ GCS または local: ファイルシステム (script 配信)
+       ├─ Firestore (game_config 読み取り)
+       └─ Pub/Sub
+            └─ faction-selected  → account / card / gateway
 ```
 
-- 認証はしない。Gateway が playerId を forward する
-- スクリプトファイルの配信元は `STORY_BUCKET` で切り替え: GCS バケット名 (本番) / `local:<path>` (開発)
-- 初回ファクション選択時に faction-selected イベントを Pub/Sub に publish する
+サービス間の状態同期は Pub/Sub で fan-out し、scenario から他サービスを直接呼び出さない。スクリプトファイルの配信元は `STORY_BUCKET` で切り替え可能で、本番は GCS バケット名、開発は `local:<path>` 形式でローカルファイルシステムを指す。
 
-エンドポイント一覧は [docs/API_REFERENCE.md](docs/API_REFERENCE.md) を参照。
+## ローカル開発
 
-## 環境変数
-
-**Secret:**
-
-| 変数名 | 説明 |
-|---|---|
-| `DATABASE_URL` | PostgreSQL 接続文字列 |
-
-**ConfigMap:**
-
-| 変数名 | デフォルト | 説明 |
-|---|---|---|
-| `PORT` | `9007` | リッスンポート |
-| `ENV` | `dev` | `dev` / `stg` / `prod` |
-| `STORY_BUCKET` | (必須) | GCS バケット名、または `local:<path>` (開発時) |
-| `PUBSUB_PROJECT_ID` | (必須) | Pub/Sub Google Cloud プロジェクト |
-| `FACTION_SELECTED_TOPIC` | `faction-selected` | faction-selected Pub/Sub トピック名 |
-
-`DATABASE_URL` / `STORY_BUCKET` / `PUBSUB_PROJECT_ID` が未設定なら起動時に即 fail する。
+```bash
+make db-up    # postgres:16-alpine を起動
+make run      # サーバー起動（db-upと環境変数の注入を含む）
+make test     # Testcontainers でテスト実行（Docker 必須）
+make db-down  # 停止
+make db-reset # volume ごと削除して再作成
+```
 
 ## 公開パッケージ
 
-| パッケージ | パス | 用途 |
-|---|---|---|
-| Go module | `packages/api-scenario/` | REST 契約型 (`apiscenario.EpisodeWithStatus` 等) |
+[packages/api-scenario/](packages/api-scenario/) に REST 契約型を公開している。[data/models.yaml](data/models.yaml) を編集後に以下で再生成する。
 
-SSoT: `data/models.yaml` -> `python3 scripts/generate_types.py` で再生成。
-
-クライアント向け TypeScript 型は `@kenyamaneko/overload-party-api-gateway` に統合済み。
+```bash
+python3 scripts/generate_types.py
+```

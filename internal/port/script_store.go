@@ -7,7 +7,7 @@ import "context"
 // それ以外の障害を ErrScriptInfra にマッピングする。
 type ScriptStore interface {
 	// ReadScript は指定キーのスクリプト本文を読み込む。
-	// オブジェクトが存在しない場合は ErrScriptNotFound を返す。
+	// オブジェクトが存在しない場合は ErrScriptNotFound を返す（代替言語フォールバックはしない）。
 	// それ以外のストレージレベルのエラーは ErrScriptInfra を返す。
 	ReadScript(ctx context.Context, key string) (string, error)
 }

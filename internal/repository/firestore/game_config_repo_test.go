@@ -1,4 +1,4 @@
-package repository_test
+package firestore_test
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
-	"github.com/kenyamaneko/overload-party-scenario/internal/repository"
+	scenariofirestore "github.com/kenyamaneko/overload-party-scenario/internal/repository/firestore"
 )
 
 // Firestore emulator を前提とする integration test。
@@ -38,7 +38,7 @@ func TestFirestoreGameConfigRepository(t *testing.T) {
 	_, err = client.Collection("game_config").Doc("exp_win").Set(ctx, map[string]any{"value": int64(40)})
 	require.NoError(t, err)
 
-	repo := repository.NewFirestoreGameConfigRepository(client)
+	repo := scenariofirestore.NewGameConfigRepository(client)
 
 	t.Run("Get existing key", func(t *testing.T) {
 		got, err := repo.GetInt64(ctx, "exp_win")

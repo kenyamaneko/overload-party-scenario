@@ -1,12 +1,15 @@
-.PHONY: build test vet fmt run tidy help
+.PHONY: build test test-integration vet fmt run tidy db-up db-down db-reset help
 
-APP    := overload-party-scenario
+APP := overload-party-scenario
 
 build: ## Build Docker image
 	docker build -t $(APP) .
 
-test: ## Run unit tests
+test: ## Run unit tests (Testcontainers; requires Docker running)
 	go test ./... -count=1 -race
+
+test-integration: ## Run unit + integration tests (Pub/Sub emulator container; slower)
+	go test -tags=integration ./... -count=1 -race
 
 vet: ## Run go vet
 	go vet ./...
@@ -17,7 +20,26 @@ tidy: ## Tidy dependencies
 fmt: ## Format code
 	gofmt -s -w .
 
-run: ## Run scenario server locally (requires DATABASE_URL)
+db-up: ## Start local Postgres (docker compose)
+	docker compose up -d postgres
+
+db-down: ## Stop local Postgres
+	docker compose down
+
+db-reset: ## Drop volume and recreate DB
+	docker compose down -v
+	docker compose up -d postgres
+
+run: db-up ## Run scenario server locally against compose Postgres (local env 込み)
+	PORT=9007 \
+	DATABASE_URL="host=localhost port=5432 dbname=scenario user=scenario password=scenario sslmode=disable" \
+	GOOGLE_CLOUD_PROJECT=scenario-local \
+	PUBSUB_PROJECT_ID=scenario-local \
+	FACTION_SELECTED_TOPIC=faction-selected \
+	FIRESTORE_PROJECT_ID=scenario-local \
+	STORY_BUCKET=local:./testdata/stories \
+	PUBSUB_EMULATOR_HOST=localhost:8085 \
+	FIRESTORE_EMULATOR_HOST=localhost:9041 \
 	go run ./cmd/server
 
 help: ## Show this help

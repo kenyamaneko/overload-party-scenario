@@ -1,4 +1,4 @@
-package repository
+package port
 
 import (
 	"context"
@@ -6,10 +6,9 @@ import (
 	"sync"
 
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
-	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 )
 
-var _ port.StoryRepo = (*MockStoryRepository)(nil)
+var _ StoryRepo = (*MockStoryRepository)(nil)
 
 // MockStoryRepository はテスト用の自己完結型インメモリ StoryRepo 実装。
 // プレイヤーレベルと所有 faction を他の mock と連携せず直接保持する。
@@ -76,7 +75,7 @@ func (r *MockStoryRepository) FindEpisodeByID(_ context.Context, episodeID strin
 			return ep, nil
 		}
 	}
-	return nil, fmt.Errorf("episode %s: %w", episodeID, port.ErrNotFound)
+	return nil, fmt.Errorf("episode %s: %w", episodeID, ErrNotFound)
 }
 
 // GetCompletedEpisodeIDs はプレイヤーの完了済みエピソード ID 一覧をインメモリから返す。

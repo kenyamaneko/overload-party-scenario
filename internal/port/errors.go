@@ -5,8 +5,8 @@ import "errors"
 // ErrNotFound は対象行が存在しない場合にリポジトリが返すエラー。
 var ErrNotFound = errors.New("not found")
 
-// ErrScriptNotFound は要求されたストーリースクリプトが全対応ロケール（要求言語と
-// `ja` フォールバックの両方）でストアに存在しない場合を示す。ハンドラは HTTP 404 に変換する。
+// ErrScriptNotFound は要求言語のストーリースクリプトがストアに存在しない場合を示す。
+// 代替言語へのフォールバックは行わない。ハンドラは HTTP 404 に変換する。
 var ErrScriptNotFound = errors.New("story script not found")
 
 // ErrScriptInfra はストーリースクリプトストア（GCS またはローカルファイルシステム）が
