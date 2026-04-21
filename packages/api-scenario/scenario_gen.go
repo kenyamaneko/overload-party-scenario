@@ -59,3 +59,25 @@ type ScenarioCompleteResponse struct {
 	EpisodeID string `json:"episode_id"`
 }
 
+// OnboardingStatus indicates whether a player has completed onboarding.
+type OnboardingStatus struct {
+	PlayerID    string     `json:"player_id"`
+	Onboarded   bool       `json:"onboarded"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+}
+
+type OnboardingScriptResponse struct {
+	Script string `json:"script"`
+}
+
+// OnboardingCompleteRequest is the body sent when the player finishes reading the onboarding scenario.
+type OnboardingCompleteRequest struct {
+	DisplayName      string `json:"display_name"`
+	InitialFactionID string `json:"initial_faction_id"`
+}
+
+type OnboardingCompleteResponse struct {
+	Message  string `json:"message"`
+	PlayerID string `json:"player_id"`
+}
+

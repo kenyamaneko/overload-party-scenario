@@ -101,3 +101,87 @@ gateway が ClusterIP 経由で呼び出す内部 API。 認証は gateway 側 F
 
 ---
 
+## オンボーディング (internal REST — gateway → scenario)
+
+ゲーム開始時に一度だけ読むオンボーディングシナリオ。読了時に display_name と 初期 faction を受け取り、account / card / gateway に Pub/Sub でイベントを配信する。 完了は transactional outbox で保証される（詳細は ADR-021）。
+
+### `GET /internal/v1/players/:playerId/onboarding/status`
+
+**概要:** オンボーディング完了状態を返す（クライアント起動時のオンボ画面表示判定）
+
+**認証:** ClusterIP（gateway 経由）
+
+**レスポンスボディ:** `OnboardingStatus`
+
+| フィールド | 型 | 備考 |
+|---|---|---|
+| `player_id` | `string` |  |
+| `onboarded` | `boolean` |  |
+| `completed_at` | `string?` | nullable (未完了なら省略) |
+
+**レスポンス例:**
+
+```json
+{"player_id": "uuid", "onboarded": false}
+```
+
+---
+
+### `GET /internal/v1/players/:playerId/onboarding/script`
+
+**概要:** オンボーディングシナリオ本文を取得（GCS からロード）
+
+**認証:** ClusterIP（gateway 経由）
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | デフォルト | 説明 |
+|---|---|---|---|
+| `lang` | `string` | `ja` | スクリプト言語 (ja / en) |
+
+**レスポンスボディ:** `OnboardingScriptResponse`
+
+| フィールド | 型 | 備考 |
+|---|---|---|
+| `script` | `string` |  |
+
+**エラー:**
+
+| ステータス | 理由 |
+|---|---|
+| `404` | 要求言語のスクリプトが存在しない |
+| `409` | 既にオンボーディング完了済み |
+| `500` | GCS 等インフラ障害 |
+
+---
+
+### `POST /internal/v1/players/:playerId/onboarding/complete`
+
+**概要:** オンボーディング完了を記録し player-onboarded / faction-selected を発行
+
+**認証:** ClusterIP（gateway 経由）
+
+**リクエストボディ:** `OnboardingCompleteRequest`
+
+| フィールド | 型 | 備考 |
+|---|---|---|
+| `display_name` | `string` |  |
+| `initial_faction_id` | `string` | SelectableFactions のいずれか |
+
+**レスポンスボディ:** `OnboardingCompleteResponse`
+
+| フィールド | 型 | 備考 |
+|---|---|---|
+| `message` | `string` |  |
+| `player_id` | `string` |  |
+
+**エラー:**
+
+| ステータス | 理由 |
+|---|---|
+| `400` | display_name / initial_faction_id の検証失敗 |
+| `409` | 既にオンボーディング完了済み |
+| `500` | DB / outbox 書き込み失敗 |
+
+---
+

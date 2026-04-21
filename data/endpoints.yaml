@@ -45,3 +45,41 @@ endpoint_groups:
         errors:
           - {status: 403, reason: "エピソードがロック中"}
           - {status: 404, reason: "エピソードが存在しない"}
+
+  - name: オンボーディング (internal REST — gateway → scenario)
+    description: >
+      ゲーム開始時に一度だけ読むオンボーディングシナリオ。読了時に display_name と
+      初期 faction を受け取り、account / card / gateway に Pub/Sub でイベントを配信する。
+      完了は transactional outbox で保証される（詳細は ADR-021）。
+    endpoints:
+      - method: GET
+        path: /internal/v1/players/:playerId/onboarding/status
+        summary: オンボーディング完了状態を返す（クライアント起動時のオンボ画面表示判定）
+        auth: ClusterIP（gateway 経由）
+        response_type: OnboardingStatus
+        response_example: '{"player_id": "uuid", "onboarded": false}'
+
+      - method: GET
+        path: /internal/v1/players/:playerId/onboarding/script
+        summary: オンボーディングシナリオ本文を取得（GCS からロード）
+        auth: ClusterIP（gateway 経由）
+        query_params:
+          - {name: lang, type: string, default: "ja", description: "スクリプト言語 (ja / en)"}
+        response_type: OnboardingScriptResponse
+        response_example: '{"script": "..."}'
+        errors:
+          - {status: 404, reason: "要求言語のスクリプトが存在しない"}
+          - {status: 409, reason: "既にオンボーディング完了済み"}
+          - {status: 500, reason: "GCS 等インフラ障害"}
+
+      - method: POST
+        path: /internal/v1/players/:playerId/onboarding/complete
+        summary: オンボーディング完了を記録し player-onboarded / faction-selected を発行
+        auth: ClusterIP（gateway 経由）
+        request_type: OnboardingCompleteRequest
+        response_type: OnboardingCompleteResponse
+        response_example: '{"message": "onboarding completed", "player_id": "uuid"}'
+        errors:
+          - {status: 400, reason: "display_name / initial_faction_id の検証失敗"}
+          - {status: 409, reason: "既にオンボーディング完了済み"}
+          - {status: 500, reason: "DB / outbox 書き込み失敗"}

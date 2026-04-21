@@ -62,3 +62,25 @@ files:
         fields:
           - {name: Message, type: string, json: "message"}
           - {name: EpisodeID, type: string, json: "episode_id"}
+
+      - name: OnboardingStatus
+        comment: "OnboardingStatus indicates whether a player has completed onboarding."
+        fields:
+          - {name: PlayerID, type: string, json: "player_id"}
+          - {name: Onboarded, type: bool, json: "onboarded"}
+          - {name: CompletedAt, type: "*time.Time", json: "completed_at,omitempty"}
+
+      - name: OnboardingScriptResponse
+        fields:
+          - {name: Script, type: string, json: "script"}
+
+      - name: OnboardingCompleteRequest
+        comment: "OnboardingCompleteRequest is the body sent when the player finishes reading the onboarding scenario."
+        fields:
+          - {name: DisplayName, type: string, json: "display_name"}
+          - {name: InitialFactionID, type: string, json: "initial_faction_id"}
+
+      - name: OnboardingCompleteResponse
+        fields:
+          - {name: Message, type: string, json: "message"}
+          - {name: PlayerID, type: string, json: "player_id"}
