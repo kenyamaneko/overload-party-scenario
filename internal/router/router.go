@@ -9,7 +9,7 @@ import (
 )
 
 // New は scenario の HTTP ルーターを構築する。
-func New(storyH *rest.StoryHandler) *gin.Engine {
+func New(storyH *rest.StoryHandler, onboardingH *rest.OnboardingHandler) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
@@ -22,6 +22,10 @@ func New(storyH *rest.StoryHandler) *gin.Engine {
 		players.GET("/scenarios", storyH.ListEpisodes)
 		players.GET("/scenarios/:episodeId/script", storyH.GetScript)
 		players.POST("/scenarios/:episodeId/complete", storyH.CompleteEpisode)
+
+		players.GET("/onboarding/status", onboardingH.GetStatus)
+		players.GET("/onboarding/script", onboardingH.GetScript)
+		players.POST("/onboarding/complete", onboardingH.Complete)
 	}
 	return r
 }

@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const localStoryPrefix = "local:"
@@ -26,9 +27,22 @@ type Config struct {
 	// デフォルト "faction-selected"。クロスプロジェクトテスト用にのみ変更する。
 	FactionSelectedTopic string
 
+	// player-onboarded topic 名 (scenario → account)。
+	// デフォルト "player-onboarded"。クロスプロジェクトテスト用にのみ変更する。
+	PlayerOnboardedTopic string
+
 	// FirestoreProjectID は game_config の読み取り先プロジェクト ID。
 	// ローカル/CI では FIRESTORE_EMULATOR_HOST を別途設定することでエミュレーターに接続。
 	FirestoreProjectID string
+
+	// Outbox worker 設定。scenario.outbox_events を消費する常駐 worker のチューニング値。
+	// ハードコードではなく env で持つのは、負荷試験やインシデント時にデプロイなしで
+	// 試行錯誤できるようにするため (CLAUDE.md「デフォルト値へのフォールバック禁止」に
+	// 従い、全値必須で起動時 fail-fast する)。
+	OutboxPollInterval      time.Duration // 例: 1s
+	OutboxBatchSize         int           // 1 tick で claim する最大行数
+	OutboxFailureThreshold  int           // この回数以上の連続失敗で ERROR ログ (死蔵検知)
+	OutboxVisibilityTimeout time.Duration // claim 後この期間は他 worker が同じ行を拾わない
 }
 
 // FromEnv は環境変数から Config を構築する。
@@ -40,6 +54,7 @@ func FromEnv() (*Config, error) {
 		StoryBucket:          os.Getenv("STORY_BUCKET"),
 		PubsubProjectID:      os.Getenv("PUBSUB_PROJECT_ID"),
 		FactionSelectedTopic: getEnv("FACTION_SELECTED_TOPIC", "faction-selected"),
+		PlayerOnboardedTopic: getEnv("PLAYER_ONBOARDED_TOPIC", "player-onboarded"),
 		FirestoreProjectID:   os.Getenv("FIRESTORE_PROJECT_ID"),
 	}
 
@@ -66,7 +81,69 @@ func FromEnv() (*Config, error) {
 	if cfg.FirestoreProjectID == "" {
 		return nil, fmt.Errorf("config: FIRESTORE_PROJECT_ID is required (game_config)")
 	}
+
+	if err := loadOutboxConfig(cfg); err != nil {
+		return nil, err
+	}
 	return cfg, nil
+}
+
+// loadOutboxConfig は outbox worker のチューニング値を env から読む。
+// 全値必須で、パース不能・非正値は fail-fast する (CLAUDE.md「デフォルト値への
+// フォールバック禁止」方針。shop と同方針)。
+func loadOutboxConfig(cfg *Config) error {
+	raw := os.Getenv("OUTBOX_POLL_INTERVAL")
+	if raw == "" {
+		return fmt.Errorf("config: OUTBOX_POLL_INTERVAL is required")
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return fmt.Errorf("config: OUTBOX_POLL_INTERVAL %q: %w", raw, err)
+	}
+	if d <= 0 {
+		return fmt.Errorf("config: OUTBOX_POLL_INTERVAL must be positive, got %q", raw)
+	}
+	cfg.OutboxPollInterval = d
+
+	rawBatch := os.Getenv("OUTBOX_BATCH_SIZE")
+	if rawBatch == "" {
+		return fmt.Errorf("config: OUTBOX_BATCH_SIZE is required")
+	}
+	n, err := strconv.Atoi(rawBatch)
+	if err != nil {
+		return fmt.Errorf("config: OUTBOX_BATCH_SIZE %q: %w", rawBatch, err)
+	}
+	if n <= 0 {
+		return fmt.Errorf("config: OUTBOX_BATCH_SIZE must be positive, got %q", rawBatch)
+	}
+	cfg.OutboxBatchSize = n
+
+	rawThreshold := os.Getenv("OUTBOX_FAILURE_THRESHOLD")
+	if rawThreshold == "" {
+		return fmt.Errorf("config: OUTBOX_FAILURE_THRESHOLD is required")
+	}
+	t, err := strconv.Atoi(rawThreshold)
+	if err != nil {
+		return fmt.Errorf("config: OUTBOX_FAILURE_THRESHOLD %q: %w", rawThreshold, err)
+	}
+	if t <= 0 {
+		return fmt.Errorf("config: OUTBOX_FAILURE_THRESHOLD must be positive, got %q", rawThreshold)
+	}
+	cfg.OutboxFailureThreshold = t
+
+	rawVis := os.Getenv("OUTBOX_VISIBILITY_TIMEOUT")
+	if rawVis == "" {
+		return fmt.Errorf("config: OUTBOX_VISIBILITY_TIMEOUT is required")
+	}
+	v, err := time.ParseDuration(rawVis)
+	if err != nil {
+		return fmt.Errorf("config: OUTBOX_VISIBILITY_TIMEOUT %q: %w", rawVis, err)
+	}
+	if v < time.Millisecond {
+		return fmt.Errorf("config: OUTBOX_VISIBILITY_TIMEOUT must be >= 1ms, got %q", rawVis)
+	}
+	cfg.OutboxVisibilityTimeout = v
+	return nil
 }
 
 // IsLocalStory は StoryBucket が GCS バケットではなくローカルファイルシステム

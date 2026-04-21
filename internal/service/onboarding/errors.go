@@ -1,0 +1,26 @@
+// Package onboarding はオンボーディング (初回プロローグ) のユースケースを提供する。
+// status 取得・script 取得・完了記録 + outbox enqueue を束ね、
+// display_name / initial_faction_id は account / card / gateway に
+// Transactional Outbox 経由で伝播させる (ADR-021)。
+package onboarding
+
+import "errors"
+
+var (
+	// ErrAlreadyOnboarded はプレイヤーが既にオンボーディングを完了している場合に返される。
+	// handler は HTTP 409 Conflict にマップする。
+	ErrAlreadyOnboarded = errors.New("onboarding: already completed")
+
+	// ErrScriptNotFound は要求言語のオンボーディングスクリプトがストアに存在しない場合に返される。
+	// 代替言語へのフォールバックは行わない (CLAUDE.md の禁止事項)。
+	// handler は HTTP 404 にマップする。
+	ErrScriptNotFound = errors.New("onboarding: script not found")
+
+	// ErrInvalidFaction は initial_faction_id が SelectableFactions に含まれない場合に返される。
+	// handler は HTTP 400 にマップする。
+	ErrInvalidFaction = errors.New("onboarding: invalid initial faction")
+
+	// ErrInvalidDisplayName は display_name が MVP 仕様 (空 / 全空白 / 21 rune 超) を満たさない場合に返される。
+	// handler は HTTP 400 にマップする。
+	ErrInvalidDisplayName = errors.New("onboarding: invalid display name")
+)

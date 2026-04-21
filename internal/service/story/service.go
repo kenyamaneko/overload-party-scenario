@@ -10,24 +10,20 @@ import (
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
-// Service はエピソード一覧取得・スクリプト取得・完了記録・初期 faction 通知を束ねる
+// Service はエピソード一覧取得・スクリプト取得・完了記録を束ねる
 // ストーリーのユースケース実装。
 //
 // scriptStore は起動時 (config 判定) に一度だけ決定される (GCS か local filesystem)。
-// factionPublisher は faction hand-off パスを動かさないテストでは nil 可で、
-// NotifyInitialFactionSelected が nil 時に明示的エラーを返すことで配線退行を即検知する。
 type Service struct {
-	storyRepo        port.StoryRepo
-	scriptStore      port.ScriptStore
-	factionPublisher port.FactionPublisher
+	storyRepo   port.StoryRepo
+	scriptStore port.ScriptStore
 }
 
 // New は Service を構築する。
-func New(storyRepo port.StoryRepo, scriptStore port.ScriptStore, factionPublisher port.FactionPublisher) *Service {
+func New(storyRepo port.StoryRepo, scriptStore port.ScriptStore) *Service {
 	return &Service{
-		storyRepo:        storyRepo,
-		scriptStore:      scriptStore,
-		factionPublisher: factionPublisher,
+		storyRepo:   storyRepo,
+		scriptStore: scriptStore,
 	}
 }
 
@@ -98,21 +94,6 @@ func (s *Service) CompleteEpisode(ctx context.Context, playerID, episodeID strin
 
 	if err := s.storyRepo.MarkComplete(ctx, playerID, episodeID); err != nil {
 		return fmt.Errorf("mark complete: %w", err)
-	}
-	return nil
-}
-
-// NotifyInitialFactionSelected は初期 faction 選択フロー用に faction-selected Pub/Sub
-// イベントを発行する。account / card / gateway がそれぞれ subscribe し、
-// subscriber 側は <schema>.processed_events (event_id キー) で重複排除する。
-//
-// factionPublisher が nil の場合は明示的エラーを返し、配線の退行を即検知させる。
-func (s *Service) NotifyInitialFactionSelected(ctx context.Context, playerID, factionID string) error {
-	if s.factionPublisher == nil {
-		return fmt.Errorf("scenario: NotifyInitialFactionSelected called with nil factionPublisher")
-	}
-	if err := s.factionPublisher.PublishFactionSelected(ctx, playerID, factionID); err != nil {
-		return fmt.Errorf("publish faction-selected: %w", err)
 	}
 	return nil
 }

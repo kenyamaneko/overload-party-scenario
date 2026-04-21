@@ -28,25 +28,31 @@ shop と揃えた Clean Architecture レイヤーに沿う。handler（transport
 ```
 cmd/server/main.go
   │
-  ├─ internal/handler/rest/*          # Gin ハンドラ、HTTP ↔ sentinel 変換
+  ├─ internal/handler/rest/*          # Gin ハンドラ、HTTP ↔ sentinel 変換 (story / onboarding)
+  ├─ internal/handler/worker/*        # 常駐 worker エントリ (OutboxTicker)
   │     │
-  │     └─ internal/service/story     # ユースケース (ListEpisodes / GetScript / CompleteEpisode / NotifyInitialFactionSelected)
+  │     ├─ internal/service/story       # ユースケース (ListEpisodes / GetScript / CompleteEpisode)
+  │     ├─ internal/service/onboarding  # ユースケース (GetStatus / GetScript / Complete)
+  │     └─ internal/service/outbox      # outbox 消費ユースケース (RunOnce)
   │           │
-  │           └─ internal/port/*      # interface 定義 (StoryRepo / ScriptStore / FactionPublisher / GameConfigRepo)
+  │           └─ internal/port/*      # interface 定義 (StoryRepo / OnboardingRepo / ScriptStore / OutboxStore / OutboxEventBuilder / RawEventPublisher / GameConfigRepo)
   │                 ▲
   │                 │ implements
   │                 │
-  │     ┌───────────┴───────────┬───────────────────────┬──────────────────┐
-  │     │                       │                       │                  │
-  │  internal/repository/      internal/repository/   internal/adapter/  internal/adapter/
-  │  postgres (StoryRepo)      firestore (GameConfig) gcs, local         pubsub
-  │                             (ScriptStore)         (FactionPublisher)
+  │     ┌───────────┴───────────┬───────────────────────┬──────────────────────────────┐
+  │     │                       │                       │                              │
+  │  internal/repository/      internal/repository/   internal/adapter/             internal/adapter/
+  │  postgres                  firestore (GameConfig) gcs, local                    pubsub
+  │  (StoryRepo /               (ScriptStore)           (Publisher = RawEventPublisher /
+  │   OnboardingRepo /                                   EventBuilder = OutboxEventBuilder)
+  │   OutboxStore)
 ```
 
 依存方向:
 
-- `handler/rest` → `service/story` → `port` にのみ向く
-- `service/story` は `postgres` / `firestore` / `gcs` / `local` / `pubsub` の具体型を知らない
+- `handler/rest` → `service/*` → `port` にのみ向く
+- `handler/worker` → `service/outbox` → `port` にのみ向く
+- `service/*` は `postgres` / `firestore` / `gcs` / `local` / `pubsub` の具体型を知らない
 - `port/mock_story_repo.go` が `service/story` のユニットテスト用 mock を保持する（旧 `internal/repository/mock_story_repo.go` は shop 準拠のレイアウトに合わせて port 直下に移動）
 
 この並びは shop とほぼ同型で、layer のリファクタは shop 側の構造にサービス間で揃えるためのもの（ADR にある「サービス横断のテンプレート化」方針）。
@@ -121,44 +127,65 @@ CLAUDE.md の「GCS エラーを握りつぶさない。日本語へのフォー
 
 **意図**: 未達条件を 1 つでも返せば即 `ErrEpisodeLocked` にする実装は `GetScript` / `CompleteEpisode` の validate 側だけで、`ListEpisodes` は全未達条件を reasons として返す。これは UX 差（一覧では「なぜロックされているか」を全部見せたい、取得時は 403 を返して終わり）をサービス層で直接表現するため。
 
-## Pub/Sub `faction-selected` publisher
+## Pub/Sub publisher
 
 ### 契約
 
 | 項目 | 値 |
 |---|---|
-| トピック | `faction-selected` (`FACTION_SELECTED_TOPIC` で上書き可、クロスプロジェクト検証用) |
-| ペイロード型 | `FactionSelectedEvent` (`overload-party-common/packages/pubsub-events`) |
-| source | `scenario_initial` 固定（shop は `shop_purchase`） |
-| publish 同期性 | `result.Get(ctx)` で ACK を待つ同期 publish |
+| トピック | `faction-selected` / `player-onboarded`（いずれも `*_TOPIC` env で上書き可、クロスプロジェクト検証用） |
+| ペイロード型 | `FactionSelectedEvent` / `PlayerOnboardedEvent` (`overload-party-common/packages/pubsub-events`) |
+| `faction-selected.source` | `scenario_initial` 固定（shop は `shop_purchase`） |
+| publish 経路 | `internal/adapter/pubsub/publisher.go`（topic 名 → `*pubsub.Topic` の map ラッパ）を outbox worker が呼ぶ |
 | 配信保証 | at-least-once（subscriber 側で `event_id` ベースに重複排除する前提） |
 
 ### トリガー
 
-scenario は `StoryService.NotifyInitialFactionSelected(ctx, playerID, factionID)` で明示的に publish する。現在このメソッドは `CompleteEpisode` から自動呼び出しされていない (`TODO(faction-handoff)`) ため、外部配線作業が完了するまで publish は実測では駆動されない。
+scenario の live publish は全て outbox 経由で起きる。具体的には `OnboardingService.Complete` が `scenario.player_onboarding` への INSERT と `scenario.outbox_events` への 2 行挿入を同一トランザクションで commit し、常駐 worker (`internal/handler/worker/outbox_ticker.go`) が未配信行を claim して `adapter/pubsub.Publisher.Publish` を呼ぶ。旧 `StoryService.NotifyInitialFactionSelected` は [ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) で削除されたため、`story.Service` は publisher 依存を持たない。
 
 ### subscriber 側の責務
 
 scenario は publish して終わり。以下の副作用は全て subscriber に委ねる:
 
-- account: `player_factions` INSERT + `players.selected_faction` UPDATE
-- card: `player_cards` に faction + Neutral のカードを付与
-- gateway: WS push で完了通知
+- account: `players.display_name` 更新（`player-onboarded`）、`player_factions` INSERT + `players.selected_faction` UPDATE（`faction-selected`）
+- card: `player_cards` に faction + Neutral のカードを付与（`faction-selected`）
+- gateway: WS push で完了通知（`faction-selected`）
 
-### scenario が Outbox を持たない理由
+### scenario の Outbox
 
-shop は `shop.outbox_events` を使って「DB commit と Pub/Sub publish を同一トランザクションに相乗り」させる Transactional Outbox パターンを採用している（[shop/ARCHITECTURE.md](../../overload-party-shop/docs/ARCHITECTURE.md#イベント配信モデル-transactional-outbox)）。scenario はこれを採用しない。
+scenario は shop と同型の **Transactional Outbox** を持つ。DB commit と Pub/Sub publish を同一トランザクションに相乗りさせて、dual-write による部分失敗（完了記録は入ったが publish に失敗、またはその逆）を構造的に排除するための機構で、shop の [イベント配信モデル (Transactional Outbox)](../../overload-party-shop/docs/ARCHITECTURE.md#イベント配信モデル-transactional-outbox) と設計思想・SQL・port 契約を揃えている。
 
-理由:
+本節は以前「scenario が Outbox を持たない理由」として atomic publish 不要という立場を記していたが、[ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) で追加された「オンボーディング完了」ユースケースは **`scenario.player_onboarding` への INSERT と 2 つの Pub/Sub publish を atomic に揃える必要がある** 配線であり、旧節が予告していた導入条件にそのまま合致する。そのため scenario 側にも `scenario.outbox_events` を新設し、旧方針は本 ADR 採用をもって反転させた。
 
-1. **scenario の publish は DB 書き込みと atomic である必要がない**
-   shop の `Purchase` は「購入レコード INSERT + 所有権 INSERT + event publish」が一致しないと subscriber 側の fan-out が壊れる（課金完了したのに faction が付かない等）。scenario の `NotifyInitialFactionSelected` は現状「DB 書き込み + publish」ではなく「publish のみ」であり、atomic に揃えるべき DB 行がそもそも存在しない。
-2. **クライアント主導のリトライで十分**
-   publish が失敗すればクライアントに 500 が返り、クライアントが UX 的な判断でリトライする。shop の webhook と違って外部ストアがリトライを強制する仕組みではないので、常駐 worker による at-most-once の publish 保証を用意する動機が弱い。
-3. **subscriber 側で冪等性を担保する契約は shop と同じ**
-   `event_id` は毎回新規採番され、subscriber は `processed_events` / 複合 PK で重複適用を防ぐ。at-least-once の保証は shop と同じ形で成立する（scenario 自身が重複 publish を発生させにくいだけ）。
+shop との差分は「何を積むか」だけで、インフラ側は共通化している:
 
-この設計上の差は FEATURE_SPEC §6.2 で「scenario は Transactional Outbox を持たない」と明記する。将来 `CompleteEpisode` から自動 publish する配線に変えるときに、atomic 保証が必要になれば scenario 側にも Outbox を導入する選択肢を残しておく（その時点で shop と同型の構造を再利用できる）。
+| 項目 | shop | scenario |
+|---|---|---|
+| 積む event kind | `BuildFactionSelected(source=shop_purchase)` / `BuildPremiumUpdated` | `BuildPlayerOnboarded` / `BuildFactionSelected(source=scenario_initial` 固定`)` |
+| テーブルスキーマ | `shop.outbox_events` | `scenario.outbox_events`（カラム・インデックス同一） |
+| port 契約 (`OutboxStore` / `OutboxEventBuilder`) | shop | scenario でも同一インターフェース |
+| poller 実装 | `internal/service/outbox_publisher.go` + `internal/handler/worker/outbox_ticker.go` | 同名パスで同一構造 |
+| 配信保証 | at-least-once + visibility timeout + `failure_count` 閾値 | 同一 |
+
+結果として scenario の publisher は「`adapter/pubsub.Publisher` が topic 名から `*pubsub.Topic` を引いて送出する」薄いラッパに退避し、atomic 性の責務は outbox 側に集約されている。運用観測メトリクス名もサービスプレフィックスのみ差し替えた同一体系（`scenario_outbox_unpublished_gauge` 等）を採る。
+
+## オンボーディングシナリオ
+
+[ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) により追加された「一度きり読了で display_name と初期 faction を集める」ユースケースは、既存 `ScenarioEpisode` 配管と **サービス層・テーブル・API・イベントのいずれも分離** する。詳細仕様は [FEATURE_SPEC.md](FEATURE_SPEC.md) と ADR-021 に委ね、ここでは別フロー化した設計観点だけ残す。
+
+### なぜ別ユースケースにしたか
+
+既存 `ScenarioEpisode` は unlock 判定（level / 所有 faction / 前提エピソード）を入口に持ち、完了後も本文再読が可能で、完了の副作用は進行マーカーのみという前提で組まれている。オンボはこのすべてが逆転する:
+
+- faction もレベルも無い状態で最初に走るため、既存 unlock モデルに条件を注入できない
+- 「一度きり」セマンティクスのため、完了後は本文を返さず 409 で弾く必要がある
+- 完了時に identity 副作用（display_name 書き込み + 初期 faction hand-off）を atomic に伴う
+
+これらを既存エピソードに載せると `checkUnlock` / `GetScript` / `CompleteEpisode` の全てに「オンボ時だけ違う」横串分岐が増え、「一つの関数に複数の責務を負わせない」に反する。したがって `internal/service/onboarding/` として独立 service を構え、`scenario.player_onboarding`（PK = `player_id` で 2 度目の INSERT が一意制約違反になる形で「一度きり」を保証）と上記 outbox を通じて 2 イベントを atomic publish する配線に分離した。
+
+### SSoT 分離
+
+scenario は「オンボ完了フラグ」と「スクリプト」の SSoT を持つが、display_name や所持 faction は **保持しない**。publish を中継するだけで、identity の SSoT は account 側に残す。これにより scenario は将来 display_name 変更機能などが account 側に入っても影響を受けない。
 
 ## 構造的安全性
 
@@ -174,17 +201,14 @@ scenario は「静かに no-op で起動する」「nil publisher がログだ�
 - `PUBSUB_PROJECT_ID` 必須
 - `FIRESTORE_PROJECT_ID` 必須（現在 runtime からは未参照だが、起動時にプロジェクト ID の典型的タイポを検出する目的で必須化）
 
-### nil factionPublisher の明示的エラー
+### outbox worker 構築時のゼロ値拒否と unknown topic 明示エラー
 
-`StoryService.NotifyInitialFactionSelected` は `factionPublisher == nil` を明示チェックし、nil なら即 error を返す。
+publisher 関連の fail-fast は [ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) で `story.Service.NotifyInitialFactionSelected` の nil チェックから outbox 側 2 点に移った。どちらも「設定ミスが本番で初めて観測される」状態を構造的に塞ぐための配線。
 
-```go
-if s.factionPublisher == nil {
-    return fmt.Errorf("scenario: NotifyInitialFactionSelected called with nil factionPublisher")
-}
-```
+1. **worker config のゼロ値拒否**: `internal/handler/worker/outbox_ticker.go` の起動時に `BatchSize` / `FailureThreshold` / `VisibilityTimeout` などが 0（env 未設定や typo）なら即 error を返し main が exit 1 する。ゼロ値で起動してしまうと claim クエリが縮退して「publish しない worker」がサイレントに常駐するため。
+2. **unknown topic のエラー返却**: `adapter/pubsub.Publisher.Publish(topic, payload)` は内部 topic map に無い topic 名に対して即エラーを返す。outbox 行の `topic` カラムに誤った値が書かれた場合、握りつぶさず `RecordFailure` 経路に載せて `failure_count` 閾値 → アラートに辿れるようにする。
 
-**意図**: 将来テスト用コンストラクタや配線変更で factionPublisher が nil のまま service が構築されるパスが入り込んでも、publish されずに成功扱いになるサイレント退行を防ぐ。shop の `getVerifier` が `ErrUnsupportedPlatform` を返すのと同じ発想で、nil 依存は実行時に明示的に検出する。
+**意図**: shop の `getVerifier` が `ErrUnsupportedPlatform` を返すのと同じ発想で、nil 依存・設定欠損・列挙漏れは実行時に **明示的に** 検出し、ログのみで成功扱いになるサイレント退行を構造的に防ぐ。
 
 ### `IsLocalStory` 判定の閉じ込め
 
@@ -196,7 +220,7 @@ shop の方針に準拠し、以下の 3 層でテストする。
 
 | 対象 | 手段 |
 |---|---|
-| `service/story` のユースケースロジック | `internal/port/mock_story_repo.go` の `MockStoryRepository` + stub の `ScriptStore` / `FactionPublisher` でユニットテスト (`service/story/service_test.go`) |
+| `service/story` / `service/onboarding` のユースケースロジック | `internal/port` 配下の mock / stub（`MockStoryRepository` / `ScriptStore` / `OnboardingRepo` / `OutboxEventBuilder` 等）でユニットテスト |
 | `repository/postgres` | testcontainers で実 PostgreSQL を起動し、`schema.sql` を流した上で CRUD を検証（整備予定） |
 | `repository/firestore` | Firestore emulator に対する統合テスト (`repository/firestore/game_config_repo_test.go`) |
 
@@ -209,13 +233,15 @@ GCS adapter は interface レベルで mock される（現状 `adapter/gcs` の
 環境変数の一覧と必須条件は [internal/config/config.go](../internal/config/config.go) が SSoT。運用上の注意点:
 
 - **`STORY_BUCKET`**: 本番は GCS バケット名を直接設定。dev / ローカルは `local:<path>` で FS 切替。誤って本番に `local:` を設定すると起動拒否になる（正常）
-- **`PUBSUB_PROJECT_ID`** と **`FACTION_SELECTED_TOPIC`**: 本番環境と一致する Google Cloud project を指定。topic は Terraform (`modules/pubsub`) で事前作成されている前提。未作成のトピックに publish すると runtime で失敗する
+- **`PUBSUB_PROJECT_ID`** / **`FACTION_SELECTED_TOPIC`** / **`PLAYER_ONBOARDED_TOPIC`**: 本番環境と一致する Google Cloud project を指定。topic は Terraform (`modules/pubsub`) で事前作成されている前提。未作成トピック・未登録 topic 名への publish は outbox worker の `RecordFailure` 経路に載るため `failure_count` アラートで検出できる
+- **`OUTBOX_POLL_INTERVAL` / `OUTBOX_BATCH_SIZE` / `OUTBOX_FAILURE_THRESHOLD` / `OUTBOX_VISIBILITY_TIMEOUT`**: outbox worker の挙動を env 経由で調整する。負荷試験やインシデント時にデプロイなしで可変。shop と同じ名前・意味で揃えている
 - **`FIRESTORE_PROJECT_ID`**: `game_config` の読み取り先。ローカル / CI では `FIRESTORE_EMULATOR_HOST` で emulator 接続に差し替え可能
 
 ### Pub/Sub トピックと subscriber
 
 | トピック | 発行契機 | subscriber |
 |---|---|---|
-| `faction-selected` | `NotifyInitialFactionSelected` 呼び出し時（同期 publish） | account, card, gateway |
+| `faction-selected` | `OnboardingService.Complete` の DB commit 後（outbox worker が `scenario.outbox_events` 行を消費） | account, card, gateway |
+| `player-onboarded` | 同上（同一トランザクションで 2 行が outbox に積まれる） | account |
 
 subscriber 列はこのリポジトリからは導けないので、変更時は各サービスの購読状況も確認すること。

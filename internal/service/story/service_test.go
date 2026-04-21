@@ -2,7 +2,6 @@ package story
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,7 +19,7 @@ type testEnv struct {
 func newTestEnv() *testEnv {
 	storyRepo := port.NewMockStoryRepository()
 	return &testEnv{
-		svc:       New(storyRepo, nil, nil),
+		svc:       New(storyRepo, nil),
 		storyRepo: storyRepo,
 	}
 }
@@ -301,7 +300,7 @@ func TestGetScript_NoLanguageFallback(t *testing.T) {
 	env.storyRepo.GrantFaction("p1", "SHE")
 
 	fake := &fakeScriptStore{missing: true}
-	svc := New(env.storyRepo, fake, nil)
+	svc := New(env.storyRepo, fake)
 
 	_, err := svc.GetScript(context.Background(), "p1", "she_ep1", "en")
 	require.Error(t, err)
@@ -369,42 +368,4 @@ func TestCheckUnlock(t *testing.T) {
 			}
 		})
 	}
-}
-
-type fakeFactionPublisher struct {
-	calls []struct{ PlayerID, Faction string }
-	err   error
-}
-
-func (f *fakeFactionPublisher) PublishFactionSelected(_ context.Context, playerID, faction string) error {
-	f.calls = append(f.calls, struct{ PlayerID, Faction string }{playerID, faction})
-	return f.err
-}
-
-func TestNotifyInitialFactionSelected(t *testing.T) {
-	t.Run("publisher が nil なら明示的エラー", func(t *testing.T) {
-		svc := New(port.NewMockStoryRepository(), nil, nil)
-		err := svc.NotifyInitialFactionSelected(context.Background(), "p1", "SHE")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "nil factionPublisher")
-	})
-
-	t.Run("publisher の成功は呼び出しを記録する", func(t *testing.T) {
-		pub := &fakeFactionPublisher{}
-		svc := New(port.NewMockStoryRepository(), nil, pub)
-
-		require.NoError(t, svc.NotifyInitialFactionSelected(context.Background(), "p1", "SHE"))
-		require.Len(t, pub.calls, 1)
-		assert.Equal(t, "p1", pub.calls[0].PlayerID)
-		assert.Equal(t, "SHE", pub.calls[0].Faction)
-	})
-
-	t.Run("publisher のエラーは伝播する", func(t *testing.T) {
-		pub := &fakeFactionPublisher{err: errors.New("simulated pubsub unavailable")}
-		svc := New(port.NewMockStoryRepository(), nil, pub)
-
-		err := svc.NotifyInitialFactionSelected(context.Background(), "p1", "Tenki")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "simulated pubsub unavailable")
-	})
 }
