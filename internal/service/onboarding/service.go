@@ -72,8 +72,10 @@ func (s *Service) GetScript(ctx context.Context, playerID, lang string) (string,
 	return body, nil
 }
 
-// Complete はオンボーディング完了を記録し、player-onboarded と faction-selected を
-// outbox に atomic に積む。下流は outbox worker が Pub/Sub に publish する。
+// Complete はオンボーディング完了を記録し、player-onboarded を outbox に atomic に
+// 積む。下流は outbox worker が Pub/Sub に publish し、各 subscriber
+// (account / card / gateway …) が display_name と initial_faction を自スキーマへ
+// 反映する (ADR-022: faction-selected は player-onboarded に統合)。
 //
 // display_name / initial_faction_id のバリデーションは service 層で行い、
 // outbox に不正データが乗らないようにする。二度目以降の完了は repo 層が
@@ -86,16 +88,12 @@ func (s *Service) Complete(ctx context.Context, playerID, displayName, initialFa
 		return err
 	}
 
-	evOnboarded, err := s.eventBuilder.BuildPlayerOnboarded(playerID, displayName, initialFactionID)
+	ev, err := s.eventBuilder.BuildPlayerOnboarded(playerID, displayName, initialFactionID)
 	if err != nil {
 		return fmt.Errorf("build player-onboarded: %w", err)
 	}
-	evFaction, err := s.eventBuilder.BuildFactionSelected(playerID, initialFactionID)
-	if err != nil {
-		return fmt.Errorf("build faction-selected: %w", err)
-	}
 
-	if err := s.repo.MarkComplete(ctx, playerID, evOnboarded, evFaction); err != nil {
+	if err := s.repo.MarkComplete(ctx, playerID, ev); err != nil {
 		if errors.Is(err, port.ErrAlreadyOnboarded) {
 			return ErrAlreadyOnboarded
 		}

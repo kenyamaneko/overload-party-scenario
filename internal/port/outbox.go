@@ -13,7 +13,7 @@ import (
 // 同じ event_id / payload を worker が Pub/Sub に送出するため、subscriber 側は
 // event_id または複合 PK を冪等性キーとして使える (at-least-once)。
 //
-// Payload は pubsubevents スキーマの struct を JSON Marshal した生バイトで、
+// Payload は apiscenario スキーマの struct を JSON Marshal した生バイトで、
 // adapter/pubsub/event_builder が構築する。postgres adapter は payload の
 // スキーマを知らず、単に bytes として書き込む。
 //
@@ -26,11 +26,10 @@ type OutboxEvent struct {
 }
 
 // OutboxEventBuilder は service 層が発行したいビジネスイベントを OutboxEvent に
-// シリアライズする。pubsubevents スキーマの詳細は adapter/pubsub 側に閉じ込め、
-// service 層は「何を発行したいか」だけを述語で伝える。
+// シリアライズする。イベントスキーマ (apiscenario.*) の詳細は adapter/pubsub 側に
+// 閉じ込め、service 層は「何を発行したいか」だけを述語で伝える。
 type OutboxEventBuilder interface {
 	BuildPlayerOnboarded(playerID, displayName, initialFactionID string) (OutboxEvent, error)
-	BuildFactionSelected(playerID, faction string) (OutboxEvent, error)
 }
 
 // ClaimedOutboxEvent は OutboxStore.ClaimUnpublished が返す 1 行分の情報。

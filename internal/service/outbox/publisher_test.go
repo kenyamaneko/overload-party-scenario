@@ -143,7 +143,7 @@ func TestPublisher_RunOnce(t *testing.T) {
 		{
 			name: "全件 publish 成功で全件 MarkPublished",
 			claimed: []port.ClaimedOutboxEvent{
-				{EventID: okID, Topic: "faction-selected", Payload: []byte(`{}`), FailureCount: 0},
+				{EventID: okID, Topic: "player-onboarded", Payload: []byte(`{}`), FailureCount: 0},
 			},
 			wantMarked:       []uuid.UUID{okID},
 			wantPublishCalls: 1,
@@ -151,9 +151,9 @@ func TestPublisher_RunOnce(t *testing.T) {
 		{
 			name: "publish 失敗で RecordFailure を呼び、MarkPublished は呼ばない",
 			claimed: []port.ClaimedOutboxEvent{
-				{EventID: ngID, Topic: "faction-selected", Payload: []byte(`{}`), FailureCount: 0},
+				{EventID: ngID, Topic: "player-onboarded", Payload: []byte(`{}`), FailureCount: 0},
 			},
-			publishErrs:      map[string]error{"faction-selected": errors.New("pubsub down")},
+			publishErrs:      map[string]error{"player-onboarded": errors.New("pubsub down")},
 			wantFailed:       []uuid.UUID{ngID},
 			wantPublishCalls: 1,
 		},

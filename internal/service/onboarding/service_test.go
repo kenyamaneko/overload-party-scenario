@@ -61,23 +61,15 @@ func (s *fakeScriptStore) ReadScript(_ context.Context, key string) (string, err
 }
 
 // fakeEventBuilder は OutboxEventBuilder のテスト double。
-// 呼び出し引数を記録し、BuildPlayerOnboarded / BuildFactionSelected ごとに
-// 任意のエラーを返せる。
+// BuildPlayerOnboarded の呼び出し引数を記録し、任意のエラーを返せる。
 type fakeEventBuilder struct {
 	onboardedEvent port.OutboxEvent
 	onboardedErr   error
 	onboardedCalls []onboardedArgs
-	factionEvent   port.OutboxEvent
-	factionErr     error
-	factionCalls   []factionArgs
 }
 
 type onboardedArgs struct {
 	playerID, displayName, initialFactionID string
-}
-
-type factionArgs struct {
-	playerID, faction string
 }
 
 func (b *fakeEventBuilder) BuildPlayerOnboarded(playerID, displayName, initialFactionID string) (port.OutboxEvent, error) {
@@ -86,14 +78,6 @@ func (b *fakeEventBuilder) BuildPlayerOnboarded(playerID, displayName, initialFa
 		return port.OutboxEvent{}, b.onboardedErr
 	}
 	return b.onboardedEvent, nil
-}
-
-func (b *fakeEventBuilder) BuildFactionSelected(playerID, faction string) (port.OutboxEvent, error) {
-	b.factionCalls = append(b.factionCalls, factionArgs{playerID, faction})
-	if b.factionErr != nil {
-		return port.OutboxEvent{}, b.factionErr
-	}
-	return b.factionEvent, nil
 }
 
 func newTestEvent(topic string) port.OutboxEvent {
@@ -248,12 +232,11 @@ func TestComplete(t *testing.T) {
 		verify           func(t *testing.T, err error, repo *fakeOnboardingRepo, builder *fakeEventBuilder)
 	}{
 		{
-			name:             "正常系は builder の 2 イベントを順に outbox へ渡す",
+			name:             "正常系は player-onboarded イベント 1 本を outbox へ渡す",
 			displayName:      validName,
 			initialFactionID: validFaction,
 			builder: &fakeEventBuilder{
 				onboardedEvent: newTestEvent("player-onboarded"),
-				factionEvent:   newTestEvent("faction-selected"),
 			},
 			repo: &fakeOnboardingRepo{},
 			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo, builder *fakeEventBuilder) {
@@ -261,16 +244,12 @@ func TestComplete(t *testing.T) {
 				require.Len(t, repo.markCompleteCalls, 1)
 				call := repo.markCompleteCalls[0]
 				assert.Equal(t, "p1", call.playerID)
-				require.Len(t, call.events, 2)
+				require.Len(t, call.events, 1)
 				assert.Equal(t, "player-onboarded", call.events[0].Topic)
-				assert.Equal(t, "faction-selected", call.events[1].Topic)
 
 				require.Len(t, builder.onboardedCalls, 1)
 				assert.Equal(t, validName, builder.onboardedCalls[0].displayName)
 				assert.Equal(t, validFaction, builder.onboardedCalls[0].initialFactionID)
-
-				require.Len(t, builder.factionCalls, 1)
-				assert.Equal(t, validFaction, builder.factionCalls[0].faction)
 			},
 		},
 		{
@@ -315,7 +294,6 @@ func TestComplete(t *testing.T) {
 			initialFactionID: validFaction,
 			builder: &fakeEventBuilder{
 				onboardedEvent: newTestEvent("player-onboarded"),
-				factionEvent:   newTestEvent("faction-selected"),
 			},
 			repo: &fakeOnboardingRepo{},
 			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo, _ *fakeEventBuilder) {
@@ -353,7 +331,6 @@ func TestComplete(t *testing.T) {
 			initialFactionID: validFaction,
 			builder: &fakeEventBuilder{
 				onboardedEvent: newTestEvent("player-onboarded"),
-				factionEvent:   newTestEvent("faction-selected"),
 			},
 			repo: &fakeOnboardingRepo{markCompleteErr: port.ErrAlreadyOnboarded},
 			verify: func(t *testing.T, err error, _ *fakeOnboardingRepo, _ *fakeEventBuilder) {
@@ -374,27 +351,11 @@ func TestComplete(t *testing.T) {
 			},
 		},
 		{
-			name:             "BuildFactionSelected のエラーは wrap して伝播する",
-			displayName:      validName,
-			initialFactionID: validFaction,
-			builder: &fakeEventBuilder{
-				onboardedEvent: newTestEvent("player-onboarded"),
-				factionErr:     buildErr,
-			},
-			repo: &fakeOnboardingRepo{},
-			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo, _ *fakeEventBuilder) {
-				require.Error(t, err)
-				assert.ErrorIs(t, err, buildErr)
-				assert.Empty(t, repo.markCompleteCalls)
-			},
-		},
-		{
 			name:             "repo の未分類エラーは wrap して伝播する",
 			displayName:      validName,
 			initialFactionID: validFaction,
 			builder: &fakeEventBuilder{
 				onboardedEvent: newTestEvent("player-onboarded"),
-				factionEvent:   newTestEvent("faction-selected"),
 			},
 			repo: &fakeOnboardingRepo{markCompleteErr: repoErr},
 			verify: func(t *testing.T, err error, _ *fakeOnboardingRepo, _ *fakeEventBuilder) {

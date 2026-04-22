@@ -1,12 +1,10 @@
 // Package pubsub は scenario サービスの Pub/Sub publisher を提供する。
 //
-// scenario は 2 種のサービス横断イベントを発行する:
+// scenario は 1 種のサービス横断イベントを発行する:
 //
-//   - `faction-selected` — オンボーディング完了時に scenario 起源 (Source =
-//     FactionSourceScenarioInitial) として発行。account / card / gateway が
-//     それぞれ subscribe して自スキーマを更新する。
 //   - `player-onboarded` — オンボーディング完了時に発行。account が subscribe して
-//     display_name の永続化とオンボード済みフラグ立てを行う。
+//     display_name の永続化とオンボード済みフラグ立てを行う。その他の subscriber
+//     (card / gateway など) も本イベントから faction 状態を同期する (ADR-022)。
 //
 // Publisher は worker (outbox) から topic + payload 指定で呼ばれる低レベル送信層。
 // ビジネス要件に応じたイベント struct の構築は EventBuilder が担う。
@@ -33,13 +31,13 @@ type Publisher struct {
 }
 
 // New は指定 project + topic 名に紐づく Publisher を構築する。
-// 両 topic は Terraform（modules/pubsub）で事前作成されている前提。
-func New(ctx context.Context, projectID, factionSelectedTopic, playerOnboardedTopic string) (*Publisher, error) {
+// topic は Terraform（modules/pubsub）で事前作成されている前提。
+func New(ctx context.Context, projectID, playerOnboardedTopic string) (*Publisher, error) {
 	if projectID == "" {
 		return nil, errors.New("pubsub: projectID is empty")
 	}
-	if factionSelectedTopic == "" || playerOnboardedTopic == "" {
-		return nil, errors.New("pubsub: both topic names are required")
+	if playerOnboardedTopic == "" {
+		return nil, errors.New("pubsub: playerOnboardedTopic is required")
 	}
 	client, err := gpubsub.NewClient(ctx, projectID)
 	if err != nil {
@@ -48,7 +46,6 @@ func New(ctx context.Context, projectID, factionSelectedTopic, playerOnboardedTo
 	return &Publisher{
 		client: client,
 		byTopic: map[string]*gpubsub.Publisher{
-			factionSelectedTopic: client.Publisher(factionSelectedTopic),
 			playerOnboardedTopic: client.Publisher(playerOnboardedTopic),
 		},
 	}, nil

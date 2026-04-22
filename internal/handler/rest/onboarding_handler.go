@@ -64,8 +64,8 @@ func (h *OnboardingHandler) GetScript(c *gin.Context) {
 	c.JSON(http.StatusOK, apiscenario.OnboardingScriptResponse{Script: body})
 }
 
-// Complete はオンボーディング完了を記録し、outbox に player-onboarded と
-// faction-selected を atomic に積む。
+// Complete はオンボーディング完了を記録し、outbox に player-onboarded を
+// atomic に積む (ADR-022)。
 // POST /internal/v1/players/:playerId/onboarding/complete
 func (h *OnboardingHandler) Complete(c *gin.Context) {
 	playerID := c.Param("playerId")

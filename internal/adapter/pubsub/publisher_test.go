@@ -14,35 +14,25 @@ func TestNew_Validation(t *testing.T) {
 	tests := []struct {
 		name                 string
 		projectID            string
-		factionSelectedTopic string
 		playerOnboardedTopic string
 		wantSubs             string
 	}{
 		{
 			name:                 "projectID が空",
 			projectID:            "",
-			factionSelectedTopic: "faction-selected",
 			playerOnboardedTopic: "player-onboarded",
 			wantSubs:             "projectID is empty",
 		},
 		{
-			name:                 "faction-selected topic 名が空",
-			projectID:            "test-project",
-			factionSelectedTopic: "",
-			playerOnboardedTopic: "player-onboarded",
-			wantSubs:             "both topic names are required",
-		},
-		{
 			name:                 "player-onboarded topic 名が空",
 			projectID:            "test-project",
-			factionSelectedTopic: "faction-selected",
 			playerOnboardedTopic: "",
-			wantSubs:             "both topic names are required",
+			wantSubs:             "playerOnboardedTopic is required",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p, err := New(context.Background(), tt.projectID, tt.factionSelectedTopic, tt.playerOnboardedTopic)
+			p, err := New(context.Background(), tt.projectID, tt.playerOnboardedTopic)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantSubs)
 			assert.Nil(t, p)

@@ -102,7 +102,7 @@ func run() error {
 	// クライアント到達性は起動時に検証するため、repo を生成だけしておく。
 	_ = scenariofirestore.NewGameConfigRepository(fsClient)
 
-	pubPublisher, err := scenariopubsub.New(ctx, cfg.PubsubProjectID, cfg.FactionSelectedTopic, cfg.PlayerOnboardedTopic)
+	pubPublisher, err := scenariopubsub.New(ctx, cfg.PubsubProjectID, cfg.PlayerOnboardedTopic)
 	if err != nil {
 		return fmt.Errorf("pubsub publisher: %w", err)
 	}
@@ -112,7 +112,7 @@ func run() error {
 		}
 	}()
 
-	eventBuilder, err := scenariopubsub.NewEventBuilder(cfg.FactionSelectedTopic, cfg.PlayerOnboardedTopic)
+	eventBuilder, err := scenariopubsub.NewEventBuilder(cfg.PlayerOnboardedTopic)
 	if err != nil {
 		return fmt.Errorf("pubsub event builder: %w", err)
 	}
@@ -160,7 +160,6 @@ func run() error {
 	slog.Info("listening",
 		"addr", srv.Addr,
 		"pubsub_project", cfg.PubsubProjectID,
-		"faction_topic", cfg.FactionSelectedTopic,
 		"player_onboarded_topic", cfg.PlayerOnboardedTopic,
 		"outbox_poll_interval", cfg.OutboxPollInterval,
 	)

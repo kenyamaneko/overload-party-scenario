@@ -19,16 +19,13 @@ type Config struct {
 	// 必須 — scenario がサイレントに no-op 状態で起動することを防ぐ。
 	StoryBucket string
 
-	// faction-selected topic をホストする Google Cloud project。必須 — 初期 faction 選択の
-	// hand-off を静かにドロップせず fail-fast する。
+	// player-onboarded topic をホストする Google Cloud project。必須 — オンボーディング
+	// 完了 hand-off を静かにドロップせず fail-fast する。
 	PubsubProjectID string
 
-	// サービス横断 faction 選択イベントの topic 名。
-	// デフォルト "faction-selected"。クロスプロジェクトテスト用にのみ変更する。
-	FactionSelectedTopic string
-
-	// player-onboarded topic 名 (scenario → account)。
+	// player-onboarded topic 名 (scenario → account / card / gateway …)。
 	// デフォルト "player-onboarded"。クロスプロジェクトテスト用にのみ変更する。
+	// ADR-022 により faction-selected は廃止し、faction 情報も本イベントに同居する。
 	PlayerOnboardedTopic string
 
 	// FirestoreProjectID は game_config の読み取り先プロジェクト ID。
@@ -53,7 +50,6 @@ func FromEnv() (*Config, error) {
 		DatabaseURL:          os.Getenv("DATABASE_URL"),
 		StoryBucket:          os.Getenv("STORY_BUCKET"),
 		PubsubProjectID:      os.Getenv("PUBSUB_PROJECT_ID"),
-		FactionSelectedTopic: getEnv("FACTION_SELECTED_TOPIC", "faction-selected"),
 		PlayerOnboardedTopic: getEnv("PLAYER_ONBOARDED_TOPIC", "player-onboarded"),
 		FirestoreProjectID:   os.Getenv("FIRESTORE_PROJECT_ID"),
 	}
@@ -76,7 +72,7 @@ func FromEnv() (*Config, error) {
 		return nil, fmt.Errorf("config: STORY_BUCKET=%q: local path must not be empty after %q", cfg.StoryBucket, localStoryPrefix)
 	}
 	if cfg.PubsubProjectID == "" {
-		return nil, fmt.Errorf("config: PUBSUB_PROJECT_ID is required (scenario publishes faction-selected events to Pub/Sub)")
+		return nil, fmt.Errorf("config: PUBSUB_PROJECT_ID is required (scenario publishes player-onboarded events to Pub/Sub)")
 	}
 	if cfg.FirestoreProjectID == "" {
 		return nil, fmt.Errorf("config: FIRESTORE_PROJECT_ID is required (game_config)")
