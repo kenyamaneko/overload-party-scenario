@@ -9,12 +9,17 @@ const TopicPlayerOnboarded = "player-onboarded"
 const EventTypePlayerOnboarded = "player_onboarded"
 
 // PlayerOnboardedEvent is published by scenario when a player completes the
-// onboarding scenario (one-shot per player). Subscribers:
+// onboarding scenario (one-shot per player). Subscribers (ADR-022 §決定.1):
 //
-//   - account: UPDATE account.players.display_name (+ marks onboarded status).
+//   - account: UPDATE players.display_name + INSERT player_factions +
+//     UPDATE players.selected_faction.
+//   - card: grant initial pack (InitialFactionID faction cards + Neutral cards).
+//   - gateway: push WS onboarding_complete notification to the connected client.
 //
 // Idempotency: subscribers MUST dedupe on EventID via their
-// processed_events table. See ADR-021 for the end-to-end design.
+// processed_events table. See ADR-021 (onboarding design) and ADR-022
+// (FactionSelectedEvent decomposition into PlayerOnboardedEvent) for the
+// end-to-end design.
 type PlayerOnboardedEvent struct {
 	// EventType is always EventTypePlayerOnboarded.
 	EventType string `json:"event_type"`

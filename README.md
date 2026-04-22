@@ -13,7 +13,7 @@ Gateway
        ├─ GCS または local: ファイルシステム (script 配信)
        ├─ Firestore (game_config 読み取り)
        └─ Pub/Sub
-            └─ faction-selected  → account / card / gateway
+            └─ player-onboarded  → account / card / gateway
 ```
 
 サービス間の状態同期は Pub/Sub で fan-out し、scenario から他サービスを直接呼び出さない。スクリプトファイルの配信元は `STORY_BUCKET` で切り替え可能で、本番は GCS バケット名、開発は `local:<path>` 形式でローカルファイルシステムを指す。

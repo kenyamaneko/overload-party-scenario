@@ -103,7 +103,7 @@ gateway が ClusterIP 経由で呼び出す内部 API。 認証は gateway 側 F
 
 ## オンボーディング (internal REST — gateway → scenario)
 
-ゲーム開始時に一度だけ読むオンボーディングシナリオ。読了時に display_name と 初期 faction を受け取り、account / card / gateway に Pub/Sub でイベントを配信する。 完了は transactional outbox で保証される（詳細は ADR-021）。
+ゲーム開始時に一度だけ読むオンボーディングシナリオ。読了時に display_name と 初期 faction を受け取り、account / card / gateway に Pub/Sub `player-onboarded` イベントを配信する（ADR-022 により 1 イベントへ縮退）。 完了は transactional outbox で保証される（詳細は ADR-021 / ADR-022）。
 
 ### `GET /internal/v1/players/:playerId/onboarding/status`
 
@@ -157,7 +157,7 @@ gateway が ClusterIP 経由で呼び出す内部 API。 認証は gateway 側 F
 
 ### `POST /internal/v1/players/:playerId/onboarding/complete`
 
-**概要:** オンボーディング完了を記録し player-onboarded / faction-selected を発行
+**概要:** オンボーディング完了を記録し player-onboarded を発行
 
 **認証:** ClusterIP（gateway 経由）
 

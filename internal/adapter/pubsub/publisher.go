@@ -25,6 +25,11 @@ var _ port.RawEventPublisher = (*Publisher)(nil)
 // Publisher は scenario が publish する全 topic をまとめる。起動時に一度だけ構築し、
 // Close で in-flight メッセージを flush して gRPC client を解放する。
 // port.RawEventPublisher を実装する。
+//
+// byTopic は map 構造で将来の topic 追加を許容する。ADR-022 の縮退で scenario の
+// publish topic は `player-onboarded` 1 本のみになったが、shop / gateway の
+// publisher 層と構造を揃え、outbox 行の topic カラムを起点に O(1) で
+// dispatch できる形を維持するために map を保持する。
 type Publisher struct {
 	client  *gpubsub.Client
 	byTopic map[string]*gpubsub.Publisher

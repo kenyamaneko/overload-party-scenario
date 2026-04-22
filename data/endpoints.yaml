@@ -49,8 +49,9 @@ endpoint_groups:
   - name: オンボーディング (internal REST — gateway → scenario)
     description: >
       ゲーム開始時に一度だけ読むオンボーディングシナリオ。読了時に display_name と
-      初期 faction を受け取り、account / card / gateway に Pub/Sub でイベントを配信する。
-      完了は transactional outbox で保証される（詳細は ADR-021）。
+      初期 faction を受け取り、account / card / gateway に Pub/Sub `player-onboarded`
+      イベントを配信する（ADR-022 により 1 イベントへ縮退）。
+      完了は transactional outbox で保証される（詳細は ADR-021 / ADR-022）。
     endpoints:
       - method: GET
         path: /internal/v1/players/:playerId/onboarding/status
@@ -74,7 +75,7 @@ endpoint_groups:
 
       - method: POST
         path: /internal/v1/players/:playerId/onboarding/complete
-        summary: オンボーディング完了を記録し player-onboarded / faction-selected を発行
+        summary: オンボーディング完了を記録し player-onboarded を発行
         auth: ClusterIP（gateway 経由）
         request_type: OnboardingCompleteRequest
         response_type: OnboardingCompleteResponse

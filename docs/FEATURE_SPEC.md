@@ -19,8 +19,8 @@ scenario は以下の機能ドメインを所有する。
 | プレイヤー進行管理 | プレイヤーごとのエピソード完了記録を冪等に永続化する |
 | 多言語スクリプト配信 | `{lang}` テンプレートで切り替えた外部ストア (GCS または local FS) からスクリプト本文を配信する |
 | アンロック条件判定 | プレイヤーレベル・所有 faction・前提エピソード完了の複合 AND でエピソードのロック状態を算出する |
-| オンボーディングシナリオ | 初回起動時に一度だけ読ませ、display_name と初期 faction を集約して完了時に 2 つの Pub/Sub イベントを atomic publish する（§10） |
-| 初期 faction 選択 hand-off | オンボーディング完了時に `faction-selected` Pub/Sub イベントを発行する（§10） |
+| オンボーディングシナリオ | 初回起動時に一度だけ読ませ、display_name と初期 faction を集約して完了時に `player-onboarded` Pub/Sub イベントを atomic publish する（§10） |
+| 初期 faction 選択 hand-off | オンボーディング完了時に `player-onboarded` Pub/Sub イベントの `initial_faction_id` で後続サービスへ伝播する（§10。[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) により旧 `faction-selected` を統合） |
 
 scenario は **scenario スキーマの DB 行と Firestore `game_config` を唯一の真実とし**、account スキーマ (`players.level` / `player_factions`) は cross-schema read のみで扱う。account / card / gateway を直接呼び出さない。
 
@@ -32,7 +32,7 @@ scenario は **scenario スキーマの DB 行と Firestore `game_config` を唯
 | スクリプト本文の変換・レンダリング | ストアから読み出した文字列を変換せずそのまま返す |
 | 言語別テキストの DB 保持 | `title_ja` / `title_en` のみ DB に持つ。本文は `{lang}` テンプレートでパス切替した外部ストアに委ねる |
 | 言語フォールバック | 行わない。要求言語のスクリプトが欠けていれば 404 を返す（§7 参照） |
-| `faction-selected` / `player-onboarded` 以外のイベント発行 | 行わない |
+| `player-onboarded` 以外のイベント発行 | 行わない |
 | Pub/Sub イベントの subscribe | 行わない。scenario は発信のみ、購読は account / card / gateway が担う |
 
 ---
@@ -162,7 +162,7 @@ scenario は **scenario スキーマの DB 行と Firestore `game_config` を唯
 
 - **キー**: `(player_id, episode_id)`
 - **保証**: 同一キーで複数回呼ばれても DB 行は 1 行しか存在しない
-- **副作用の追加は現時点ではなし**: `faction-selected` は本ユースケースからは発行されない（§8 参照）
+- **副作用の追加は現時点ではなし**: エピソード完了からは Pub/Sub イベントを発行しない（オンボーディング完了のみが `player-onboarded` を発行する。§8 参照）
 
 ### エラー分類
 
@@ -180,14 +180,14 @@ scenario は Pub/Sub publish を **必ず outbox 経由** で行う。ビジネ�
 
 ### 6.1 配線
 
-1. ユースケース層 (`OnboardingService.Complete`) が `OutboxEventBuilder.BuildPlayerOnboarded` / `BuildFactionSelected` で `OutboxEvent` を構築する
-2. repository (`OnboardingRepo.MarkComplete`) が `scenario.player_onboarding` INSERT と `scenario.outbox_events` への 2 行 INSERT を **同一 tx で commit** する（PK 一意制約違反は `ErrAlreadyOnboarded` に昇格）
+1. ユースケース層 (`OnboardingService.Complete`) が `OutboxEventBuilder.BuildPlayerOnboarded` で `OutboxEvent` を構築する
+2. repository (`OnboardingRepo.MarkComplete`) が `scenario.player_onboarding` INSERT と `scenario.outbox_events` への 1 行 INSERT を **同一 tx で commit** する（PK 一意制約違反は `ErrAlreadyOnboarded` に昇格）
 3. 別 goroutine の常駐 worker (`internal/handler/worker/outbox_ticker.go`) が未 publish 行を periodic に poll し、`adapter/pubsub.Publisher.Publish` を呼ぶ
 4. publish 成功で `published_at` を UPDATE、失敗は `failure_count` / `last_error` / `last_attempted_at` を積む。閾値超過行は claim 対象から外れ監視アラートに委ねる
 
 ### 6.2 Transactional Outbox を持つ方針
 
-scenario は shop と同型の Transactional Outbox を持つ。旧仕様書には「scenario は Transactional Outbox を持たない」と記していたが、[ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) で追加された **オンボーディング完了フロー**（`scenario.player_onboarding` への INSERT と `player-onboarded` / `faction-selected` 2 イベント publish の atomic 保証が必要）によって方針を反転した。設計詳細と shop との差分は [ARCHITECTURE.md#scenario-の-outbox](ARCHITECTURE.md#scenario-の-outbox) 参照。
+scenario は shop と同型の Transactional Outbox を持つ。旧仕様書には「scenario は Transactional Outbox を持たない」と記していたが、[ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) で追加された **オンボーディング完了フロー**（`scenario.player_onboarding` への INSERT と Pub/Sub publish の atomic 保証が必要）によって方針を反転した。[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) で publish 対象は `player-onboarded` 1 イベントに縮退したが、DB と publish を同一トランザクションで束ねる必要性は変わらない。設計詳細と shop との差分は [ARCHITECTURE.md#scenario-の-outbox](ARCHITECTURE.md#scenario-の-outbox) 参照。
 
 ### 6.3 冪等性契約
 
@@ -241,10 +241,9 @@ GCS / local FS / DB / Pub/Sub のエラーをログのみで握りつぶして�
 
 | トピック | ペイロード | 発行契機 |
 |---|---|---|
-| `faction-selected` | `FactionSelectedEvent {event_id, timestamp, player_id, faction, source="scenario_initial"}` | `OnboardingService.Complete` の DB commit 後（outbox worker が `scenario.outbox_events` 行を消費） |
-| `player-onboarded` | `PlayerOnboardedEvent {event_id, occurred_at, player_id, display_name, initial_faction_id}` | 同上（同一トランザクションで 2 行が outbox に積まれる。account のみ subscribe） |
+| `player-onboarded` | `PlayerOnboardedEvent {event_id, timestamp, player_id, display_name, initial_faction_id}` | `OnboardingService.Complete` の DB commit 後（outbox worker が `scenario.outbox_events` 行を消費）。account / card / gateway が subscribe |
 
-publish 契約の詳細は §6 および [ARCHITECTURE.md](ARCHITECTURE.md#pubsub-publisher) を参照。
+scenario が publish する topic はこの 1 本のみ。[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) で旧 `faction-selected` は廃止され、初期 faction ハンドオフは `PlayerOnboardedEvent.initial_faction_id` に統合された。publish 契約の詳細は §6 および [ARCHITECTURE.md](ARCHITECTURE.md#pubsub-publisher) を参照。
 
 ---
 
@@ -272,7 +271,7 @@ scenario は「サイレント no-op で起動する」「設定欠損の publis
 
 1. **GET `/internal/v1/players/:playerId/onboarding/status`**: 完了済みかどうかを返す。クライアント起動時のオンボ画面表示判定に使う
 2. **GET `/internal/v1/players/:playerId/onboarding/script?lang=ja|en`**: 本文取得
-3. **POST `/internal/v1/players/:playerId/onboarding/complete`**: `display_name` と `initial_faction_id` を受け取り、完了記録 + 2 イベント publish を atomic に行う
+3. **POST `/internal/v1/players/:playerId/onboarding/complete`**: `display_name` と `initial_faction_id` を受け取り、完了記録 + `player-onboarded` publish を atomic に行う（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) で 1 イベントへ縮退）
 
 API の完全なリクエスト／レスポンス仕様は [API_REFERENCE.md](API_REFERENCE.md) が SSoT（`data/endpoints.yaml` から codegen）。
 
@@ -292,16 +291,15 @@ API の完全なリクエスト／レスポンス仕様は [API_REFERENCE.md](AP
 
 `scripts/onboarding/{lang}.ks` に配置する（既存 `stories/{lang}/*.ks` と別ツリー）。言語フォールバックは既存エピソードと同じく **行わない**（§7 / [ARCHITECTURE.md#言語フォールバックを行わない](ARCHITECTURE.md#言語フォールバックを行わない)）。`{lang}` 不在なら 404 `script_not_found`。
 
-### 10.5 完了時に publish する 2 イベント
+### 10.5 完了時に publish する 1 イベント
 
-`OnboardingService.Complete` が `scenario.player_onboarding` INSERT と以下 2 行の outbox 挿入を **同一トランザクションで commit** する（§6 参照）。
+`OnboardingService.Complete` が `scenario.player_onboarding` INSERT と以下 1 行の outbox 挿入を **同一トランザクションで commit** する（§6 参照）。[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) により ADR-021 時代の 2 イベント設計（`player-onboarded` + `faction-selected`）から 1 イベント設計へ縮退した。
 
 | トピック | payload | subscriber | 用途 |
 |---|---|---|---|
-| `player-onboarded` | `event_id` / `player_id` / `display_name` / `initial_faction_id` / `occurred_at` | account | `players.display_name` 更新、所持 faction 更新（`faction-selected` と冪等に併走） |
-| `faction-selected` | 既存 `FactionSelectedEvent`（`source="scenario_initial"` 固定） | account, card, gateway | 所有 faction 書き込み、初期カード配布、WS push 通知 |
+| `player-onboarded` | `event_id` / `player_id` / `display_name` / `initial_faction_id` / `timestamp` | account, card, gateway | account: `players.display_name` 更新 + `player_factions` INSERT + `players.selected_faction` UPDATE。card: faction + Neutral の初期パック配布。gateway: WS `onboarding_complete` push |
 
-account は 2 イベントを両方受け取りうるが、同一プレイヤーに対して `faction_id` は不変であり、処理は冪等なので問題ない。
+subscriber は `event_id` を冪等性キーに重複排除する（ADR-012 の契約）。同一プレイヤーに対して `initial_faction_id` は不変なので、再配送時も副作用は一致する。
 
 ### 10.6 エラー分類
 

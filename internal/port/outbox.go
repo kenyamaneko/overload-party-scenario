@@ -16,9 +16,6 @@ import (
 // Payload は apiscenario スキーマの struct を JSON Marshal した生バイトで、
 // adapter/pubsub/event_builder が構築する。postgres adapter は payload の
 // スキーマを知らず、単に bytes として書き込む。
-//
-// ゼロ値 (Topic == "") は「イベントを書かない」を意味し、repo 層はこの値を
-// 受け取ったとき outbox への INSERT をスキップする (publish しない状態遷移で使う)。
 type OutboxEvent struct {
 	EventID uuid.UUID
 	Topic   string

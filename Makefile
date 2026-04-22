@@ -35,7 +35,6 @@ run: db-up ## Run scenario server locally against compose Postgres (local env è¾
 	DATABASE_URL="host=localhost port=5432 dbname=scenario user=scenario password=scenario sslmode=disable" \
 	GOOGLE_CLOUD_PROJECT=scenario-local \
 	PUBSUB_PROJECT_ID=scenario-local \
-	FACTION_SELECTED_TOPIC=faction-selected \
 	FIRESTORE_PROJECT_ID=scenario-local \
 	STORY_BUCKET=local:./testdata/stories \
 	PUBSUB_EMULATOR_HOST=localhost:8085 \

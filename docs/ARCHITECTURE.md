@@ -19,7 +19,7 @@ scenario は **ストーリーエピソード定義とプレイヤー進行** �
 
 account と scenario は同一 DB クラスタ内の別スキーマに分かれており、現状は scenario の PostgreSQL プール経由で `players` / `player_factions` を直接 JOIN している (`postgres.StoryRepository.GetUnlockContext`)。ADR-014 の方針では scenario と account の DB 分離が予定されており、その段階で account クライアント経由 (HTTP / gRPC) に置換する。
 
-scenario は他サービスを **直接呼ばない**。副作用を他サービスに伝えるのは `faction-selected` Pub/Sub publish のみで、account / card / gateway は自分の read model を購読で更新する。
+scenario は他サービスを **直接呼ばない**。副作用を他サービスに伝えるのは `player-onboarded` Pub/Sub publish のみで、account / card / gateway は自分の read model を購読で更新する（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) で旧 `faction-selected` を統合）。
 
 ## レイヤー分割
 
@@ -133,35 +133,36 @@ CLAUDE.md の「GCS エラーを握りつぶさない。日本語へのフォー
 
 | 項目 | 値 |
 |---|---|
-| トピック | `faction-selected` / `player-onboarded`（いずれも `*_TOPIC` env で上書き可、クロスプロジェクト検証用） |
-| ペイロード型 | `FactionSelectedEvent` / `PlayerOnboardedEvent` (`overload-party-common/packages/pubsub-events`) |
-| `faction-selected.source` | `scenario_initial` 固定（shop は `shop_purchase`） |
+| トピック | `player-onboarded`（`PLAYER_ONBOARDED_TOPIC` env で上書き可、クロスプロジェクト検証用） |
+| ペイロード型 | `PlayerOnboardedEvent` (`overload-party-scenario/packages/api-scenario`) |
 | publish 経路 | `internal/adapter/pubsub/publisher.go`（topic 名 → `*pubsub.Topic` の map ラッパ）を outbox worker が呼ぶ |
 | 配信保証 | at-least-once（subscriber 側で `event_id` ベースに重複排除する前提） |
 
+[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) により旧 `faction-selected` は廃止され、onboarding 起因の初期 faction ハンドオフは `PlayerOnboardedEvent` に吸収された（`initial_faction_id` フィールド）。scenario が publish する topic はこの 1 本のみ。
+
 ### トリガー
 
-scenario の live publish は全て outbox 経由で起きる。具体的には `OnboardingService.Complete` が `scenario.player_onboarding` への INSERT と `scenario.outbox_events` への 2 行挿入を同一トランザクションで commit し、常駐 worker (`internal/handler/worker/outbox_ticker.go`) が未配信行を claim して `adapter/pubsub.Publisher.Publish` を呼ぶ。旧 `StoryService.NotifyInitialFactionSelected` は [ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) で削除されたため、`story.Service` は publisher 依存を持たない。
+scenario の live publish は全て outbox 経由で起きる。具体的には `OnboardingService.Complete` が `scenario.player_onboarding` への INSERT と `scenario.outbox_events` への 1 行挿入を同一トランザクションで commit し、常駐 worker (`internal/handler/worker/outbox_ticker.go`) が未配信行を claim して `adapter/pubsub.Publisher.Publish` を呼ぶ。旧 `StoryService.NotifyInitialFactionSelected` は [ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) で削除されたため、`story.Service` は publisher 依存を持たない。
 
 ### subscriber 側の責務
 
-scenario は publish して終わり。以下の副作用は全て subscriber に委ねる:
+scenario は publish して終わり。`player-onboarded` 1 イベントから以下の副作用が派生する（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) §決定.1）:
 
-- account: `players.display_name` 更新（`player-onboarded`）、`player_factions` INSERT + `players.selected_faction` UPDATE（`faction-selected`）
-- card: `player_cards` に faction + Neutral のカードを付与（`faction-selected`）
-- gateway: WS push で完了通知（`faction-selected`）
+- account: `players.display_name` 更新、`player_factions` INSERT、`players.selected_faction` UPDATE
+- card: `player_cards` に faction + Neutral のカードを付与
+- gateway: WS `onboarding_complete` push で完了通知
 
 ### scenario の Outbox
 
 scenario は shop と同型の **Transactional Outbox** を持つ。DB commit と Pub/Sub publish を同一トランザクションに相乗りさせて、dual-write による部分失敗（完了記録は入ったが publish に失敗、またはその逆）を構造的に排除するための機構で、shop の [イベント配信モデル (Transactional Outbox)](../../overload-party-shop/docs/ARCHITECTURE.md#イベント配信モデル-transactional-outbox) と設計思想・SQL・port 契約を揃えている。
 
-本節は以前「scenario が Outbox を持たない理由」として atomic publish 不要という立場を記していたが、[ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) で追加された「オンボーディング完了」ユースケースは **`scenario.player_onboarding` への INSERT と 2 つの Pub/Sub publish を atomic に揃える必要がある** 配線であり、旧節が予告していた導入条件にそのまま合致する。そのため scenario 側にも `scenario.outbox_events` を新設し、旧方針は本 ADR 採用をもって反転させた。
+本節は以前「scenario が Outbox を持たない理由」として atomic publish 不要という立場を記していたが、[ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) で追加された「オンボーディング完了」ユースケースは **`scenario.player_onboarding` への INSERT と Pub/Sub publish を atomic に揃える必要がある** 配線であり、旧節が予告していた導入条件にそのまま合致する。そのため scenario 側にも `scenario.outbox_events` を新設し、旧方針は本 ADR 採用をもって反転させた。なお [ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) で publish 対象は `player-onboarded` 1 イベントに縮退したが、outbox による atomic 保証の必要性は変わらない。
 
 shop との差分は「何を積むか」だけで、インフラ側は共通化している:
 
 | 項目 | shop | scenario |
 |---|---|---|
-| 積む event kind | `BuildFactionSelected(source=shop_purchase)` / `BuildPremiumUpdated` | `BuildPlayerOnboarded` / `BuildFactionSelected(source=scenario_initial` 固定`)` |
+| 積む event kind | `BuildFactionPurchased` / `BuildPremiumUpdated` | `BuildPlayerOnboarded`（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) で 1 kind に縮退） |
 | テーブルスキーマ | `shop.outbox_events` | `scenario.outbox_events`（カラム・インデックス同一） |
 | port 契約 (`OutboxStore` / `OutboxEventBuilder`) | shop | scenario でも同一インターフェース |
 | poller 実装 | `internal/service/outbox_publisher.go` + `internal/handler/worker/outbox_ticker.go` | 同名パスで同一構造 |
@@ -181,7 +182,7 @@ shop との差分は「何を積むか」だけで、インフラ側は共通化
 - 「一度きり」セマンティクスのため、完了後は本文を返さず 409 で弾く必要がある
 - 完了時に identity 副作用（display_name 書き込み + 初期 faction hand-off）を atomic に伴う
 
-これらを既存エピソードに載せると `checkUnlock` / `GetScript` / `CompleteEpisode` の全てに「オンボ時だけ違う」横串分岐が増え、「一つの関数に複数の責務を負わせない」に反する。したがって `internal/service/onboarding/` として独立 service を構え、`scenario.player_onboarding`（PK = `player_id` で 2 度目の INSERT が一意制約違反になる形で「一度きり」を保証）と上記 outbox を通じて 2 イベントを atomic publish する配線に分離した。
+これらを既存エピソードに載せると `checkUnlock` / `GetScript` / `CompleteEpisode` の全てに「オンボ時だけ違う」横串分岐が増え、「一つの関数に複数の責務を負わせない」に反する。したがって `internal/service/onboarding/` として独立 service を構え、`scenario.player_onboarding`（PK = `player_id` で 2 度目の INSERT が一意制約違反になる形で「一度きり」を保証）と上記 outbox を通じて `player-onboarded` 1 イベントを atomic publish する配線に分離した（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) により旧 2 イベント設計から縮退）。
 
 ### SSoT 分離
 
@@ -233,7 +234,7 @@ GCS adapter は interface レベルで mock される（現状 `adapter/gcs` の
 環境変数の一覧と必須条件は [internal/config/config.go](../internal/config/config.go) が SSoT。運用上の注意点:
 
 - **`STORY_BUCKET`**: 本番は GCS バケット名を直接設定。dev / ローカルは `local:<path>` で FS 切替。誤って本番に `local:` を設定すると起動拒否になる（正常）
-- **`PUBSUB_PROJECT_ID`** / **`FACTION_SELECTED_TOPIC`** / **`PLAYER_ONBOARDED_TOPIC`**: 本番環境と一致する Google Cloud project を指定。topic は Terraform (`modules/pubsub`) で事前作成されている前提。未作成トピック・未登録 topic 名への publish は outbox worker の `RecordFailure` 経路に載るため `failure_count` アラートで検出できる
+- **`PUBSUB_PROJECT_ID`** / **`PLAYER_ONBOARDED_TOPIC`**: 本番環境と一致する Google Cloud project を指定。topic は Terraform (`modules/pubsub`) で事前作成されている前提。未作成トピック・未登録 topic 名への publish は outbox worker の `RecordFailure` 経路に載るため `failure_count` アラートで検出できる
 - **`OUTBOX_POLL_INTERVAL` / `OUTBOX_BATCH_SIZE` / `OUTBOX_FAILURE_THRESHOLD` / `OUTBOX_VISIBILITY_TIMEOUT`**: outbox worker の挙動を env 経由で調整する。負荷試験やインシデント時にデプロイなしで可変。shop と同じ名前・意味で揃えている
 - **`FIRESTORE_PROJECT_ID`**: `game_config` の読み取り先。ローカル / CI では `FIRESTORE_EMULATOR_HOST` で emulator 接続に差し替え可能
 
@@ -241,7 +242,6 @@ GCS adapter は interface レベルで mock される（現状 `adapter/gcs` の
 
 | トピック | 発行契機 | subscriber |
 |---|---|---|
-| `faction-selected` | `OnboardingService.Complete` の DB commit 後（outbox worker が `scenario.outbox_events` 行を消費） | account, card, gateway |
-| `player-onboarded` | 同上（同一トランザクションで 2 行が outbox に積まれる） | account |
+| `player-onboarded` | `OnboardingService.Complete` の DB commit 後（outbox worker が `scenario.outbox_events` 行を消費） | account, card, gateway |
 
 subscriber 列はこのリポジトリからは導けないので、変更時は各サービスの購読状況も確認すること。
