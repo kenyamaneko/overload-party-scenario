@@ -29,10 +29,9 @@ func normalizeJSON(t *testing.T, raws []string) []string {
 	return out
 }
 
-// insertOutboxRow は scenario.outbox_events に 1 行直接 INSERT してその event_id を返す。
-// shop 版は FactionPurchaseRepository.CreatePurchase 経由で outbox 行を作っていたが、
-// scenario には同等のビジネス API が無いため、schema 構造だけを前提に raw SQL で seed する。
-// 1 ケースあたりの seed 数は 16 まで (UUID フォーマット上の都合で一貫性のため制限)。
+// insertOutboxRow は scenario.outbox_events に 1 行直接 INSERT して event_id を返す。
+// scenario の outbox 書き込み API は package 外に公開していないため raw SQL で seed する。
+// 1 ケースあたりの seed 数は 16 まで (event_type 命名規約の都合)。
 func insertOutboxRow(t *testing.T, testIdx, seedIdx int, payload []byte) uuid.UUID {
 	t.Helper()
 	require.Less(t, seedIdx, 16, "1 ケースあたりの seed 数は 16 まで")

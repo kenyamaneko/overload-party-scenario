@@ -13,10 +13,7 @@ import (
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 )
 
-// Relay は outbox 行を claim → publish → mark/fail に振り分ける message relay
-// (Transactional Outbox パターンの "Polling Publisher" 役)。呼び出し契機
-// (ticker / cron / 1 回だけ) は持たず、handler/worker 側で周期駆動する
-// (依存方向: handler/worker → service → port)。
+// Relay は outbox 行を claim → publish → mark/fail に振り分ける Polling Publisher。
 type Relay struct {
 	store             port.OutboxStore
 	pub               port.RawEventPublisher
@@ -64,9 +61,9 @@ func New(store port.OutboxStore, pub port.RawEventPublisher, cfg Config) (*Relay
 }
 
 // RunOnce は 1 バッチ分の claim + publish + 結果記録を実行する。
-// claim 自体が失敗した場合のみエラーを返す (DB 到達不能などの致命的状況)。
-// 各行の publish 失敗は RecordFailure で記録し、RunOnce 自体はエラーにしない
-// (visibility timeout 経過後に自動再試行される契約)。
+// 各行の publish 失敗は RecordFailure で記録し RunOnce 自体はエラーにしない
+// (visibility timeout 経過後に自動再試行される契約)。claim 自体の失敗のみ
+// エラーを返す。
 func (r *Relay) RunOnce(ctx context.Context) error {
 	claimed, err := r.store.ClaimUnpublished(ctx, r.batchSize, r.visibilityTimeout, r.failureThreshold)
 	if err != nil {
@@ -78,8 +75,8 @@ func (r *Relay) RunOnce(ctx context.Context) error {
 	return nil
 }
 
-// processOne は 1 行の publish と結果記録を行う。エラーを伝播しないのは
-// 同バッチ内の他行処理を止めないため。記録自体が失敗した場合は ERROR ログだけ出して継続。
+// processOne は 1 行の publish と結果記録を行う。同バッチ内の他行処理を
+// 止めないためエラーは伝播しない (記録自体の失敗は ERROR ログだけ出して継続)。
 func (r *Relay) processOne(ctx context.Context, ev port.ClaimedOutboxEvent) {
 	pubErr := r.pub.Publish(ctx, ev.EventType, ev.Payload)
 	if pubErr == nil {

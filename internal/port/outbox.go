@@ -8,12 +8,9 @@ import (
 )
 
 // OutboxEvent は scenario.outbox_events への 1 行分の書き込み表現。
-//
-// EventID は payload 内 eventId と一致し、再試行でも変えない。subscriber は
-// この値を冪等性キーとして使える (at-least-once)。
-//
-// EventType は論理イベント種別 (apiscenario.EventType*)。物理 topic への解決は
-// pubsub adapter 内部で行う。
+// EventID は payload 内 eventId と一致し、再試行でも変えない (subscriber 冪等性キー)。
+// EventType は論理イベント種別 (apiscenario.EventType*) で、物理 topic への解決は
+// pubsub adapter 内で行う。
 type OutboxEvent struct {
 	EventID   uuid.UUID
 	EventType string
@@ -21,7 +18,6 @@ type OutboxEvent struct {
 }
 
 // ClaimedOutboxEvent は OutboxStore.ClaimUnpublished が返す 1 行分の情報。
-// failure_count は閾値超過の alert 判定に使う。
 type ClaimedOutboxEvent struct {
 	EventID      uuid.UUID
 	EventType    string

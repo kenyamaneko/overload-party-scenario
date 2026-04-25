@@ -21,9 +21,8 @@ import (
 
 var sharedEmulator *pubsubtest.Emulator
 
-// TestMain は package 内の全 integration test で共有する emulator を起動する。
-// container 起動コストは高いので per-test ではなく package scope で償却する。
-// test 毎の分離は topic / subscription の UUID suffix で担保する。
+// TestMain は package 共有で emulator を 1 回だけ起動する (起動コストを
+// package scope で償却)。テスト間の分離は topic / subscription の UUID suffix。
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 	em, err := pubsubtest.StartEmulator(ctx, "scenario-test")
@@ -40,7 +39,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// Publisher を emulator に向けて構築するヘルパ。topic を事前作成。
+// setupPublisher は事前作成した topic に紐付く Publisher を emulator 向けに構築する。
 func setupPublisher(t *testing.T) (*Publisher, string) {
 	t.Helper()
 	topic := sharedEmulator.CreateTopic(t, apiscenario.TopicPlayerOnboarded)
@@ -53,9 +52,7 @@ func setupPublisher(t *testing.T) (*Publisher, string) {
 	return pub, topic
 }
 
-// buildPlayerOnboardedOutbox は service 層が outbox 行を組み立てるのと同じ shape の
-// OutboxEvent を作るテストヘルパ (shop の buildFactionPurchasedOutbox に対応)。
-// EventType は apiscenario の定数に固定し、payload は本番と同じ JSON Marshal 結果。
+// buildPlayerOnboardedOutbox は service 層と同じ shape の OutboxEvent を組み立てる。
 func buildPlayerOnboardedOutbox(t *testing.T, playerID, displayName, initialFactionID string) port.OutboxEvent {
 	t.Helper()
 	id := uuid.New()
@@ -75,8 +72,8 @@ func buildPlayerOnboardedOutbox(t *testing.T, playerID, displayName, initialFact
 	}
 }
 
-// player-onboarded payload が Publisher で送信できる shape であることを固定する
-// (outbox 行を worker が送出する経路の近似)。
+// player-onboarded payload を Publisher 経由で送信し、subscriber まで bytes が
+// そのまま届くことを固定する (outbox worker 送出経路の近似)。
 func TestIntegration_PublishPlayerOnboarded(t *testing.T) {
 	pub, topic := setupPublisher(t)
 	sub := sharedEmulator.Subscribe(t, topic)
@@ -99,9 +96,9 @@ func TestIntegration_PublishPlayerOnboarded(t *testing.T) {
 	assert.Equal(t, "Tenki", decoded.InitialFactionID)
 }
 
-// 未登録 eventType への publish は (emulator 越しでも) Pub/Sub SDK 到達前に
-// adapter 側で弾かれることを固定する。outbox 行の eventType 設定ミスを worker の
-// failure_count に積ませる経路を担保する。
+// 未登録 eventType への publish は Pub/Sub SDK 到達前に adapter 側で弾かれる
+// 契約を固定する (outbox 行の eventType 設定ミスを worker の failure_count に
+// 積ませるため)。
 func TestIntegration_PublishUnknownEventType(t *testing.T) {
 	pub, _ := setupPublisher(t)
 
@@ -110,9 +107,7 @@ func TestIntegration_PublishUnknownEventType(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown event type")
 }
 
-// negative path: publish が呼ばれなければ subscriber は timeout する。
-// 「何も起きないこと」を肯定的に検証することで、正例テストの偽陽性 (別経路で
-// たまたまメッセージが届いている) を排除する。
+// publish が呼ばれなければ subscriber は timeout する (正例テストの偽陽性除け)。
 func TestIntegration_NoPublish_SubscriberTimesOut(t *testing.T) {
 	_, topic := setupPublisher(t)
 	sub := sharedEmulator.Subscribe(t, topic)

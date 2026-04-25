@@ -1,10 +1,5 @@
 //go:build integration
 
-// このファイルは outbox の claim → publish → mark/fail を「実 Postgres + 実 Pub/Sub
-// emulator」に対して end-to-end で固定する。unit test (relay_test.go) は
-// fakeStore + fakeRawPublisher で order/分岐を検証するのに対し、ここでは
-// scenario.outbox_events の SQL 振る舞いと Pub/Sub SDK 経路の組み合わせ動作を
-// 担保する (型の組み立てミスや SQL の更新条件ずれが unit test から漏れていないか)。
 package outbox_test
 
 import (
@@ -32,9 +27,9 @@ var (
 	sharedEmulator *pubsubtest.Emulator
 )
 
-// TestMain は package 内の integration test 共有で Postgres と Pub/Sub emulator を
-// 1 回だけ起動する。container 起動コストは高いため per-test ではなく package scope で
-// 償却する。テスト間の状態リセットは sharedPg.Truncate と topic UUID suffix で行う。
+// TestMain は package 共有で Postgres と Pub/Sub emulator を 1 回だけ起動する
+// (container 起動コストを package scope で償却)。テスト間の状態リセットは
+// sharedPg.Truncate と topic UUID suffix で行う。
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
@@ -68,8 +63,7 @@ func TestMain(m *testing.M) {
 }
 
 // setupRelay は emulator に topic を 1 本作り、その topic を Publisher に紐づけて
-// OutboxRepository / outbox.Relay (service) を組み上げる。戻り値は service と
-// subscription、および topic 名 (subscriber 待受確認用)。
+// OutboxRepository / outbox.Relay を組み上げる。
 func setupRelay(t *testing.T) (*outbox.Relay, *pubsubtest.Subscription, string) {
 	t.Helper()
 	sharedPg.Truncate(t)
@@ -92,9 +86,8 @@ func setupRelay(t *testing.T) (*outbox.Relay, *pubsubtest.Subscription, string) 
 	return relay, sub, topic
 }
 
-// insertOutboxRow は scenario.outbox_events に 1 行直接 INSERT し、event_id を返す。
-// 書き込み API は package 外に公開していないため raw SQL で seed する
-// (outbox_repo_test.go と同じ構造)。
+// insertOutboxRow は scenario.outbox_events に 1 行直接 INSERT して event_id を返す。
+// 書き込み API は package 外に非公開のため raw SQL で seed する。
 func insertOutboxRow(t *testing.T, eventType string, payload []byte) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
@@ -106,8 +99,7 @@ func insertOutboxRow(t *testing.T, eventType string, payload []byte) uuid.UUID {
 	return id
 }
 
-// fetchOutboxState は published_at と failure_count を返す (NULL は zero 値で復元)。
-// claim → publish 後の行状態を assertion で固定するために使う。
+// fetchOutboxState は published_at / failure_count / last_error を返す。
 func fetchOutboxState(t *testing.T, id uuid.UUID) (publishedAt *time.Time, failureCount int, lastError *string) {
 	t.Helper()
 	row := sharedPg.Pool.QueryRow(context.Background(),
@@ -118,10 +110,8 @@ func fetchOutboxState(t *testing.T, id uuid.UUID) (publishedAt *time.Time, failu
 	return
 }
 
-// 未配信行が claim → publish → MarkPublished の順序で処理され、subscriber まで
-// payload がそのまま到達することを固定する。outbox の at-least-once 契約上、
-// payload の中身は worker からは不透明 (service 層で構築済み) であり、bytes
-// として透過することを保証する。
+// 未配信行が claim → publish → MarkPublished の順で処理され、subscriber まで
+// payload が bytes そのまま到達することを固定する。
 func TestIntegration_RunOnce_PublishesAndMarks(t *testing.T) {
 	relay, sub, _ := setupRelay(t)
 
@@ -130,12 +120,10 @@ func TestIntegration_RunOnce_PublishesAndMarks(t *testing.T) {
 
 	require.NoError(t, relay.RunOnce(context.Background()))
 
-	// emulator subscriber 経由で到達確認 (bytes は seed と完全一致)。
 	msg, err := sub.WaitForMessage(context.Background(), 5*time.Second)
 	require.NoError(t, err)
 	assert.JSONEq(t, string(payload), string(msg.Data))
 
-	// row は published_at が立ち、failure_count / last_error は触られない。
 	publishedAt, failureCount, lastError := fetchOutboxState(t, id)
 	require.NotNil(t, publishedAt, "published_at must be set after successful publish")
 	assert.WithinDuration(t, time.Now(), *publishedAt, 5*time.Second)
@@ -143,9 +131,9 @@ func TestIntegration_RunOnce_PublishesAndMarks(t *testing.T) {
 	assert.Nil(t, lastError)
 }
 
-// service 層が組み立てる shape の payload (apiscenario.PlayerOnboardedEvent JSON) を
-// outbox に積んで Publisher で送出したときに、subscriber 側で round-trip できることを
-// 固定する。relay_test.go の fakeRawPublisher を本物に差し替えた経路の検証。
+// service 層が組み立てる shape の payload (apiscenario.PlayerOnboardedEvent JSON)
+// を outbox に積んで Publisher で送出したときに、subscriber 側で round-trip
+// できることを固定する。
 func TestIntegration_RunOnce_DeliversTypedPayload(t *testing.T) {
 	relay, sub, _ := setupRelay(t)
 
@@ -179,10 +167,9 @@ func TestIntegration_RunOnce_DeliversTypedPayload(t *testing.T) {
 	assert.Equal(t, "SHE", decoded.InitialFactionID)
 }
 
-// adapter で未登録の eventType (= outbox 行の eventType 設定ミス) に対しては
-// publish がエラーになり、行は MarkPublished されず RecordFailure (failure_count++ /
-// last_error 記録) で終わる契約を固定する。閾値超過は visibility timeout 経過後の
-// 再試行で拾うため、RunOnce 自体はエラーにならない。
+// 未登録 eventType への publish は adapter で弾かれ、行は MarkPublished されず
+// RecordFailure (failure_count++ / last_error 記録) で終わる。RunOnce 自体は
+// エラーにならない契約を固定する。
 func TestIntegration_RunOnce_UnknownEventType_RecordsFailure(t *testing.T) {
 	relay, sub, _ := setupRelay(t)
 
@@ -191,7 +178,6 @@ func TestIntegration_RunOnce_UnknownEventType_RecordsFailure(t *testing.T) {
 
 	require.NoError(t, relay.RunOnce(context.Background()))
 
-	// subscriber には何も届かない (publish 自体が adapter で弾かれている)。
 	_, err := sub.WaitForMessage(context.Background(), 300*time.Millisecond)
 	assert.ErrorIs(t, err, pubsubtest.ErrTimeout)
 
@@ -202,9 +188,8 @@ func TestIntegration_RunOnce_UnknownEventType_RecordsFailure(t *testing.T) {
 	assert.Contains(t, *lastError, "unknown event type")
 }
 
-// 既配信行 (published_at セット済み) は claim 対象から除外され、publish は走らない。
-// outbox_repo_test.go でも個別に検証しているが、ここでは publish 経路まで含めた
-// 「重複配信されない」契約として固定する。
+// 既配信行 (published_at セット済み) は claim 対象から除外され publish が走らない、
+// すなわち重複配信されないことを publish 経路込みで固定する。
 func TestIntegration_RunOnce_AlreadyPublished_NoOp(t *testing.T) {
 	relay, sub, _ := setupRelay(t)
 

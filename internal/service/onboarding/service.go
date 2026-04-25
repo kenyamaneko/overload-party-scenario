@@ -19,14 +19,9 @@ import (
 
 // displayNameMaxRunes は display_name の最大長 (rune 単位)。
 // 日本語・絵文字・合成文字を考慮し byte ではなく rune でカウントする。
-// MVP の仕様として 21 rune 以下とする。
 const displayNameMaxRunes = 21
 
 // Service はオンボーディングのユースケースを束ねる。
-//
-// scriptStore は起動時 (config 判定) に一度だけ決定される (GCS か local filesystem)。
-// repo は外部永続装置への口であり、ロジックは持たない。outbox イベントの
-// 構築は service 層の純粋関数 (buildPlayerOnboardedEvent) で行う。
 type Service struct {
 	repo        port.OnboardingRepo
 	scriptStore port.ScriptStore
@@ -64,9 +59,6 @@ func (s *Service) GetScript(ctx context.Context, playerID, lang string) (string,
 	key := fmt.Sprintf("scripts/onboarding/%s.ks", lang)
 	body, err := s.scriptStore.ReadScript(ctx, key)
 	if err != nil {
-		// Why: script_store adapter はネイティブの "not found" を
-		// port.ErrScriptNotFound に変換する契約。ここでは更に onboarding 固有の
-		// sentinel (ErrScriptNotFound) に翻訳し、handler の分類ロジックを明確化する。
 		if errors.Is(err, port.ErrScriptNotFound) {
 			return "", ErrScriptNotFound
 		}
@@ -75,14 +67,8 @@ func (s *Service) GetScript(ctx context.Context, playerID, lang string) (string,
 	return body, nil
 }
 
-// Complete はオンボーディング完了を記録し、player-onboarded を outbox に atomic に
-// 積む。下流は outbox worker が Pub/Sub に publish し、各 subscriber
-// (account / card / gateway …) が display_name と initial_faction を自スキーマへ
-// 反映する (ADR-022: faction-selected は player-onboarded に統合)。
-//
-// display_name / initial_faction_id のバリデーションは service 層で行い、
-// outbox に不正データが乗らないようにする。二度目以降の完了は repo 層が
-// ErrAlreadyOnboarded に classify し、ここで onboarding 固有の sentinel に翻訳する。
+// Complete はオンボーディング完了を記録し、player-onboarded を outbox に同一 tx で積む。
+// 二度目以降の完了は ErrAlreadyOnboarded を返す。
 func (s *Service) Complete(ctx context.Context, playerID, displayName, initialFactionID string) error {
 	if err := validateDisplayName(displayName); err != nil {
 		return err
@@ -130,9 +116,8 @@ func validateFaction(factionID string) error {
 }
 
 // buildPlayerOnboardedEvent は player-onboarded の outbox 行 payload を構築する。
-// イベント struct スキーマ (apiscenario.PlayerOnboardedEvent) を service 層に閉じ込め、
-// adapter は payload を不透明な []byte として送出する。EventID は payload 内
-// eventId と outbox 行の PK の双方に使い、subscriber が冪等性キーとして使える。
+// EventID は payload 内 eventId と outbox 行 PK の双方に使い、subscriber が
+// 冪等性キーとして使える。
 func buildPlayerOnboardedEvent(playerID, displayName, initialFactionID string) (port.OutboxEvent, error) {
 	if playerID == "" {
 		return port.OutboxEvent{}, errors.New("onboarding: playerID is empty")
