@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
+	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
 // fakeOutboxStore は port.OutboxStore の簡易モック。claim 系の返り値と各メソッド
@@ -54,16 +55,16 @@ func (f *fakeOutboxStore) RecordFailure(_ context.Context, eventID uuid.UUID, er
 	return f.failErr
 }
 
-// fakeRawPublisher は topic 単位の publish 結果を制御できるモック。
-// デフォルトは全 topic 成功、errByTopic で個別に失敗を指示する。
+// fakeRawPublisher は eventType 単位の publish 結果を制御できるモック。
+// デフォルトは全 eventType 成功、errByEventType で個別に失敗を指示する。
 type fakeRawPublisher struct {
-	calls      []string // topic:payload
-	errByTopic map[string]error
+	calls          []string // eventType:payload
+	errByEventType map[string]error
 }
 
-func (p *fakeRawPublisher) Publish(_ context.Context, topic string, payload []byte) error {
-	p.calls = append(p.calls, topic+":"+string(payload))
-	if err, ok := p.errByTopic[topic]; ok {
+func (p *fakeRawPublisher) Publish(_ context.Context, eventType string, payload []byte) error {
+	p.calls = append(p.calls, eventType+":"+string(payload))
+	if err, ok := p.errByEventType[eventType]; ok {
 		return err
 	}
 	return nil
@@ -124,14 +125,14 @@ func TestNew_Validation(t *testing.T) {
 
 // RunOnce の各ケースを claim 返却 + publish 結果指定 + 期待する mark/fail 呼び出し
 // で表現する。各ケースは自己完結 (runner に if を入れない)。
-func TestPublisher_RunOnce(t *testing.T) {
+func TestRelay_RunOnce(t *testing.T) {
 	okID := uuid.New()
 	ngID := uuid.New()
 
 	tests := []struct {
 		name             string
 		claimed          []port.ClaimedOutboxEvent
-		publishErrs      map[string]error // topic → error
+		publishErrs      map[string]error // eventType → error
 		wantMarked       []uuid.UUID
 		wantFailed       []uuid.UUID
 		wantPublishCalls int
@@ -143,7 +144,7 @@ func TestPublisher_RunOnce(t *testing.T) {
 		{
 			name: "全件 publish 成功で全件 MarkPublished",
 			claimed: []port.ClaimedOutboxEvent{
-				{EventID: okID, Topic: "player-onboarded", Payload: []byte(`{}`), FailureCount: 0},
+				{EventID: okID, EventType: apiscenario.EventTypePlayerOnboarded, Payload: []byte(`{}`), FailureCount: 0},
 			},
 			wantMarked:       []uuid.UUID{okID},
 			wantPublishCalls: 1,
@@ -151,19 +152,19 @@ func TestPublisher_RunOnce(t *testing.T) {
 		{
 			name: "publish 失敗で RecordFailure を呼び、MarkPublished は呼ばない",
 			claimed: []port.ClaimedOutboxEvent{
-				{EventID: ngID, Topic: "player-onboarded", Payload: []byte(`{}`), FailureCount: 0},
+				{EventID: ngID, EventType: apiscenario.EventTypePlayerOnboarded, Payload: []byte(`{}`), FailureCount: 0},
 			},
-			publishErrs:      map[string]error{"player-onboarded": errors.New("pubsub down")},
+			publishErrs:      map[string]error{apiscenario.EventTypePlayerOnboarded: errors.New("pubsub down")},
 			wantFailed:       []uuid.UUID{ngID},
 			wantPublishCalls: 1,
 		},
 		{
 			name: "混在バッチ: 成功行と失敗行が独立に処理される",
 			claimed: []port.ClaimedOutboxEvent{
-				{EventID: okID, Topic: "ok-topic", Payload: []byte(`{}`), FailureCount: 0},
-				{EventID: ngID, Topic: "ng-topic", Payload: []byte(`{}`), FailureCount: 2},
+				{EventID: okID, EventType: "ok-event-type", Payload: []byte(`{}`), FailureCount: 0},
+				{EventID: ngID, EventType: "ng-event-type", Payload: []byte(`{}`), FailureCount: 2},
 			},
-			publishErrs:      map[string]error{"ng-topic": errors.New("nope")},
+			publishErrs:      map[string]error{"ng-event-type": errors.New("nope")},
 			wantMarked:       []uuid.UUID{okID},
 			wantFailed:       []uuid.UUID{ngID},
 			wantPublishCalls: 2,
@@ -173,7 +174,7 @@ func TestPublisher_RunOnce(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			store := &fakeOutboxStore{claimed: tt.claimed}
-			pub := &fakeRawPublisher{errByTopic: tt.publishErrs}
+			pub := &fakeRawPublisher{errByEventType: tt.publishErrs}
 			s, err := New(store, pub, Config{
 				BatchSize: 10, FailureThreshold: 5, VisibilityTimeout: 30 * time.Second,
 			})
@@ -195,7 +196,7 @@ func TestPublisher_RunOnce(t *testing.T) {
 
 // RunOnce は store が返したエラーだけを上位に伝播する (ticker 側で ERROR ログ化されるため)。
 // publish 単独の失敗は RunOnce の戻り値に影響しない。
-func TestPublisher_RunOnce_ClaimErrorSurfaces(t *testing.T) {
+func TestRelay_RunOnce_ClaimErrorSurfaces(t *testing.T) {
 	store := &fakeOutboxStore{claimErr: errors.New("db down")}
 	pub := &fakeRawPublisher{}
 	s, err := New(store, pub, Config{
@@ -213,7 +214,7 @@ func TestPublisher_RunOnce_ClaimErrorSurfaces(t *testing.T) {
 
 // Config の BatchSize / VisibilityTimeout / FailureThreshold は store.ClaimUnpublished に
 // そのまま渡される (env 可変設定の到達検証)。
-func TestPublisher_RunOnce_PassesConfigToStore(t *testing.T) {
+func TestRelay_RunOnce_PassesConfigToStore(t *testing.T) {
 	store := &fakeOutboxStore{}
 	pub := &fakeRawPublisher{}
 	s, err := New(store, pub, Config{

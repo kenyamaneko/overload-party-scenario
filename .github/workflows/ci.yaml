@@ -86,6 +86,49 @@ jobs:
           FIRESTORE_EMULATOR_HOST: localhost:9041
           FIRESTORE_PROJECT_ID: overload-party-test
 
+  # Pub/Sub emulator (testcontainers 経由で gcr.io/google.com/cloudsdktool/cloud-sdk:emulators を
+  # 起動) を要する `//go:build integration` テストの実行ジョブ。test ジョブとは独立に走らせ、
+  # 既存の高速フィードバックを壊さない。
+  test-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Set up Java (Firestore emulator runtime)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up gcloud (Firestore emulator)
+        uses: google-github-actions/setup-gcloud@v2
+      - name: Install Firestore emulator component
+        run: gcloud components install cloud-firestore-emulator beta --quiet
+      - name: Start Firestore emulator
+        run: .github/scripts/ci/start-firestore-emulator.sh
+      # Testcontainers が起動する image (postgres + Pub/Sub emulator) は実行中に自動 pull されるが、
+      # 大きな image はテストの startup timeout を超えうるため事前に取得しておく。
+      - name: Pre-pull postgres image (Testcontainers)
+        run: docker pull postgres:16-alpine
+      - name: Pre-pull Pub/Sub emulator image (Testcontainers)
+        run: docker pull gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
+      # overload-party-common の共有パッケージを取得するためにプライベートモジュールの認証を設定する
+      - name: Configure Go private modules
+        env:
+          COMMON_GO_MODULES_FETCH: ${{ secrets.COMMON_GO_MODULES_FETCH }}
+          GOPRIVATE: github.com/kenyamaneko/overload-party-common
+          GONOSUMDB: github.com/kenyamaneko/overload-party-common
+        run: .github/scripts/ci/configure-go-private-modules.sh
+      - name: Run integration tests
+        run: go test -race -count=1 -tags=integration ./...
+        env:
+          GOPRIVATE: github.com/kenyamaneko/overload-party-common
+          FIRESTORE_EMULATOR_HOST: localhost:9041
+          FIRESTORE_PROJECT_ID: overload-party-test
+
   image-scan:
     runs-on: ubuntu-latest
     steps:

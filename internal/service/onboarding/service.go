@@ -2,15 +2,19 @@ package onboarding
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
 	gamedesign "github.com/kenyamaneko/overload-party-common/packages/game-design-constants"
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
+	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
 // displayNameMaxRunes は display_name の最大長 (rune 単位)。
@@ -21,19 +25,18 @@ const displayNameMaxRunes = 21
 // Service はオンボーディングのユースケースを束ねる。
 //
 // scriptStore は起動時 (config 判定) に一度だけ決定される (GCS か local filesystem)。
-// repo と eventBuilder は外部永続装置への口であり、ロジックは持たない。
+// repo は外部永続装置への口であり、ロジックは持たない。outbox イベントの
+// 構築は service 層の純粋関数 (buildPlayerOnboardedEvent) で行う。
 type Service struct {
-	repo         port.OnboardingRepo
-	scriptStore  port.ScriptStore
-	eventBuilder port.OutboxEventBuilder
+	repo        port.OnboardingRepo
+	scriptStore port.ScriptStore
 }
 
 // New は Service を構築する。
-func New(repo port.OnboardingRepo, scriptStore port.ScriptStore, eventBuilder port.OutboxEventBuilder) *Service {
+func New(repo port.OnboardingRepo, scriptStore port.ScriptStore) *Service {
 	return &Service{
-		repo:         repo,
-		scriptStore:  scriptStore,
-		eventBuilder: eventBuilder,
+		repo:        repo,
+		scriptStore: scriptStore,
 	}
 }
 
@@ -88,7 +91,7 @@ func (s *Service) Complete(ctx context.Context, playerID, displayName, initialFa
 		return err
 	}
 
-	ev, err := s.eventBuilder.BuildPlayerOnboarded(playerID, displayName, initialFactionID)
+	ev, err := buildPlayerOnboardedEvent(playerID, displayName, initialFactionID)
 	if err != nil {
 		return fmt.Errorf("build player-onboarded: %w", err)
 	}
@@ -124,4 +127,38 @@ func validateFaction(factionID string) error {
 		return ErrInvalidFaction
 	}
 	return nil
+}
+
+// buildPlayerOnboardedEvent は player-onboarded の outbox 行 payload を構築する。
+// イベント struct スキーマ (apiscenario.PlayerOnboardedEvent) を service 層に閉じ込め、
+// adapter は payload を不透明な []byte として送出する。EventID は payload 内
+// eventId と outbox 行の PK の双方に使い、subscriber が冪等性キーとして使える。
+func buildPlayerOnboardedEvent(playerID, displayName, initialFactionID string) (port.OutboxEvent, error) {
+	if playerID == "" {
+		return port.OutboxEvent{}, errors.New("onboarding: playerID is empty")
+	}
+	if displayName == "" {
+		return port.OutboxEvent{}, errors.New("onboarding: displayName is empty")
+	}
+	if initialFactionID == "" {
+		return port.OutboxEvent{}, errors.New("onboarding: initialFactionID is empty")
+	}
+	eventID := uuid.New()
+	ev := apiscenario.PlayerOnboardedEvent{
+		EventType:        apiscenario.EventTypePlayerOnboarded,
+		EventID:          eventID.String(),
+		Timestamp:        time.Now().UTC(),
+		PlayerID:         playerID,
+		DisplayName:      displayName,
+		InitialFactionID: initialFactionID,
+	}
+	payload, err := json.Marshal(ev)
+	if err != nil {
+		return port.OutboxEvent{}, fmt.Errorf("marshal player-onboarded: %w", err)
+	}
+	return port.OutboxEvent{
+		EventID:   eventID,
+		EventType: apiscenario.EventTypePlayerOnboarded,
+		Payload:   payload,
+	}, nil
 }

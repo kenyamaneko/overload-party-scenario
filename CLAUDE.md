@@ -37,14 +37,9 @@
 - 詳細手順はSkillsを参照
 
 ## 禁止事項
-- エラーを握りつぶさない（設計思想と重複するが、ここでも明示的に禁止する）
 - git tagの手動打ちは禁止（CIが自動生成）
-- TODO スタブを追加しない
-- クライアント認証を行わない（ClusterIP のみ、URL の playerId を信頼する）
-- GCS / ローカルファイルの読み取りエラーを握りつぶさない。
-  言語フォールバックは一切しない（`ErrObjectNotExist` / `os.ErrNotExist` が
-  返っても、代替言語への読み替えは禁止）
 - 生成済み型コードを手で書き換えない。型は `data/models.yaml` を
   SSoT とし、変更後は `python3 scripts/generate_types.py` で再生成する
+- Google CloudのことをGCPと表現してはいけない。（GCPは旧名称のため）
 - このファイル（CLAUDE.md）をClaudeが書き換えない。
   ルールの追加・修正は人間が明示的に指示した場合のみ行う

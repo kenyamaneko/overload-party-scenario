@@ -9,31 +9,22 @@ import (
 
 // OutboxEvent は scenario.outbox_events への 1 行分の書き込み表現。
 //
-// event_id は enqueue 時点で確定し、payload 内の eventId と一致する。再試行時も
-// 同じ event_id / payload を worker が Pub/Sub に送出するため、subscriber 側は
-// event_id または複合 PK を冪等性キーとして使える (at-least-once)。
+// EventID は payload 内 eventId と一致し、再試行でも変えない。subscriber は
+// この値を冪等性キーとして使える (at-least-once)。
 //
-// Payload は apiscenario スキーマの struct を JSON Marshal した生バイトで、
-// adapter/pubsub/event_builder が構築する。postgres adapter は payload の
-// スキーマを知らず、単に bytes として書き込む。
+// EventType は論理イベント種別 (apiscenario.EventType*)。物理 topic への解決は
+// pubsub adapter 内部で行う。
 type OutboxEvent struct {
-	EventID uuid.UUID
-	Topic   string
-	Payload []byte
-}
-
-// OutboxEventBuilder は service 層が発行したいビジネスイベントを OutboxEvent に
-// シリアライズする。イベントスキーマ (apiscenario.*) の詳細は adapter/pubsub 側に
-// 閉じ込め、service 層は「何を発行したいか」だけを述語で伝える。
-type OutboxEventBuilder interface {
-	BuildPlayerOnboarded(playerID, displayName, initialFactionID string) (OutboxEvent, error)
+	EventID   uuid.UUID
+	EventType string
+	Payload   []byte
 }
 
 // ClaimedOutboxEvent は OutboxStore.ClaimUnpublished が返す 1 行分の情報。
 // failure_count は閾値超過の alert 判定に使う。
 type ClaimedOutboxEvent struct {
 	EventID      uuid.UUID
-	Topic        string
+	EventType    string
 	Payload      []byte
 	FailureCount int
 }

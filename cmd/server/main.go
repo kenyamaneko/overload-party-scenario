@@ -112,11 +112,6 @@ func run() error {
 		}
 	}()
 
-	eventBuilder, err := scenariopubsub.NewEventBuilder(cfg.PlayerOnboardedTopic)
-	if err != nil {
-		return fmt.Errorf("pubsub event builder: %w", err)
-	}
-
 	scriptStore, gcsCloser, err := buildScriptStore(ctx, cfg)
 	if err != nil {
 		return err
@@ -134,19 +129,19 @@ func run() error {
 	storyH := rest.NewStoryHandler(storySvc)
 
 	onboardingRepo := postgres.NewOnboardingRepository(pool)
-	onboardingSvc := onboarding.New(onboardingRepo, scriptStore, eventBuilder)
+	onboardingSvc := onboarding.New(onboardingRepo, scriptStore)
 	onboardingH := rest.NewOnboardingHandler(onboardingSvc)
 
 	outboxRepo := postgres.NewOutboxRepository(pool)
-	outboxPub, err := outboxsvc.New(outboxRepo, pubPublisher, outboxsvc.Config{
+	outboxRelay, err := outboxsvc.New(outboxRepo, pubPublisher, outboxsvc.Config{
 		BatchSize:         cfg.OutboxBatchSize,
 		FailureThreshold:  cfg.OutboxFailureThreshold,
 		VisibilityTimeout: cfg.OutboxVisibilityTimeout,
 	})
 	if err != nil {
-		return fmt.Errorf("outbox publisher: %w", err)
+		return fmt.Errorf("outbox relay: %w", err)
 	}
-	outboxTicker, err := worker.NewOutboxTicker(outboxPub, cfg.OutboxPollInterval)
+	outboxTicker, err := worker.NewOutboxTicker(outboxRelay, cfg.OutboxPollInterval)
 	if err != nil {
 		return fmt.Errorf("outbox ticker: %w", err)
 	}

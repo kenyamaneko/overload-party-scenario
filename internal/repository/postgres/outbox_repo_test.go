@@ -37,12 +37,12 @@ func insertOutboxRow(t *testing.T, testIdx, seedIdx int, payload []byte) uuid.UU
 	t.Helper()
 	require.Less(t, seedIdx, 16, "1 ケースあたりの seed 数は 16 まで")
 	id := uuid.New()
-	topic := fmt.Sprintf("test-topic-%d-%d", testIdx, seedIdx)
+	eventType := fmt.Sprintf("test-event-type-%d-%d", testIdx, seedIdx)
 
 	_, err := sharedPg.Pool.Exec(context.Background(),
-		`INSERT INTO scenario.outbox_events (event_id, topic, payload)
+		`INSERT INTO scenario.outbox_events (event_id, event_type, payload)
 		 VALUES ($1, $2, $3)`,
-		id, topic, payload)
+		id, eventType, payload)
 	require.NoError(t, err)
 	return id
 }

@@ -1,13 +1,12 @@
-// Package pubsub は scenario サービスの Pub/Sub publisher を提供する。
+// Package pubsub は scenario の Pub/Sub publisher。worker (outbox) から呼ばれる
+// 低レベル送信層で、論理 eventType を物理 topic に解決して送出する。
 //
-// scenario は 1 種のサービス横断イベントを発行する:
+// scenario が発行するサービス横断イベント:
 //
-//   - `player-onboarded` — オンボーディング完了時に発行。account が subscribe して
-//     display_name の永続化とオンボード済みフラグ立てを行う。その他の subscriber
-//     (card / gateway など) も本イベントから faction 状態を同期する (ADR-022)。
-//
-// Publisher は worker (outbox) から topic + payload 指定で呼ばれる低レベル送信層。
-// ビジネス要件に応じたイベント struct の構築は EventBuilder が担う。
+//   - apiscenario.EventTypePlayerOnboarded — オンボーディング完了時に発行。account が
+//     subscribe して display_name の永続化とオンボード済みフラグ立てを行う。
+//     その他の subscriber (card / gateway など) も本イベントから faction 状態を
+//     同期する (ADR-022)。
 package pubsub
 
 import (
@@ -18,25 +17,20 @@ import (
 	gpubsub "cloud.google.com/go/pubsub/v2"
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
+	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
 var _ port.RawEventPublisher = (*Publisher)(nil)
 
-// Publisher は scenario が publish する全 topic をまとめる。起動時に一度だけ構築し、
-// Close で in-flight メッセージを flush して gRPC client を解放する。
-// port.RawEventPublisher を実装する。
-//
-// byTopic は map 構造で将来の topic 追加を許容する。ADR-022 の縮退で scenario の
-// publish topic は `player-onboarded` 1 本のみになったが、shop / gateway の
-// publisher 層と構造を揃え、outbox 行の topic カラムを起点に O(1) で
-// dispatch できる形を維持するために map を保持する。
+// Publisher は port.RawEventPublisher を実装する。
 type Publisher struct {
-	client  *gpubsub.Client
-	byTopic map[string]*gpubsub.Publisher
+	client      *gpubsub.Client
+	byEventType map[string]*gpubsub.Publisher
 }
 
-// New は指定 project + topic 名に紐づく Publisher を構築する。
-// topic は Terraform（modules/pubsub）で事前作成されている前提。
+// New は物理 topic 名から eventType→topic mapping を構築する。topic 名は
+// configmap / env で外から差し替えできるよう構築時に受け取る。topic は
+// Terraform (modules/pubsub) で事前作成されている前提。
 func New(ctx context.Context, projectID, playerOnboardedTopic string) (*Publisher, error) {
 	if projectID == "" {
 		return nil, errors.New("pubsub: projectID is empty")
@@ -50,31 +44,30 @@ func New(ctx context.Context, projectID, playerOnboardedTopic string) (*Publishe
 	}
 	return &Publisher{
 		client: client,
-		byTopic: map[string]*gpubsub.Publisher{
-			playerOnboardedTopic: client.Publisher(playerOnboardedTopic),
+		byEventType: map[string]*gpubsub.Publisher{
+			apiscenario.EventTypePlayerOnboarded: client.Publisher(playerOnboardedTopic),
 		},
 	}, nil
 }
 
 // Close は in-flight メッセージを flush し Pub/Sub client を閉じる。
 func (p *Publisher) Close() error {
-	for _, pub := range p.byTopic {
+	for _, pub := range p.byEventType {
 		pub.Stop()
 	}
 	return p.client.Close()
 }
 
-// Publish は topic 名で指定された Pub/Sub topic に payload をそのまま送る。
-// worker が outbox 行から topic + payload を読み出して呼ぶ想定。
-// 未登録 topic はエラーを返す (outbox 行の topic 設定ミスを alert 経路に載せるため)。
-func (p *Publisher) Publish(ctx context.Context, topic string, payload []byte) error {
-	pub, ok := p.byTopic[topic]
+// Publish は未登録 eventType をエラーで返し、outbox 行の設定ミスを alert
+// 経路に載せる (Pub/Sub SDK に届く前に失敗させる)。
+func (p *Publisher) Publish(ctx context.Context, eventType string, payload []byte) error {
+	pub, ok := p.byEventType[eventType]
 	if !ok {
-		return fmt.Errorf("pubsub: unknown topic %q", topic)
+		return fmt.Errorf("pubsub: unknown event type %q", eventType)
 	}
 	result := pub.Publish(ctx, &gpubsub.Message{Data: payload})
 	if _, err := result.Get(ctx); err != nil {
-		return fmt.Errorf("pubsub: publish to %s: %w", topic, err)
+		return fmt.Errorf("pubsub: publish event_type=%s: %w", eventType, err)
 	}
 	return nil
 }

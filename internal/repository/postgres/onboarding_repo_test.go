@@ -76,15 +76,15 @@ func TestOnboardingRepository_MarkComplete(t *testing.T) {
 	repo := postgres.NewOnboardingRepository(sharedPg.Pool)
 	ctx := context.Background()
 
-	// makeEvents は任意件数の OutboxEvent を作るヘルパ。topic / payload は任意で良い
+	// makeEvents は任意件数の OutboxEvent を作るヘルパ。event_type / payload は任意で良い
 	// (scenario.outbox_events に CHECK 制約は無い)。
 	makeEvents := func(n int) []port.OutboxEvent {
 		out := make([]port.OutboxEvent, 0, n)
 		for i := range n {
 			out = append(out, port.OutboxEvent{
-				EventID: uuid.New(),
-				Topic:   fmt.Sprintf("test-topic-%d", i),
-				Payload: []byte(fmt.Sprintf(`{"i":%d}`, i)),
+				EventID:   uuid.New(),
+				EventType: fmt.Sprintf("test-event-type-%d", i),
+				Payload:   []byte(fmt.Sprintf(`{"i":%d}`, i)),
 			})
 		}
 		return out

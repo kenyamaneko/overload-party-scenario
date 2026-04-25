@@ -2,15 +2,16 @@ package onboarding
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
+	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
 // fakeOnboardingRepo はテスト用のインメモリ OnboardingRepo 実装。
@@ -60,34 +61,6 @@ func (s *fakeScriptStore) ReadScript(_ context.Context, key string) (string, err
 	return s.body, nil
 }
 
-// fakeEventBuilder は OutboxEventBuilder のテスト double。
-// BuildPlayerOnboarded の呼び出し引数を記録し、任意のエラーを返せる。
-type fakeEventBuilder struct {
-	onboardedEvent port.OutboxEvent
-	onboardedErr   error
-	onboardedCalls []onboardedArgs
-}
-
-type onboardedArgs struct {
-	playerID, displayName, initialFactionID string
-}
-
-func (b *fakeEventBuilder) BuildPlayerOnboarded(playerID, displayName, initialFactionID string) (port.OutboxEvent, error) {
-	b.onboardedCalls = append(b.onboardedCalls, onboardedArgs{playerID, displayName, initialFactionID})
-	if b.onboardedErr != nil {
-		return port.OutboxEvent{}, b.onboardedErr
-	}
-	return b.onboardedEvent, nil
-}
-
-func newTestEvent(topic string) port.OutboxEvent {
-	return port.OutboxEvent{
-		EventID: uuid.New(),
-		Topic:   topic,
-		Payload: []byte(`{"topic":"` + topic + `"}`),
-	}
-}
-
 func TestGetStatus(t *testing.T) {
 	now := time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC)
 	dbErr := errors.New("db down")
@@ -131,7 +104,7 @@ func TestGetStatus(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &fakeOnboardingRepo{status: tc.repoStatus, getStatusErr: tc.repoErr}
-			svc := New(repo, nil, nil)
+			svc := New(repo, nil)
 
 			got, err := svc.GetStatus(context.Background(), "p1")
 			tc.verify(t, got, err)
@@ -208,7 +181,7 @@ func TestGetScript(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &fakeOnboardingRepo{status: tc.repoStatus, getStatusErr: tc.repoErr}
 			store := &fakeScriptStore{body: tc.storeBody, err: tc.storeErr}
-			svc := New(repo, store, nil)
+			svc := New(repo, store)
 
 			body, err := svc.GetScript(context.Background(), "p1", tc.lang)
 			tc.verify(t, body, err, store)
@@ -220,45 +193,47 @@ func TestComplete(t *testing.T) {
 	validName := "プレイヤー太郎"
 	validFaction := "SHE"
 
-	buildErr := errors.New("simulated build failure")
 	repoErr := errors.New("db down")
 
 	tests := []struct {
 		name             string
 		displayName      string
 		initialFactionID string
-		builder          *fakeEventBuilder
 		repo             *fakeOnboardingRepo
-		verify           func(t *testing.T, err error, repo *fakeOnboardingRepo, builder *fakeEventBuilder)
+		verify           func(t *testing.T, err error, repo *fakeOnboardingRepo)
 	}{
 		{
 			name:             "正常系は player-onboarded イベント 1 本を outbox へ渡す",
 			displayName:      validName,
 			initialFactionID: validFaction,
-			builder: &fakeEventBuilder{
-				onboardedEvent: newTestEvent("player-onboarded"),
-			},
-			repo: &fakeOnboardingRepo{},
-			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo, builder *fakeEventBuilder) {
+			repo:             &fakeOnboardingRepo{},
+			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
 				require.NoError(t, err)
 				require.Len(t, repo.markCompleteCalls, 1)
 				call := repo.markCompleteCalls[0]
 				assert.Equal(t, "p1", call.playerID)
 				require.Len(t, call.events, 1)
-				assert.Equal(t, "player-onboarded", call.events[0].Topic)
+				ev := call.events[0]
+				assert.Equal(t, apiscenario.EventTypePlayerOnboarded, ev.EventType)
+				assert.NotEqual(t, "", ev.EventID.String())
 
-				require.Len(t, builder.onboardedCalls, 1)
-				assert.Equal(t, validName, builder.onboardedCalls[0].displayName)
-				assert.Equal(t, validFaction, builder.onboardedCalls[0].initialFactionID)
+				// payload は apiscenario.PlayerOnboardedEvent として round-trip 可能で、
+				// event_id は outbox 行の PK と一致する (subscriber 側の冪等性キー前提)。
+				var decoded apiscenario.PlayerOnboardedEvent
+				require.NoError(t, json.Unmarshal(ev.Payload, &decoded))
+				assert.Equal(t, apiscenario.EventTypePlayerOnboarded, decoded.EventType)
+				assert.Equal(t, ev.EventID.String(), decoded.EventID)
+				assert.Equal(t, "p1", decoded.PlayerID)
+				assert.Equal(t, validName, decoded.DisplayName)
+				assert.Equal(t, validFaction, decoded.InitialFactionID)
 			},
 		},
 		{
 			name:             "空文字の display_name は ErrInvalidDisplayName",
 			displayName:      "",
 			initialFactionID: validFaction,
-			builder:          &fakeEventBuilder{},
 			repo:             &fakeOnboardingRepo{},
-			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo, _ *fakeEventBuilder) {
+			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
 				require.Error(t, err)
 				assert.ErrorIs(t, err, ErrInvalidDisplayName)
 				assert.Empty(t, repo.markCompleteCalls)
@@ -268,9 +243,8 @@ func TestComplete(t *testing.T) {
 			name:             "全空白の display_name は ErrInvalidDisplayName",
 			displayName:      "   \t  ",
 			initialFactionID: validFaction,
-			builder:          &fakeEventBuilder{},
 			repo:             &fakeOnboardingRepo{},
-			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo, _ *fakeEventBuilder) {
+			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
 				require.Error(t, err)
 				assert.ErrorIs(t, err, ErrInvalidDisplayName)
 				assert.Empty(t, repo.markCompleteCalls)
@@ -280,9 +254,8 @@ func TestComplete(t *testing.T) {
 			name:             "22 rune の display_name は ErrInvalidDisplayName",
 			displayName:      "あいうえおかきくけこさしすせそたちつてとなに",
 			initialFactionID: validFaction,
-			builder:          &fakeEventBuilder{},
 			repo:             &fakeOnboardingRepo{},
-			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo, _ *fakeEventBuilder) {
+			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
 				require.Error(t, err)
 				assert.ErrorIs(t, err, ErrInvalidDisplayName)
 				assert.Empty(t, repo.markCompleteCalls)
@@ -292,11 +265,8 @@ func TestComplete(t *testing.T) {
 			name:             "21 rune の display_name は境界内で許容する",
 			displayName:      "あいうえおかきくけこさしすせそたちつてとな",
 			initialFactionID: validFaction,
-			builder: &fakeEventBuilder{
-				onboardedEvent: newTestEvent("player-onboarded"),
-			},
-			repo: &fakeOnboardingRepo{},
-			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo, _ *fakeEventBuilder) {
+			repo:             &fakeOnboardingRepo{},
+			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
 				require.NoError(t, err)
 				require.Len(t, repo.markCompleteCalls, 1)
 			},
@@ -305,9 +275,8 @@ func TestComplete(t *testing.T) {
 			name:             "SelectableFactions 外の Neutral は ErrInvalidFaction",
 			displayName:      validName,
 			initialFactionID: "Neutral",
-			builder:          &fakeEventBuilder{},
 			repo:             &fakeOnboardingRepo{},
-			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo, _ *fakeEventBuilder) {
+			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
 				require.Error(t, err)
 				assert.ErrorIs(t, err, ErrInvalidFaction)
 				assert.Empty(t, repo.markCompleteCalls)
@@ -317,9 +286,8 @@ func TestComplete(t *testing.T) {
 			name:             "不明な faction は ErrInvalidFaction",
 			displayName:      validName,
 			initialFactionID: "Mystery",
-			builder:          &fakeEventBuilder{},
 			repo:             &fakeOnboardingRepo{},
-			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo, _ *fakeEventBuilder) {
+			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
 				require.Error(t, err)
 				assert.ErrorIs(t, err, ErrInvalidFaction)
 				assert.Empty(t, repo.markCompleteCalls)
@@ -329,36 +297,18 @@ func TestComplete(t *testing.T) {
 			name:             "二度目の完了は ErrAlreadyOnboarded に翻訳する",
 			displayName:      validName,
 			initialFactionID: validFaction,
-			builder: &fakeEventBuilder{
-				onboardedEvent: newTestEvent("player-onboarded"),
-			},
-			repo: &fakeOnboardingRepo{markCompleteErr: port.ErrAlreadyOnboarded},
-			verify: func(t *testing.T, err error, _ *fakeOnboardingRepo, _ *fakeEventBuilder) {
+			repo:             &fakeOnboardingRepo{markCompleteErr: port.ErrAlreadyOnboarded},
+			verify: func(t *testing.T, err error, _ *fakeOnboardingRepo) {
 				require.Error(t, err)
 				assert.ErrorIs(t, err, ErrAlreadyOnboarded)
-			},
-		},
-		{
-			name:             "BuildPlayerOnboarded のエラーは wrap して伝播する",
-			displayName:      validName,
-			initialFactionID: validFaction,
-			builder:          &fakeEventBuilder{onboardedErr: buildErr},
-			repo:             &fakeOnboardingRepo{},
-			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo, _ *fakeEventBuilder) {
-				require.Error(t, err)
-				assert.ErrorIs(t, err, buildErr)
-				assert.Empty(t, repo.markCompleteCalls)
 			},
 		},
 		{
 			name:             "repo の未分類エラーは wrap して伝播する",
 			displayName:      validName,
 			initialFactionID: validFaction,
-			builder: &fakeEventBuilder{
-				onboardedEvent: newTestEvent("player-onboarded"),
-			},
-			repo: &fakeOnboardingRepo{markCompleteErr: repoErr},
-			verify: func(t *testing.T, err error, _ *fakeOnboardingRepo, _ *fakeEventBuilder) {
+			repo:             &fakeOnboardingRepo{markCompleteErr: repoErr},
+			verify: func(t *testing.T, err error, _ *fakeOnboardingRepo) {
 				require.Error(t, err)
 				assert.ErrorIs(t, err, repoErr)
 			},
@@ -367,9 +317,9 @@ func TestComplete(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := New(tc.repo, nil, tc.builder)
+			svc := New(tc.repo, nil)
 			err := svc.Complete(context.Background(), "p1", tc.displayName, tc.initialFactionID)
-			tc.verify(t, err, tc.repo, tc.builder)
+			tc.verify(t, err, tc.repo)
 		})
 	}
 }
