@@ -74,6 +74,27 @@ endpoint_groups:
           - {status: 409, reason: "既にオンボーディング完了済み"}
           - {status: 500, reason: "GCS 等インフラ障害"}
 
+      - method: GET
+        path: /internal/v1/players/:playerId/onboarding/resume
+        summary: オンボーディング再開時の次の checkpoint を返す（account の業務真実から導出）
+        auth: ClusterIP（gateway 経由）
+        response_type: OnboardingResumeResponse
+        response_example: '{"player_id": "uuid", "next_checkpoint": "name_set"}'
+        errors:
+          - {status: 404, reason: "プレイヤーが account に存在しない（Register 未実施）"}
+          - {status: 500, reason: "DB / account 連携の障害"}
+
+      - method: PUT
+        path: /internal/v1/players/:playerId/onboarding/name
+        summary: オンボード内 name 入力ステップで受け取った表示名を account に同期書込で確定する
+        auth: ClusterIP（gateway 経由）
+        request_type: OnboardingNameRequest
+        response_example: '204 No Content'
+        errors:
+          - {status: 400, reason: "name が account のバリデーション (空 / 全空白 / 制御文字 / 上限超) に違反"}
+          - {status: 404, reason: "プレイヤーが account に存在しない（Register 未実施）"}
+          - {status: 500, reason: "account 連携の障害"}
+
       - method: POST
         path: /internal/v1/players/:playerId/onboarding/complete
         summary: オンボーディング完了を記録し player-onboarded を発行

@@ -20,4 +20,14 @@ var (
 	// ErrInvalidFaction は initial_faction_id が SelectableFactions に含まれない場合に返される。
 	// handler は HTTP 400 にマップする。
 	ErrInvalidFaction = errors.New("onboarding: invalid initial faction")
+
+	// ErrInvalidName は name 入力ステップで account のバリデーションが失敗した場合に返される。
+	// バリデーション SSoT は account に集約されており、scenario はそれを中継するだけ。
+	// handler は HTTP 400 にマップする。
+	ErrInvalidName = errors.New("onboarding: invalid name")
+
+	// ErrPlayerNotFound は対象 playerID が account に存在しない場合に返される。
+	// オンボード経路では Register 直後を前提とするため通常発生しないが、
+	// 握りつぶさず構造的に表現する。handler は HTTP 404 にマップする。
+	ErrPlayerNotFound = errors.New("onboarding: player not found")
 )

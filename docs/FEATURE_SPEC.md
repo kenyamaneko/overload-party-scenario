@@ -253,7 +253,7 @@ scenario は「サイレント no-op で起動する」「設定欠損の publis
 
 | 対象 | 保証 |
 |---|---|
-| `DATABASE_CONN` / `STORY_BUCKET` / `PUBSUB_PROJECT_ID` / `FIRESTORE_PROJECT_ID` 未設定 | 起動拒否（`config.FromEnv` が error を返す） |
+| `DATABASE_CONN` / `STORY_BUCKET` / `PUBSUB_PROJECT_ID` / `FIRESTORE_PROJECT_ID` / `ACCOUNT_BASE_URL` 未設定 | 起動拒否（`config.FromEnv` が error を返す） |
 | `STORY_BUCKET=local:` (パスなし) | 起動拒否 |
 | outbox worker の `BatchSize` / `FailureThreshold` / `VisibilityTimeout` が 0 | 起動拒否（設定欠損で publish が縮退することを防ぐ） |
 | 未登録 topic への publish | `adapter/pubsub.Publisher` が明示的にエラー（outbox の `RecordFailure` 経路に載る） |
@@ -271,7 +271,9 @@ scenario は「サイレント no-op で起動する」「設定欠損の publis
 
 1. **GET `/internal/v1/players/:playerId/onboarding/status`**: 完了済みかどうかを返す。クライアント起動時のオンボ画面表示判定に使う
 2. **GET `/internal/v1/players/:playerId/onboarding/script?lang=ja|en`**: 本文取得
-3. **POST `/internal/v1/players/:playerId/onboarding/complete`**: `initial_faction_id` を受け取り、完了記録 + `player-onboarded` publish を atomic に行う（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md)）。表示名は本 API では受け取らず、name 入力ステップで先に account へ REST 同期書込済みである前提（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）
+3. **GET `/internal/v1/players/:playerId/onboarding/resume`**: 再開時の次の checkpoint (`started` / `name_set` / `faction_set` / `completed`) を返す。account の業務真実と完了マークから導出する派生値で、scenario 側に永続化しない
+4. **PUT `/internal/v1/players/:playerId/onboarding/name`**: name 入力ステップで受け取った表示名を account へ REST 同期書込で確定する。account のバリデーション (`ErrInvalidName` 相当) は 400 にそのまま中継する（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）
+5. **POST `/internal/v1/players/:playerId/onboarding/complete`**: `initial_faction_id` を受け取り、完了記録 + `player-onboarded` publish を atomic に行う（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md)）。表示名は本 API では受け取らず、name 入力ステップで先に account へ REST 同期書込済みである前提
 
 API の完全なリクエスト／レスポンス仕様は [API_REFERENCE.md](API_REFERENCE.md) が SSoT（`data/endpoints.yaml` から codegen）。
 
@@ -307,8 +309,8 @@ subscriber は `event_id` を冪等性キーに重複排除する（ADR-012 の�
 |---|---|---|
 | 完了済みプレイヤーの `GET script` / `POST complete` | `ErrAlreadyOnboarded` | 409 |
 | `initial_faction_id` が `SelectableFactions` に非該当 | `ErrInvalidFaction` | 400 |
+| `PUT /onboarding/name` で account の `ValidateName` に違反 | `ErrInvalidName` | 400 |
+| `PUT /onboarding/name` / `GET /onboarding/resume` で account に Player が存在しない | `ErrPlayerNotFound` | 404 |
 | 要求言語のスクリプト未配置 | `ErrScriptNotFound` | 404 |
 | GCS / local FS のインフラ障害 | `ErrScriptInfra` | 500 |
-| DB commit 失敗 | 分類なし | 500（outbox 行も巻き戻るため部分送信は発生しない） |
-
-表示名のバリデーション失敗（`ErrInvalidName` 相当）は本フローでは発生しない。表示名は name 入力ステップ (`PUT /onboarding/name`) が account の 400 を中継する経路で扱う。
+| DB commit 失敗 / account 連携の障害 | 分類なし | 500（outbox 行も巻き戻るため部分送信は発生しない。account 側 5xx は中継する） |

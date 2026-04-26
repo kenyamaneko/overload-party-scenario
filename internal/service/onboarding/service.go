@@ -16,16 +16,27 @@ import (
 )
 
 // Service はオンボーディングのユースケースを束ねる。
+// nameUpdater / playerReader は onboarding 限定の account 直叩きポートで、
+// name 入力ステップと再開判定にのみ使う。
 type Service struct {
-	repo        port.OnboardingRepo
-	scriptStore port.ScriptStore
+	repo         port.OnboardingRepo
+	scriptStore  port.ScriptStore
+	nameUpdater  port.OnboardingNameUpdater
+	playerReader port.OnboardingPlayerReader
 }
 
 // New は Service を構築する。
-func New(repo port.OnboardingRepo, scriptStore port.ScriptStore) *Service {
+func New(
+	repo port.OnboardingRepo,
+	scriptStore port.ScriptStore,
+	nameUpdater port.OnboardingNameUpdater,
+	playerReader port.OnboardingPlayerReader,
+) *Service {
 	return &Service{
-		repo:        repo,
-		scriptStore: scriptStore,
+		repo:         repo,
+		scriptStore:  scriptStore,
+		nameUpdater:  nameUpdater,
+		playerReader: playerReader,
 	}
 }
 
@@ -81,6 +92,53 @@ func (s *Service) Complete(ctx context.Context, playerID, initialFactionID strin
 		return fmt.Errorf("mark complete: %w", err)
 	}
 	return nil
+}
+
+// UpdateName はオンボード内 name 入力ステップで受け取った表示名を account に
+// 同期書込する。バリデーション SSoT は account に集約されているため、scenario 側で
+// ローカル検証は行わず account の 400 をそのまま中継する。
+func (s *Service) UpdateName(ctx context.Context, playerID, name string) error {
+	if err := s.nameUpdater.UpdateOnboardingName(ctx, playerID, name); err != nil {
+		if errors.Is(err, port.ErrInvalidName) {
+			return ErrInvalidName
+		}
+		if errors.Is(err, port.ErrPlayerNotFound) {
+			return ErrPlayerNotFound
+		}
+		return fmt.Errorf("update onboarding name: %w", err)
+	}
+	return nil
+}
+
+// Resume はオンボーディング再開時の次の checkpoint を返す。
+// 業務真実は account.Player の Name / SelectedFaction nullable 状態と、
+// scenario.player_onboarding の完了マーク存在で決まる。scenario 側で進行
+// checkpoint を独自に永続化しない (ARCHITECTURE.md「再開判定の業務真実」)。
+func (s *Service) Resume(ctx context.Context, playerID string) (Checkpoint, error) {
+	status, err := s.repo.GetStatus(ctx, playerID)
+	if err != nil {
+		return "", fmt.Errorf("get onboarding status: %w", err)
+	}
+	if status.Onboarded {
+		return CheckpointCompleted, nil
+	}
+
+	player, err := s.playerReader.GetOnboardingPlayer(ctx, playerID)
+	if err != nil {
+		if errors.Is(err, port.ErrPlayerNotFound) {
+			return "", ErrPlayerNotFound
+		}
+		return "", fmt.Errorf("get onboarding player: %w", err)
+	}
+
+	switch {
+	case player.Name == nil:
+		return CheckpointStarted, nil
+	case player.SelectedFaction == nil:
+		return CheckpointNameSet, nil
+	default:
+		return CheckpointFactionSet, nil
+	}
 }
 
 // validateFaction は initial_faction_id が SelectableFactions に含まれるか検証する。

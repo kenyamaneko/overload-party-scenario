@@ -61,6 +61,43 @@ func (s *fakeScriptStore) ReadScript(_ context.Context, key string) (string, err
 	return s.body, nil
 }
 
+// fakeNameUpdater はテスト用の OnboardingNameUpdater 実装。account 直叩きを
+// 模し、任意のエラーを注入して呼び出しを記録できる。
+type fakeNameUpdater struct {
+	err   error
+	calls []nameUpdateCall
+}
+
+type nameUpdateCall struct {
+	playerID string
+	name     string
+}
+
+func (u *fakeNameUpdater) UpdateOnboardingName(_ context.Context, playerID, name string) error {
+	u.calls = append(u.calls, nameUpdateCall{playerID: playerID, name: name})
+	return u.err
+}
+
+// fakePlayerReader はテスト用の OnboardingPlayerReader 実装。
+type fakePlayerReader struct {
+	player port.AccountPlayer
+	err    error
+}
+
+func (r *fakePlayerReader) GetOnboardingPlayer(_ context.Context, playerID string) (port.AccountPlayer, error) {
+	if r.err != nil {
+		return port.AccountPlayer{}, r.err
+	}
+	p := r.player
+	if p.PlayerID == "" {
+		p.PlayerID = playerID
+	}
+	return p, nil
+}
+
+// strPtr は *string ヘルパ。テストの可読性のために置く。
+func strPtr(s string) *string { return &s }
+
 func TestGetStatus(t *testing.T) {
 	now := time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC)
 	dbErr := errors.New("db down")
@@ -104,7 +141,7 @@ func TestGetStatus(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &fakeOnboardingRepo{status: tc.repoStatus, getStatusErr: tc.repoErr}
-			svc := New(repo, nil)
+			svc := New(repo, nil, nil, nil)
 
 			got, err := svc.GetStatus(context.Background(), "p1")
 			tc.verify(t, got, err)
@@ -181,7 +218,7 @@ func TestGetScript(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &fakeOnboardingRepo{status: tc.repoStatus, getStatusErr: tc.repoErr}
 			store := &fakeScriptStore{body: tc.storeBody, err: tc.storeErr}
-			svc := New(repo, store)
+			svc := New(repo, store, nil, nil)
 
 			body, err := svc.GetScript(context.Background(), "p1", tc.lang)
 			tc.verify(t, body, err, store)
@@ -276,9 +313,152 @@ func TestComplete(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := New(tc.repo, nil)
+			svc := New(tc.repo, nil, nil, nil)
 			err := svc.Complete(context.Background(), "p1", tc.initialFactionID)
 			tc.verify(t, err, tc.repo)
+		})
+	}
+}
+
+func TestUpdateName(t *testing.T) {
+	transientErr := errors.New("account 5xx")
+
+	tests := []struct {
+		name    string
+		updater *fakeNameUpdater
+		input   string
+		verify  func(t *testing.T, err error, updater *fakeNameUpdater)
+	}{
+		{
+			name:    "正常系: account に表示名を中継する",
+			updater: &fakeNameUpdater{},
+			input:   "Kenya",
+			verify: func(t *testing.T, err error, u *fakeNameUpdater) {
+				require.NoError(t, err)
+				require.Len(t, u.calls, 1)
+				assert.Equal(t, "p1", u.calls[0].playerID)
+				assert.Equal(t, "Kenya", u.calls[0].name)
+			},
+		},
+		{
+			name:    "account の ErrInvalidName は ErrInvalidName に翻訳して中継する",
+			updater: &fakeNameUpdater{err: port.ErrInvalidName},
+			input:   "",
+			verify: func(t *testing.T, err error, _ *fakeNameUpdater) {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, ErrInvalidName)
+			},
+		},
+		{
+			name:    "account の ErrPlayerNotFound は ErrPlayerNotFound に翻訳する",
+			updater: &fakeNameUpdater{err: port.ErrPlayerNotFound},
+			input:   "Alice",
+			verify: func(t *testing.T, err error, _ *fakeNameUpdater) {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, ErrPlayerNotFound)
+			},
+		},
+		{
+			name:    "それ以外の account エラーは wrap して伝播する",
+			updater: &fakeNameUpdater{err: transientErr},
+			input:   "Bob",
+			verify: func(t *testing.T, err error, _ *fakeNameUpdater) {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, transientErr)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := New(nil, nil, tc.updater, nil)
+			err := svc.UpdateName(context.Background(), "p1", tc.input)
+			tc.verify(t, err, tc.updater)
+		})
+	}
+}
+
+func TestResume(t *testing.T) {
+	now := time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC)
+	repoErr := errors.New("db down")
+	accountErr := errors.New("account down")
+
+	tests := []struct {
+		name   string
+		repo   *fakeOnboardingRepo
+		reader *fakePlayerReader
+		verify func(t *testing.T, got Checkpoint, err error)
+	}{
+		{
+			name:   "完了マークありなら CheckpointCompleted",
+			repo:   &fakeOnboardingRepo{status: port.OnboardingStatus{Onboarded: true, CompletedAt: &now}},
+			reader: &fakePlayerReader{},
+			verify: func(t *testing.T, got Checkpoint, err error) {
+				require.NoError(t, err)
+				assert.Equal(t, CheckpointCompleted, got)
+			},
+		},
+		{
+			name:   "未完了 + Name=nil なら CheckpointStarted (account の状態が起点)",
+			repo:   &fakeOnboardingRepo{},
+			reader: &fakePlayerReader{player: port.AccountPlayer{Name: nil, SelectedFaction: nil}},
+			verify: func(t *testing.T, got Checkpoint, err error) {
+				require.NoError(t, err)
+				assert.Equal(t, CheckpointStarted, got)
+			},
+		},
+		{
+			name:   "未完了 + Name 確定 + faction 未選択なら CheckpointNameSet",
+			repo:   &fakeOnboardingRepo{},
+			reader: &fakePlayerReader{player: port.AccountPlayer{Name: strPtr("Kenya"), SelectedFaction: nil}},
+			verify: func(t *testing.T, got Checkpoint, err error) {
+				require.NoError(t, err)
+				assert.Equal(t, CheckpointNameSet, got)
+			},
+		},
+		{
+			name:   "未完了 + Name + faction 両方確定なら CheckpointFactionSet",
+			repo:   &fakeOnboardingRepo{},
+			reader: &fakePlayerReader{player: port.AccountPlayer{Name: strPtr("Kenya"), SelectedFaction: strPtr("Tenki")}},
+			verify: func(t *testing.T, got Checkpoint, err error) {
+				require.NoError(t, err)
+				assert.Equal(t, CheckpointFactionSet, got)
+			},
+		},
+		{
+			name:   "account に Player が存在しなければ ErrPlayerNotFound",
+			repo:   &fakeOnboardingRepo{},
+			reader: &fakePlayerReader{err: port.ErrPlayerNotFound},
+			verify: func(t *testing.T, _ Checkpoint, err error) {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, ErrPlayerNotFound)
+			},
+		},
+		{
+			name:   "scenario の repo エラーは wrap して伝播する",
+			repo:   &fakeOnboardingRepo{getStatusErr: repoErr},
+			reader: &fakePlayerReader{},
+			verify: func(t *testing.T, _ Checkpoint, err error) {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, repoErr)
+			},
+		},
+		{
+			name:   "account の未分類エラーは wrap して伝播する",
+			repo:   &fakeOnboardingRepo{},
+			reader: &fakePlayerReader{err: accountErr},
+			verify: func(t *testing.T, _ Checkpoint, err error) {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, accountErr)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := New(tc.repo, nil, nil, tc.reader)
+			got, err := svc.Resume(context.Background(), "p1")
+			tc.verify(t, got, err)
 		})
 	}
 }

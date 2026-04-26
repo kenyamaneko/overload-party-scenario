@@ -80,3 +80,14 @@ type OnboardingCompleteResponse struct {
 	PlayerID string `json:"player_id"`
 }
 
+// OnboardingNameRequest is the body for the onboarding name input step. Scenario relays the value to account, which is the validation SSoT.
+type OnboardingNameRequest struct {
+	Name string `json:"name"`
+}
+
+// OnboardingResumeResponse carries the next checkpoint to resume from. The value is derived from account state and the onboarding completion mark.
+type OnboardingResumeResponse struct {
+	PlayerID       string `json:"player_id"`
+	NextCheckpoint string `json:"next_checkpoint"`
+}
+

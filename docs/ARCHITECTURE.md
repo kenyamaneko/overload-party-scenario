@@ -188,6 +188,14 @@ shop との差分は「何を積むか」だけで、インフラ側は共通化
 
 scenario は「オンボ完了フラグ」と「スクリプト」の SSoT を持つが、表示名や所持 faction は **保持しない**。表示名は name 入力時点で account に対し REST 同期書込（scenario → account の onboarding 限定例外。[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）し、初期 faction は完了時に publish するだけで、identity の SSoT は account 側に残す。これにより scenario は将来表示名変更機能などが account 側に入っても影響を受けない。
 
+### account 直叩きの構造的封じ込め
+
+ADR-025 で許容された scenario → account の HTTP 直叩きは「拡散させない」ことが許容条件と一体になっている。`internal/adapter/http/accountclient.go` を `packages/` 外に置いて他リポからの import を構造的に禁じ、service 層には `port.OnboardingNameUpdater` / `port.OnboardingPlayerReader` という **ユースケース名を冠した狭い port** だけを露出させる。汎用的な `AccountClient` を service が引き取らないため、onboarding 以外の経路で account を叩く実装は構造的に書けない。account の業務エラー (400 → `ErrInvalidName`、404 → `ErrPlayerNotFound`) は adapter 内で port sentinel に翻訳し、HTTP の概念を service より上に漏らさない。
+
+### 再開判定の業務真実
+
+オンボ再開時の checkpoint は scenario 側で永続化せず、`account.Player.Name` / `SelectedFaction` の nullable 状態と `scenario.player_onboarding` の完了マーク存在から `Resume` で導出する。scenario が独自に進行レコードを持つと account の業務真実と整合させる責務が増えるため、派生値として毎回計算する側を取る。
+
 ## 構造的安全性
 
 scenario は「静かに no-op で起動する」「nil publisher がログだけで成功扱いになる」「GCS 設定ミスが本番で初めて顕在化する」といった運用事故を、**起動時のバリデーションとコード配線で構造的に排除する**。
@@ -201,6 +209,7 @@ scenario は「静かに no-op で起動する」「nil publisher がログだ�
 - `STORY_BUCKET=local:<path>` のとき `<path>` 非空
 - `PUBSUB_PROJECT_ID` 必須
 - `FIRESTORE_PROJECT_ID` 必須（現在 runtime からは未参照だが、起動時にプロジェクト ID の典型的タイポを検出する目的で必須化）
+- `ACCOUNT_BASE_URL` 必須（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md) で許容された onboarding 限定の account 直叩き先。未設定だと name 入力ステップと再開判定がサイレントに 5xx 化するため起動時に拒否）
 
 ### outbox worker 構築時のゼロ値拒否と unknown topic 明示エラー
 

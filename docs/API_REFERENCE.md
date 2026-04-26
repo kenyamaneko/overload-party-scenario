@@ -155,6 +155,58 @@ gateway が ClusterIP 経由で呼び出す内部 API。 認証は gateway 側 F
 
 ---
 
+### `GET /internal/v1/players/:playerId/onboarding/resume`
+
+**概要:** オンボーディング再開時の次の checkpoint を返す（account の業務真実から導出）
+
+**認証:** ClusterIP（gateway 経由）
+
+**レスポンスボディ:** `OnboardingResumeResponse`
+
+| フィールド | 型 | 備考 |
+|---|---|---|
+| `player_id` | `string` |  |
+| `next_checkpoint` | `string` | `started` / `name_set` / `faction_set` / `completed` |
+
+**レスポンス例:**
+
+```json
+{"player_id": "uuid", "next_checkpoint": "name_set"}
+```
+
+**エラー:**
+
+| ステータス | 理由 |
+|---|---|
+| `404` | プレイヤーが account に存在しない（Register 未実施） |
+| `500` | DB / account 連携の障害 |
+
+---
+
+### `PUT /internal/v1/players/:playerId/onboarding/name`
+
+**概要:** オンボード内 name 入力ステップで受け取った表示名を account に同期書込で確定する
+
+**認証:** ClusterIP（gateway 経由）
+
+**リクエストボディ:** `OnboardingNameRequest`
+
+| フィールド | 型 | 備考 |
+|---|---|---|
+| `name` | `string` | account の `ValidateName` が SSoT。空 / 全空白 / 制御文字 / 20 rune 超は 400 |
+
+**レスポンス:** `204 No Content`
+
+**エラー:**
+
+| ステータス | 理由 |
+|---|---|
+| `400` | name が account のバリデーション (空 / 全空白 / 制御文字 / 上限超) に違反 |
+| `404` | プレイヤーが account に存在しない（Register 未実施） |
+| `500` | account 連携の障害 |
+
+---
+
 ### `POST /internal/v1/players/:playerId/onboarding/complete`
 
 **概要:** オンボーディング完了を記録し player-onboarded を発行

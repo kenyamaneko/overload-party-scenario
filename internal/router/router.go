@@ -25,6 +25,8 @@ func New(storyH *rest.StoryHandler, onboardingH *rest.OnboardingHandler) *gin.En
 
 		players.GET("/onboarding/status", onboardingH.GetStatus)
 		players.GET("/onboarding/script", onboardingH.GetScript)
+		players.GET("/onboarding/resume", onboardingH.Resume)
+		players.PUT("/onboarding/name", onboardingH.UpdateName)
 		players.POST("/onboarding/complete", onboardingH.Complete)
 	}
 	return r

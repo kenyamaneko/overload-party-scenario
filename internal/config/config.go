@@ -32,6 +32,13 @@ type Config struct {
 	// ローカル/CI では FIRESTORE_EMULATOR_HOST を別途設定することでエミュレーターに接続。
 	FirestoreProjectID string
 
+	// AccountBaseURL はオンボーディング内 name 入力ステップと再開判定で
+	// scenario が account の internal REST に直叩きする際のベース URL。
+	// ClusterIP DNS (例: http://account.<ns>.svc.cluster.local:9000) を想定する。
+	// onboarding 限定の例外であり、汎用 account クライアントは共有しない
+	// (ARCHITECTURE.md「account 直叩きの構造的封じ込め」)。
+	AccountBaseURL string
+
 	// Outbox worker 設定。scenario.outbox_events を消費する常駐 worker のチューニング値。
 	// ハードコードではなく env で持つのは、負荷試験やインシデント時にデプロイなしで
 	// 試行錯誤できるようにするため (CLAUDE.md「デフォルト値へのフォールバック禁止」に
@@ -52,6 +59,7 @@ func FromEnv() (*Config, error) {
 		PubsubProjectID:      os.Getenv("PUBSUB_PROJECT_ID"),
 		PlayerOnboardedTopic: getEnv("PLAYER_ONBOARDED_TOPIC", "player-onboarded"),
 		FirestoreProjectID:   os.Getenv("FIRESTORE_PROJECT_ID"),
+		AccountBaseURL:       os.Getenv("ACCOUNT_BASE_URL"),
 	}
 
 	if raw := os.Getenv("PORT"); raw != "" {
@@ -76,6 +84,9 @@ func FromEnv() (*Config, error) {
 	}
 	if cfg.FirestoreProjectID == "" {
 		return nil, fmt.Errorf("config: FIRESTORE_PROJECT_ID is required (game_config)")
+	}
+	if cfg.AccountBaseURL == "" {
+		return nil, fmt.Errorf("config: ACCOUNT_BASE_URL is required (onboarding name relay and resume judgement)")
 	}
 
 	if err := loadOutboxConfig(cfg); err != nil {

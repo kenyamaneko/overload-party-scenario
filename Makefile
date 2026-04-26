@@ -37,6 +37,7 @@ run: db-up ## Run scenario server locally against compose Postgres (local env è¾
 	PUBSUB_PROJECT_ID=scenario-local \
 	FIRESTORE_PROJECT_ID=scenario-local \
 	STORY_BUCKET=local:./testdata/stories \
+	ACCOUNT_BASE_URL=http://localhost:9001 \
 	PUBSUB_EMULATOR_HOST=localhost:8085 \
 	FIRESTORE_EMULATOR_HOST=localhost:9041 \
 	go run ./cmd/server

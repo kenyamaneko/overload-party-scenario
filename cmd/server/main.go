@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	adaptergcs "github.com/kenyamaneko/overload-party-scenario/internal/adapter/gcs"
+	adapterhttp "github.com/kenyamaneko/overload-party-scenario/internal/adapter/http"
 	adapterlocal "github.com/kenyamaneko/overload-party-scenario/internal/adapter/local"
 	scenariopubsub "github.com/kenyamaneko/overload-party-scenario/internal/adapter/pubsub"
 	"github.com/kenyamaneko/overload-party-scenario/internal/config"
@@ -128,8 +129,10 @@ func run() error {
 	storySvc := story.New(storyRepo, scriptStore)
 	storyH := rest.NewStoryHandler(storySvc)
 
+	accountClient := adapterhttp.NewAccountClient(cfg.AccountBaseURL)
+
 	onboardingRepo := postgres.NewOnboardingRepository(pool)
-	onboardingSvc := onboarding.New(onboardingRepo, scriptStore)
+	onboardingSvc := onboarding.New(onboardingRepo, scriptStore, accountClient, accountClient)
 	onboardingH := rest.NewOnboardingHandler(onboardingSvc)
 
 	outboxRepo := postgres.NewOutboxRepository(pool)
