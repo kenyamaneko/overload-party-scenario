@@ -24,20 +24,18 @@ func TestPlayerOnboarded_ExpectPublishWaitRoundTrip(t *testing.T) {
 
 	require.NoError(t, apiscenariofake.PublishPlayerOnboarded(ctx, pub, apiscenario.PlayerOnboardedEvent{
 		PlayerID:         "player-1",
-		DisplayName:      "Kenya",
 		InitialFactionID: "Tenki",
 	}))
 
 	got, err := exp.Wait(time.Second)
 	require.NoError(t, err)
 	assert.Equal(t, "player-1", got.PlayerID)
-	assert.Equal(t, "Kenya", got.DisplayName)
 	assert.Equal(t, "Tenki", got.InitialFactionID)
 }
 
 // PublishPlayerOnboarded は、caller が省略したフィールドに契約上のデフォルトを
-// 埋める。テスト側は検証したい PlayerID / DisplayName / InitialFactionID のみ
-// 書けばよい、という ergonomic の契約。
+// 埋める。テスト側は検証したい PlayerID / InitialFactionID のみ書けばよい、
+// という ergonomic の契約。
 func TestPlayerOnboarded_PublishFillsDefaults(t *testing.T) {
 	broker := apiscenariofake.NewBroker()
 	pub := apiscenariofake.NewPublisher(broker)
@@ -48,7 +46,7 @@ func TestPlayerOnboarded_PublishFillsDefaults(t *testing.T) {
 	exp := apiscenariofake.ExpectPlayerOnboarded(sub)
 
 	require.NoError(t, apiscenariofake.PublishPlayerOnboarded(ctx, pub, apiscenario.PlayerOnboardedEvent{
-		PlayerID: "p", DisplayName: "n", InitialFactionID: "SHE",
+		PlayerID: "p", InitialFactionID: "SHE",
 	}))
 
 	got, err := exp.Wait(time.Second)
@@ -68,7 +66,7 @@ func TestPlayerOnboarded_WaitTimesOutWhenPublishedBeforeExpect(t *testing.T) {
 	ctx := context.Background()
 
 	require.NoError(t, apiscenariofake.PublishPlayerOnboarded(ctx, pub, apiscenario.PlayerOnboardedEvent{
-		PlayerID: "p", DisplayName: "n", InitialFactionID: "Tenki",
+		PlayerID: "p", InitialFactionID: "Tenki",
 	}))
 
 	exp := apiscenariofake.ExpectPlayerOnboarded(sub)
@@ -85,7 +83,7 @@ func TestTyped_PublishedRecordsTopicAndPayload(t *testing.T) {
 	ctx := context.Background()
 
 	require.NoError(t, apiscenariofake.PublishPlayerOnboarded(ctx, pub, apiscenario.PlayerOnboardedEvent{
-		PlayerID: "p", DisplayName: "n", InitialFactionID: "Sugar",
+		PlayerID: "p", InitialFactionID: "Sugar",
 	}))
 
 	history := pub.Published()

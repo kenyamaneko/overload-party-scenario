@@ -9,17 +9,16 @@ const TopicPlayerOnboarded = "player-onboarded"
 const EventTypePlayerOnboarded = "player_onboarded"
 
 // PlayerOnboardedEvent is published by scenario when a player completes the
-// onboarding scenario (one-shot per player). Subscribers (ADR-022 §決定.1):
+// onboarding scenario (one-shot per player). Subscribers:
 //
-//   - account: UPDATE players.display_name + INSERT player_factions +
-//     UPDATE players.selected_faction.
+//   - account: INSERT player_factions + UPDATE players.selected_faction.
+//     Display name is confirmed earlier via REST during the onboarding name
+//     input step, so this event does not carry it.
 //   - card: grant initial pack (InitialFactionID faction cards + Neutral cards).
 //   - gateway: push WS onboarding_complete notification to the connected client.
 //
-// Idempotency: subscribers MUST dedupe on EventID via their
-// processed_events table. See ADR-021 (onboarding design) and ADR-022
-// (FactionSelectedEvent decomposition into PlayerOnboardedEvent) for the
-// end-to-end design.
+// Idempotency: subscribers MUST dedupe on EventID via their processed_events
+// table.
 type PlayerOnboardedEvent struct {
 	// EventType is always EventTypePlayerOnboarded.
 	EventType string `json:"event_type"`
@@ -29,8 +28,6 @@ type PlayerOnboardedEvent struct {
 	Timestamp time.Time `json:"timestamp"`
 	// PlayerID is the target of the onboarding update.
 	PlayerID string `json:"player_id"`
-	// DisplayName is the player-entered display name collected during onboarding.
-	DisplayName string `json:"display_name"`
 	// InitialFactionID is one of SelectableFactions (SHE / Tenki / Sugar / Tuners).
 	InitialFactionID string `json:"initial_faction_id"`
 }

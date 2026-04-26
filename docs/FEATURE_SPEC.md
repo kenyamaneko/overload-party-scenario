@@ -19,10 +19,10 @@ scenario は以下の機能ドメインを所有する。
 | プレイヤー進行管理 | プレイヤーごとのエピソード完了記録を冪等に永続化する |
 | 多言語スクリプト配信 | `{lang}` テンプレートで切り替えた外部ストア (GCS または local FS) からスクリプト本文を配信する |
 | アンロック条件判定 | プレイヤーレベル・所有 faction・前提エピソード完了の複合 AND でエピソードのロック状態を算出する |
-| オンボーディングシナリオ | 初回起動時に一度だけ読ませ、display_name と初期 faction を集約して完了時に `player-onboarded` Pub/Sub イベントを atomic publish する（§10） |
+| オンボーディングシナリオ | 初回起動時に一度だけ読ませ、name 入力時に account へ表示名を REST 同期書込し、読了時に初期 faction を確定して `player-onboarded` Pub/Sub イベントを atomic publish する（§10） |
 | 初期 faction 選択 hand-off | オンボーディング完了時に `player-onboarded` Pub/Sub イベントの `initial_faction_id` で後続サービスへ伝播する（§10。[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) により旧 `faction-selected` を統合） |
 
-scenario は **scenario スキーマの DB 行と Firestore `game_config` を唯一の真実とし**、account スキーマ (`players.level` / `player_factions`) は cross-schema read のみで扱う。account / card / gateway を直接呼び出さない。
+scenario は **scenario スキーマの DB 行と Firestore `game_config` を唯一の真実とし**、account スキーマ (`players.level` / `player_factions`) は cross-schema read のみで扱う。card / gateway を直接呼び出さない。account に対しては [ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md) で許容された onboarding 内 REST 直叩き（表示名確定と再開判定）に限り例外的に呼び出す。
 
 ### 非対象
 
@@ -241,7 +241,7 @@ GCS / local FS / DB / Pub/Sub のエラーをログのみで握りつぶして�
 
 | トピック | ペイロード | 発行契機 |
 |---|---|---|
-| `player-onboarded` | `PlayerOnboardedEvent {event_id, timestamp, player_id, display_name, initial_faction_id}` | `OnboardingService.Complete` の DB commit 後（outbox worker が `scenario.outbox_events` 行を消費）。account / card / gateway が subscribe |
+| `player-onboarded` | `PlayerOnboardedEvent {event_id, event_type, timestamp, player_id, initial_faction_id}` | `OnboardingService.Complete` の DB commit 後（outbox worker が `scenario.outbox_events` 行を消費）。account / card / gateway が subscribe。表示名はオンボード途中で account に REST 同期書込済みのため payload には載せない（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)） |
 
 scenario が publish する topic はこの 1 本のみ。[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) で旧 `faction-selected` は廃止され、初期 faction ハンドオフは `PlayerOnboardedEvent.initial_faction_id` に統合された。publish 契約の詳細は §6 および [ARCHITECTURE.md](ARCHITECTURE.md#pubsub-publisher) を参照。
 
@@ -265,13 +265,13 @@ scenario は「サイレント no-op で起動する」「設定欠損の publis
 
 ## 10. オンボーディングシナリオ
 
-初回起動時に 1 度だけ読ませ、**display_name** と **初期 faction** を集約するユースケース。既存 `ScenarioEpisode` 配管（§3〜§5）とはサービス層・テーブル・API・イベントすべて分離している。設計上の意図は [ARCHITECTURE.md#オンボーディングシナリオ](ARCHITECTURE.md#オンボーディングシナリオ) と [ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) を参照。
+初回起動時に 1 度だけ読ませ、**表示名** と **初期 faction** を集約するユースケース。既存 `ScenarioEpisode` 配管（§3〜§5）とはサービス層・テーブル・API・イベントすべて分離している。表示名はオンボード内 name 入力ステップで scenario が account に対し REST 同期書込で確定する（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）。設計上の意図は [ARCHITECTURE.md#オンボーディングシナリオ](ARCHITECTURE.md#オンボーディングシナリオ) と [ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) / [ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md) を参照。
 
 ### 10.1 ユースケース
 
 1. **GET `/internal/v1/players/:playerId/onboarding/status`**: 完了済みかどうかを返す。クライアント起動時のオンボ画面表示判定に使う
 2. **GET `/internal/v1/players/:playerId/onboarding/script?lang=ja|en`**: 本文取得
-3. **POST `/internal/v1/players/:playerId/onboarding/complete`**: `display_name` と `initial_faction_id` を受け取り、完了記録 + `player-onboarded` publish を atomic に行う（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) で 1 イベントへ縮退）
+3. **POST `/internal/v1/players/:playerId/onboarding/complete`**: `initial_faction_id` を受け取り、完了記録 + `player-onboarded` publish を atomic に行う（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md)）。表示名は本 API では受け取らず、name 入力ステップで先に account へ REST 同期書込済みである前提（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）
 
 API の完全なリクエスト／レスポンス仕様は [API_REFERENCE.md](API_REFERENCE.md) が SSoT（`data/endpoints.yaml` から codegen）。
 
@@ -279,13 +279,13 @@ API の完全なリクエスト／レスポンス仕様は [API_REFERENCE.md](AP
 
 - `scenario.player_onboarding` の PK = `player_id` によって 2 度目の `INSERT` は一意制約違反となり、`ErrAlreadyOnboarded` → 409 に昇格する
 - 完了後の `GET /onboarding/script` は **409 already_onboarded** を返す（本文を再配信しない）。既存エピソードが完了後も再読可能なのと対照的なセマンティクス
-- scenario 側に保持するのは `player_id` / `completed_at` のみ。display_name / faction_id は保持せず、publish を中継するだけで SSoT は account 側に残す
+- scenario 側に保持するのは `player_id` / `completed_at` のみ。表示名 / faction_id は保持せず、publish を中継するだけで SSoT は account 側に残す
 
 ### 10.3 入力バリデーション
 
-- `display_name`: 空文字・21 文字超過・全 whitespace のいずれも `ErrInvalidDisplayName` → 400（MVP 仕様。文字種制約は将来別 Issue で扱う）
+- 表示名: account の `internal/model/name.go`（`MaxNameRunes = 20`、空 / 全空白 / 制御文字 / 上限超で `ErrInvalidName`）が業務 SSoT。scenario 側はバリデーションを持たず、name 入力ステップで account の 400 をそのまま中継する（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）
 - `initial_faction_id`: `overload-party-common/packages/game-design-constants.SelectableFactions` に対して membership 検証。該当なしは `ErrInvalidFaction` → 400。`is_collectible=false` の `Neutral` は codegen フィルタ時点で除外されるため service 層で重ね書きしない
-- 一意性は検査しない（display_name 衝突は許容、playerID が identity の SSoT）
+- 一意性は検査しない（表示名衝突は許容、playerID が identity の SSoT）
 
 ### 10.4 スクリプト配置
 
@@ -293,11 +293,11 @@ API の完全なリクエスト／レスポンス仕様は [API_REFERENCE.md](AP
 
 ### 10.5 完了時に publish する 1 イベント
 
-`OnboardingService.Complete` が `scenario.player_onboarding` INSERT と以下 1 行の outbox 挿入を **同一トランザクションで commit** する（§6 参照）。[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) により ADR-021 時代の 2 イベント設計（`player-onboarded` + `faction-selected`）から 1 イベント設計へ縮退した。
+`OnboardingService.Complete` が `scenario.player_onboarding` INSERT と以下 1 行の outbox 挿入を **同一トランザクションで commit** する（§6 参照）。publish 対象は `player-onboarded` 1 イベントのみ（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md)）。表示名は payload に載せない（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）。
 
 | トピック | payload | subscriber | 用途 |
 |---|---|---|---|
-| `player-onboarded` | `event_id` / `player_id` / `display_name` / `initial_faction_id` / `timestamp` | account, card, gateway | account: `players.display_name` 更新 + `player_factions` INSERT + `players.selected_faction` UPDATE。card: faction + Neutral の初期パック配布。gateway: WS `onboarding_complete` push |
+| `player-onboarded` | `event_id` / `event_type` / `timestamp` / `player_id` / `initial_faction_id` | account, card, gateway | account: `player_factions` INSERT + `players.selected_faction` UPDATE（表示名は onboarding 内 REST 同期書込済み）。card: faction + Neutral の初期パック配布。gateway: WS `onboarding_complete` push |
 
 subscriber は `event_id` を冪等性キーに重複排除する（ADR-012 の契約）。同一プレイヤーに対して `initial_faction_id` は不変なので、再配送時も副作用は一致する。
 
@@ -306,8 +306,9 @@ subscriber は `event_id` を冪等性キーに重複排除する（ADR-012 の�
 | 失敗 | エラー | HTTP |
 |---|---|---|
 | 完了済みプレイヤーの `GET script` / `POST complete` | `ErrAlreadyOnboarded` | 409 |
-| `display_name` 不正 | `ErrInvalidDisplayName` | 400 |
 | `initial_faction_id` が `SelectableFactions` に非該当 | `ErrInvalidFaction` | 400 |
 | 要求言語のスクリプト未配置 | `ErrScriptNotFound` | 404 |
 | GCS / local FS のインフラ障害 | `ErrScriptInfra` | 500 |
 | DB commit 失敗 | 分類なし | 500（outbox 行も巻き戻るため部分送信は発生しない） |
+
+表示名のバリデーション失敗（`ErrInvalidName` 相当）は本フローでは発生しない。表示名は name 入力ステップ (`PUT /onboarding/name`) が account の 400 を中継する経路で扱う。

@@ -115,7 +115,7 @@ func fetchOutboxState(t *testing.T, id uuid.UUID) (publishedAt *time.Time, failu
 func TestIntegration_RunOnce_PublishesAndMarks(t *testing.T) {
 	relay, sub, _ := setupRelay(t)
 
-	payload := []byte(`{"event_type":"player_onboarded","player_id":"p-1","display_name":"DN","initial_faction_id":"Tenki"}`)
+	payload := []byte(`{"event_type":"player_onboarded","player_id":"p-1","initial_faction_id":"Tenki"}`)
 	id := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, payload)
 
 	require.NoError(t, relay.RunOnce(context.Background()))
@@ -143,7 +143,6 @@ func TestIntegration_RunOnce_DeliversTypedPayload(t *testing.T) {
 		EventID:          id.String(),
 		Timestamp:        time.Now().UTC(),
 		PlayerID:         "player-xyz",
-		DisplayName:      "Display Name",
 		InitialFactionID: "SHE",
 	})
 	require.NoError(t, err)
@@ -163,7 +162,6 @@ func TestIntegration_RunOnce_DeliversTypedPayload(t *testing.T) {
 	assert.Equal(t, apiscenario.EventTypePlayerOnboarded, decoded.EventType)
 	assert.Equal(t, id.String(), decoded.EventID)
 	assert.Equal(t, "player-xyz", decoded.PlayerID)
-	assert.Equal(t, "Display Name", decoded.DisplayName)
 	assert.Equal(t, "SHE", decoded.InitialFactionID)
 }
 

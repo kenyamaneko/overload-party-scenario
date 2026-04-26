@@ -72,7 +72,6 @@ type OnboardingScriptResponse struct {
 
 // OnboardingCompleteRequest is the body sent when the player finishes reading the onboarding scenario.
 type OnboardingCompleteRequest struct {
-	DisplayName      string `json:"display_name"`
 	InitialFactionID string `json:"initial_faction_id"`
 }
 

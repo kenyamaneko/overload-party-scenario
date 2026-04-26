@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 	gamedesign "github.com/kenyamaneko/overload-party-common/packages/game-design-constants"
@@ -16,10 +14,6 @@ import (
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
-
-// displayNameMaxRunes は display_name の最大長 (rune 単位)。
-// 日本語・絵文字・合成文字を考慮し byte ではなく rune でカウントする。
-const displayNameMaxRunes = 21
 
 // Service はオンボーディングのユースケースを束ねる。
 type Service struct {
@@ -69,15 +63,13 @@ func (s *Service) GetScript(ctx context.Context, playerID, lang string) (string,
 
 // Complete はオンボーディング完了を記録し、player-onboarded を outbox に同一 tx で積む。
 // 二度目以降の完了は ErrAlreadyOnboarded を返す。
-func (s *Service) Complete(ctx context.Context, playerID, displayName, initialFactionID string) error {
-	if err := validateDisplayName(displayName); err != nil {
-		return err
-	}
+// 表示名はオンボード内 name 入力ステップで account に確定済みのため、本フローでは扱わない。
+func (s *Service) Complete(ctx context.Context, playerID, initialFactionID string) error {
 	if err := validateFaction(initialFactionID); err != nil {
 		return err
 	}
 
-	ev, err := buildPlayerOnboardedEvent(playerID, displayName, initialFactionID)
+	ev, err := buildPlayerOnboardedEvent(playerID, initialFactionID)
 	if err != nil {
 		return fmt.Errorf("build player-onboarded: %w", err)
 	}
@@ -87,21 +79,6 @@ func (s *Service) Complete(ctx context.Context, playerID, displayName, initialFa
 			return ErrAlreadyOnboarded
 		}
 		return fmt.Errorf("mark complete: %w", err)
-	}
-	return nil
-}
-
-// validateDisplayName は MVP 仕様に沿って display_name を検証する。
-// 空文字 / 全文字が whitespace のみ / 21 rune 超過 はいずれも ErrInvalidDisplayName。
-func validateDisplayName(name string) error {
-	if name == "" {
-		return ErrInvalidDisplayName
-	}
-	if strings.TrimSpace(name) == "" {
-		return ErrInvalidDisplayName
-	}
-	if utf8.RuneCountInString(name) > displayNameMaxRunes {
-		return ErrInvalidDisplayName
 	}
 	return nil
 }
@@ -118,12 +95,9 @@ func validateFaction(factionID string) error {
 // buildPlayerOnboardedEvent は player-onboarded の outbox 行 payload を構築する。
 // EventID は payload 内 eventId と outbox 行 PK の双方に使い、subscriber が
 // 冪等性キーとして使える。
-func buildPlayerOnboardedEvent(playerID, displayName, initialFactionID string) (port.OutboxEvent, error) {
+func buildPlayerOnboardedEvent(playerID, initialFactionID string) (port.OutboxEvent, error) {
 	if playerID == "" {
 		return port.OutboxEvent{}, errors.New("onboarding: playerID is empty")
-	}
-	if displayName == "" {
-		return port.OutboxEvent{}, errors.New("onboarding: displayName is empty")
 	}
 	if initialFactionID == "" {
 		return port.OutboxEvent{}, errors.New("onboarding: initialFactionID is empty")
@@ -134,7 +108,6 @@ func buildPlayerOnboardedEvent(playerID, displayName, initialFactionID string) (
 		EventID:          eventID.String(),
 		Timestamp:        time.Now().UTC(),
 		PlayerID:         playerID,
-		DisplayName:      displayName,
 		InitialFactionID: initialFactionID,
 	}
 	payload, err := json.Marshal(ev)

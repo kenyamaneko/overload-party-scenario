@@ -148,7 +148,7 @@ scenario の live publish は全て outbox 経由で起きる。具体的には 
 
 scenario は publish して終わり。`player-onboarded` 1 イベントから以下の副作用が派生する（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) §決定.1）:
 
-- account: `players.display_name` 更新、`player_factions` INSERT、`players.selected_faction` UPDATE
+- account: `player_factions` INSERT、`players.selected_faction` UPDATE。表示名は本イベントでは更新しない（オンボード内 name 入力ステップで REST 同期書込済み。[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）
 - card: `player_cards` に faction + Neutral のカードを付与
 - gateway: WS `onboarding_complete` push で完了通知
 
@@ -172,7 +172,7 @@ shop との差分は「何を積むか」だけで、インフラ側は共通化
 
 ## オンボーディングシナリオ
 
-[ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) により追加された「一度きり読了で display_name と初期 faction を集める」ユースケースは、既存 `ScenarioEpisode` 配管と **サービス層・テーブル・API・イベントのいずれも分離** する。詳細仕様は [FEATURE_SPEC.md](FEATURE_SPEC.md) と ADR-021 に委ね、ここでは別フロー化した設計観点だけ残す。
+「一度きり読了で表示名と初期 faction を集める」ユースケースは、既存 `ScenarioEpisode` 配管と **サービス層・テーブル・API・イベントのいずれも分離** する（[ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md)）。表示名はオンボード内 name 入力ステップで scenario が account に対し REST 同期書込で確定する。これはドメイン間 HTTP 直叩きの原則禁止に対する onboarding 限定の例外として許容される（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）。詳細仕様は [FEATURE_SPEC.md](FEATURE_SPEC.md) と ADR-021 / ADR-022 / ADR-025 に委ね、ここでは別フロー化した設計観点だけ残す。
 
 ### なぜ別ユースケースにしたか
 
@@ -180,13 +180,13 @@ shop との差分は「何を積むか」だけで、インフラ側は共通化
 
 - faction もレベルも無い状態で最初に走るため、既存 unlock モデルに条件を注入できない
 - 「一度きり」セマンティクスのため、完了後は本文を返さず 409 で弾く必要がある
-- 完了時に identity 副作用（display_name 書き込み + 初期 faction hand-off）を atomic に伴う
+- 完了時に identity 副作用（初期 faction hand-off。表示名はオンボード途中の REST 同期書込で先に確定）を atomic に伴う
 
-これらを既存エピソードに載せると `checkUnlock` / `GetScript` / `CompleteEpisode` の全てに「オンボ時だけ違う」横串分岐が増え、「一つの関数に複数の責務を負わせない」に反する。したがって `internal/service/onboarding/` として独立 service を構え、`scenario.player_onboarding`（PK = `player_id` で 2 度目の INSERT が一意制約違反になる形で「一度きり」を保証）と上記 outbox を通じて `player-onboarded` 1 イベントを atomic publish する配線に分離した（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) により旧 2 イベント設計から縮退）。
+これらを既存エピソードに載せると `checkUnlock` / `GetScript` / `CompleteEpisode` の全てに「オンボ時だけ違う」横串分岐が増え、「一つの関数に複数の責務を負わせない」に反する。したがって `internal/service/onboarding/` として独立 service を構え、`scenario.player_onboarding`（PK = `player_id` で 2 度目の INSERT が一意制約違反になる形で「一度きり」を保証）と上記 outbox を通じて `player-onboarded` 1 イベントを atomic publish する配線に分離する（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md)）。
 
 ### SSoT 分離
 
-scenario は「オンボ完了フラグ」と「スクリプト」の SSoT を持つが、display_name や所持 faction は **保持しない**。publish を中継するだけで、identity の SSoT は account 側に残す。これにより scenario は将来 display_name 変更機能などが account 側に入っても影響を受けない。
+scenario は「オンボ完了フラグ」と「スクリプト」の SSoT を持つが、表示名や所持 faction は **保持しない**。表示名は name 入力時点で account に対し REST 同期書込（scenario → account の onboarding 限定例外。[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）し、初期 faction は完了時に publish するだけで、identity の SSoT は account 側に残す。これにより scenario は将来表示名変更機能などが account 側に入っても影響を受けない。
 
 ## 構造的安全性
 

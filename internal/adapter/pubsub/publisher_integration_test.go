@@ -53,7 +53,7 @@ func setupPublisher(t *testing.T) (*Publisher, string) {
 }
 
 // buildPlayerOnboardedOutbox は service 層と同じ shape の OutboxEvent を組み立てる。
-func buildPlayerOnboardedOutbox(t *testing.T, playerID, displayName, initialFactionID string) port.OutboxEvent {
+func buildPlayerOnboardedOutbox(t *testing.T, playerID, initialFactionID string) port.OutboxEvent {
 	t.Helper()
 	id := uuid.New()
 	payload, err := json.Marshal(apiscenario.PlayerOnboardedEvent{
@@ -61,7 +61,6 @@ func buildPlayerOnboardedOutbox(t *testing.T, playerID, displayName, initialFact
 		EventID:          id.String(),
 		Timestamp:        time.Now().UTC(),
 		PlayerID:         playerID,
-		DisplayName:      displayName,
 		InitialFactionID: initialFactionID,
 	})
 	require.NoError(t, err)
@@ -79,7 +78,7 @@ func TestIntegration_PublishPlayerOnboarded(t *testing.T) {
 	sub := sharedEmulator.Subscribe(t, topic)
 
 	ctx := context.Background()
-	ev := buildPlayerOnboardedOutbox(t, "player-123", "Tenki Lover", "Tenki")
+	ev := buildPlayerOnboardedOutbox(t, "player-123", "Tenki")
 	require.NoError(t, pub.Publish(ctx, ev.EventType, ev.Payload))
 
 	msg, err := sub.WaitForMessage(ctx, 5*time.Second)
@@ -92,7 +91,6 @@ func TestIntegration_PublishPlayerOnboarded(t *testing.T) {
 	assert.Equal(t, ev.EventID.String(), decoded.EventID, "payload の event_id は outbox 行の PK と一致する")
 	assert.WithinDuration(t, time.Now(), decoded.Timestamp, 5*time.Second)
 	assert.Equal(t, "player-123", decoded.PlayerID)
-	assert.Equal(t, "Tenki Lover", decoded.DisplayName)
 	assert.Equal(t, "Tenki", decoded.InitialFactionID)
 }
 

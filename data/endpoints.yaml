@@ -48,10 +48,11 @@ endpoint_groups:
 
   - name: オンボーディング (internal REST — gateway → scenario)
     description: >
-      ゲーム開始時に一度だけ読むオンボーディングシナリオ。読了時に display_name と
-      初期 faction を受け取り、account / card / gateway に Pub/Sub `player-onboarded`
-      イベントを配信する（ADR-022 により 1 イベントへ縮退）。
-      完了は transactional outbox で保証される（詳細は ADR-021 / ADR-022）。
+      ゲーム開始時に一度だけ読むオンボーディングシナリオ。読了時に初期 faction を
+      受け取り、account / card / gateway に Pub/Sub `player-onboarded` イベントを
+      配信する。表示名はオンボード内 name 入力ステップで account に対し REST 同期書込で
+      確定するため、本完了 API では受け取らない。
+      完了は transactional outbox で保証される（詳細は ADR-021 / ADR-022 / ADR-025）。
     endpoints:
       - method: GET
         path: /internal/v1/players/:playerId/onboarding/status
@@ -81,6 +82,6 @@ endpoint_groups:
         response_type: OnboardingCompleteResponse
         response_example: '{"message": "onboarding completed", "player_id": "uuid"}'
         errors:
-          - {status: 400, reason: "display_name / initial_faction_id の検証失敗"}
+          - {status: 400, reason: "initial_faction_id の検証失敗"}
           - {status: 409, reason: "既にオンボーディング完了済み"}
           - {status: 500, reason: "DB / outbox 書き込み失敗"}

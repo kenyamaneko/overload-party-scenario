@@ -77,7 +77,6 @@ files:
       - name: OnboardingCompleteRequest
         comment: "OnboardingCompleteRequest is the body sent when the player finishes reading the onboarding scenario."
         fields:
-          - {name: DisplayName, type: string, json: "display_name"}
           - {name: InitialFactionID, type: string, json: "initial_faction_id"}
 
       - name: OnboardingCompleteResponse

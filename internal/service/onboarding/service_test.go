@@ -190,21 +190,18 @@ func TestGetScript(t *testing.T) {
 }
 
 func TestComplete(t *testing.T) {
-	validName := "プレイヤー太郎"
 	validFaction := "SHE"
 
 	repoErr := errors.New("db down")
 
 	tests := []struct {
 		name             string
-		displayName      string
 		initialFactionID string
 		repo             *fakeOnboardingRepo
 		verify           func(t *testing.T, err error, repo *fakeOnboardingRepo)
 	}{
 		{
 			name:             "正常系は player-onboarded イベント 1 本を outbox へ渡す",
-			displayName:      validName,
 			initialFactionID: validFaction,
 			repo:             &fakeOnboardingRepo{},
 			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
@@ -224,56 +221,11 @@ func TestComplete(t *testing.T) {
 				assert.Equal(t, apiscenario.EventTypePlayerOnboarded, decoded.EventType)
 				assert.Equal(t, ev.EventID.String(), decoded.EventID)
 				assert.Equal(t, "p1", decoded.PlayerID)
-				assert.Equal(t, validName, decoded.DisplayName)
 				assert.Equal(t, validFaction, decoded.InitialFactionID)
 			},
 		},
 		{
-			name:             "空文字の display_name は ErrInvalidDisplayName",
-			displayName:      "",
-			initialFactionID: validFaction,
-			repo:             &fakeOnboardingRepo{},
-			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
-				require.Error(t, err)
-				assert.ErrorIs(t, err, ErrInvalidDisplayName)
-				assert.Empty(t, repo.markCompleteCalls)
-			},
-		},
-		{
-			name:             "全空白の display_name は ErrInvalidDisplayName",
-			displayName:      "   \t  ",
-			initialFactionID: validFaction,
-			repo:             &fakeOnboardingRepo{},
-			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
-				require.Error(t, err)
-				assert.ErrorIs(t, err, ErrInvalidDisplayName)
-				assert.Empty(t, repo.markCompleteCalls)
-			},
-		},
-		{
-			name:             "22 rune の display_name は ErrInvalidDisplayName",
-			displayName:      "あいうえおかきくけこさしすせそたちつてとなに",
-			initialFactionID: validFaction,
-			repo:             &fakeOnboardingRepo{},
-			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
-				require.Error(t, err)
-				assert.ErrorIs(t, err, ErrInvalidDisplayName)
-				assert.Empty(t, repo.markCompleteCalls)
-			},
-		},
-		{
-			name:             "21 rune の display_name は境界内で許容する",
-			displayName:      "あいうえおかきくけこさしすせそたちつてとな",
-			initialFactionID: validFaction,
-			repo:             &fakeOnboardingRepo{},
-			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
-				require.NoError(t, err)
-				require.Len(t, repo.markCompleteCalls, 1)
-			},
-		},
-		{
 			name:             "SelectableFactions 外の Neutral は ErrInvalidFaction",
-			displayName:      validName,
 			initialFactionID: "Neutral",
 			repo:             &fakeOnboardingRepo{},
 			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
@@ -284,7 +236,6 @@ func TestComplete(t *testing.T) {
 		},
 		{
 			name:             "不明な faction は ErrInvalidFaction",
-			displayName:      validName,
 			initialFactionID: "Mystery",
 			repo:             &fakeOnboardingRepo{},
 			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
@@ -294,8 +245,17 @@ func TestComplete(t *testing.T) {
 			},
 		},
 		{
+			name:             "空の faction は ErrInvalidFaction",
+			initialFactionID: "",
+			repo:             &fakeOnboardingRepo{},
+			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, ErrInvalidFaction)
+				assert.Empty(t, repo.markCompleteCalls)
+			},
+		},
+		{
 			name:             "二度目の完了は ErrAlreadyOnboarded に翻訳する",
-			displayName:      validName,
 			initialFactionID: validFaction,
 			repo:             &fakeOnboardingRepo{markCompleteErr: port.ErrAlreadyOnboarded},
 			verify: func(t *testing.T, err error, _ *fakeOnboardingRepo) {
@@ -305,7 +265,6 @@ func TestComplete(t *testing.T) {
 		},
 		{
 			name:             "repo の未分類エラーは wrap して伝播する",
-			displayName:      validName,
 			initialFactionID: validFaction,
 			repo:             &fakeOnboardingRepo{markCompleteErr: repoErr},
 			verify: func(t *testing.T, err error, _ *fakeOnboardingRepo) {
@@ -318,7 +277,7 @@ func TestComplete(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := New(tc.repo, nil)
-			err := svc.Complete(context.Background(), "p1", tc.displayName, tc.initialFactionID)
+			err := svc.Complete(context.Background(), "p1", tc.initialFactionID)
 			tc.verify(t, err, tc.repo)
 		})
 	}

@@ -1,7 +1,8 @@
 // Package onboarding はオンボーディング (初回プロローグ) のユースケースを提供する。
-// status 取得・script 取得・完了記録 + outbox enqueue を束ね、
-// display_name / initial_faction_id は account / card / gateway に
-// Transactional Outbox 経由で伝播させる (ADR-021)。
+// status 取得・script 取得・完了記録 + outbox enqueue を束ね、initial_faction_id は
+// account / card / gateway に Transactional Outbox 経由で伝播させる。
+// 表示名はオンボード内 name 入力ステップで account に対し REST 同期書込で確定するため、
+// 本パッケージでは扱わない。
 package onboarding
 
 import "errors"
@@ -19,8 +20,4 @@ var (
 	// ErrInvalidFaction は initial_faction_id が SelectableFactions に含まれない場合に返される。
 	// handler は HTTP 400 にマップする。
 	ErrInvalidFaction = errors.New("onboarding: invalid initial faction")
-
-	// ErrInvalidDisplayName は display_name が MVP 仕様 (空 / 全空白 / 21 rune 超) を満たさない場合に返される。
-	// handler は HTTP 400 にマップする。
-	ErrInvalidDisplayName = errors.New("onboarding: invalid display name")
 )

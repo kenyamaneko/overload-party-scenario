@@ -81,7 +81,7 @@ func (h *OnboardingHandler) Complete(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.Complete(c.Request.Context(), playerID, req.DisplayName, req.InitialFactionID); err != nil {
+	if err := h.svc.Complete(c.Request.Context(), playerID, req.InitialFactionID); err != nil {
 		if isOnboardingRejected(err) {
 			slog.Info("complete onboarding rejected", "error", err, "player_id", playerID)
 		} else {
@@ -112,8 +112,7 @@ func onboardingErrorStatus(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, onboarding.ErrAlreadyOnboarded):
 		return http.StatusConflict
-	case errors.Is(err, onboarding.ErrInvalidDisplayName),
-		errors.Is(err, onboarding.ErrInvalidFaction):
+	case errors.Is(err, onboarding.ErrInvalidFaction):
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError
@@ -125,7 +124,6 @@ func onboardingErrorStatus(err error) int {
 func isOnboardingRejected(err error) bool {
 	return errors.Is(err, onboarding.ErrAlreadyOnboarded) ||
 		errors.Is(err, onboarding.ErrScriptNotFound) ||
-		errors.Is(err, onboarding.ErrInvalidDisplayName) ||
 		errors.Is(err, onboarding.ErrInvalidFaction)
 }
 

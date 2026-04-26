@@ -13,7 +13,7 @@ import (
 // TopicPlayerOnboarded へ PlayerOnboardedEvent を 1 件発行する。
 // EventID / Timestamp が未設定なら UUIDv4 / 現在時刻を自動付与し、EventType は
 // 常に EventTypePlayerOnboarded に固定する — テスト側で手書きする必要があるのは
-// PlayerID / DisplayName / InitialFactionID など検証対象のフィールドのみ。
+// PlayerID / InitialFactionID など検証対象のフィールドのみ。
 func PublishPlayerOnboarded(ctx context.Context, p *Publisher, ev apiscenario.PlayerOnboardedEvent) error {
 	ev = fillPlayerOnboardedDefaults(ev)
 	data, err := json.Marshal(ev)
