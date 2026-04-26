@@ -59,35 +59,23 @@ type ScenarioCompleteResponse struct {
 	EpisodeID string `json:"episode_id"`
 }
 
-// OnboardingStatus indicates whether a player has completed onboarding.
-type OnboardingStatus struct {
-	PlayerID    string     `json:"player_id"`
-	Onboarded   bool       `json:"onboarded"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-}
-
 type OnboardingScriptResponse struct {
 	Script string `json:"script"`
 }
 
-// OnboardingCompleteRequest is the body sent when the player finishes reading the onboarding scenario.
-type OnboardingCompleteRequest struct {
-	InitialFactionID string `json:"initial_faction_id"`
-}
-
+// OnboardingCompleteResponse is returned by POST /internal/v1/players/:playerId/onboarding/complete. The complete request body is empty; the initial faction is captured by the prior POST /onboarding/faction step.
 type OnboardingCompleteResponse struct {
 	Message  string `json:"message"`
 	PlayerID string `json:"player_id"`
 }
 
-// OnboardingNameRequest is the body for the onboarding name input step. Scenario relays the value to account, which is the validation SSoT.
+// OnboardingNameRequest is the body for the onboarding name input step. Scenario delegates validation to account via POST /onboarding/name/validate, then publishes onboarding-name-set on success.
 type OnboardingNameRequest struct {
 	Name string `json:"name"`
 }
 
-// OnboardingResumeResponse carries the next checkpoint to resume from. The value is derived from account state and the onboarding completion mark.
-type OnboardingResumeResponse struct {
-	PlayerID       string `json:"player_id"`
-	NextCheckpoint string `json:"next_checkpoint"`
+// OnboardingFactionRequest is the body for the onboarding faction selection step. Scenario validates against SelectableFactions internally, then publishes onboarding-faction-set on success.
+type OnboardingFactionRequest struct {
+	InitialFactionID string `json:"initial_faction_id"`
 }
 

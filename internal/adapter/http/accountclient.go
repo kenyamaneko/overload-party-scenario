@@ -42,23 +42,27 @@ func NewAccountClient(baseURL string) *AccountClient {
 	}
 }
 
-type updateNameRequest struct {
+type validateNameRequest struct {
 	Name string `json:"name"`
 }
 
-// UpdateOnboardingName は account の PUT /internal/v1/players/:playerId/name を呼び、
-// 表示名を確定する。account の 400 (ErrInvalidName 相当) は port.ErrInvalidName に、
-// 404 は port.ErrPlayerNotFound に翻訳して service 層へ伝える。
-func (c *AccountClient) UpdateOnboardingName(ctx context.Context, playerID, name string) error {
+// ValidateOnboardingName は account の POST
+// /internal/v1/players/:playerId/onboarding/name/validate を呼び、表示名のバリデーションのみを
+// 同期で確認する。account 側で書き込みは行わない (書き込みは scenario が後段で
+// onboarding-name-set event を publish し、account subscriber が同一 tx で永続化する)。
+//
+// account の 400 (ErrInvalidName 相当) は port.ErrInvalidName に、404 は
+// port.ErrPlayerNotFound に翻訳して service 層へ伝える。
+func (c *AccountClient) ValidateOnboardingName(ctx context.Context, playerID, name string) error {
 	if playerID == "" {
 		return errors.New("accountclient: playerID is empty")
 	}
-	path := "/internal/v1/players/" + url.PathEscape(playerID) + "/name"
-	body, err := json.Marshal(updateNameRequest{Name: name})
+	path := "/internal/v1/players/" + url.PathEscape(playerID) + "/onboarding/name/validate"
+	body, err := json.Marshal(validateNameRequest{Name: name})
 	if err != nil {
 		return fmt.Errorf("accountclient: marshal: %w", err)
 	}
-	req, err := nethttp.NewRequestWithContext(ctx, nethttp.MethodPut, c.baseURL+path, bytes.NewReader(body))
+	req, err := nethttp.NewRequestWithContext(ctx, nethttp.MethodPost, c.baseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("accountclient: new request: %w", err)
 	}
@@ -72,9 +76,6 @@ func (c *AccountClient) UpdateOnboardingName(ctx context.Context, playerID, name
 
 	switch resp.StatusCode {
 	case nethttp.StatusOK, nethttp.StatusNoContent:
-		// レスポンスボディ (PlayerResponse) は scenario では使わない。account の
-		// 反映成功を 200/204 で確認できれば十分で、ここで Player スナップショットを
-		// 引き取ると SSoT が二重化する。
 		return nil
 	case nethttp.StatusBadRequest:
 		raw, _ := io.ReadAll(resp.Body)
@@ -83,21 +84,22 @@ func (c *AccountClient) UpdateOnboardingName(ctx context.Context, playerID, name
 		return port.ErrPlayerNotFound
 	}
 	raw, _ := io.ReadAll(resp.Body)
-	return fmt.Errorf("accountclient: PUT %s: status %d: %s", path, resp.StatusCode, string(raw))
+	return fmt.Errorf("accountclient: POST %s: status %d: %s", path, resp.StatusCode, string(raw))
 }
 
 // playerResponse は account の GET /internal/v1/players/:playerId が返す
 // PlayerResponse の JSON 形を、scenario が使う最小フィールドのみで写したもの。
-// 余分なフィールド (level / exp 等) は意図的に取り込まず、再開判定で
+// 余分なフィールド (level / exp / name 等) は意図的に取り込まず、Complete 時に
 // 必要な属性以外を scenario 内に持ち込まないことを構造的に保証する。
 type playerResponse struct {
 	PlayerID        string  `json:"player_id"`
-	Name            *string `json:"name,omitempty"`
 	SelectedFaction *string `json:"selected_faction,omitempty"`
 }
 
 // GetOnboardingPlayer は account の GET /internal/v1/players/:playerId を呼び、
-// 再開判定に必要な最小情報 (name / selected_faction の nullable 状態) を返す。
+// 完了 publish 時の InitialFactionID 用に selected_faction を取得する。
+// selected_faction が nil の場合は faction 選択ステップを経ずに Complete API が
+// 叩かれたフロー違反として port.ErrFactionNotSelected を返す。
 func (c *AccountClient) GetOnboardingPlayer(ctx context.Context, playerID string) (port.AccountPlayer, error) {
 	if playerID == "" {
 		return port.AccountPlayer{}, errors.New("accountclient: playerID is empty")
@@ -122,7 +124,6 @@ func (c *AccountClient) GetOnboardingPlayer(ctx context.Context, playerID string
 		}
 		return port.AccountPlayer{
 			PlayerID:        out.PlayerID,
-			Name:            out.Name,
 			SelectedFaction: out.SelectedFaction,
 		}, nil
 	case nethttp.StatusNotFound:

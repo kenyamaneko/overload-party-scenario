@@ -48,19 +48,14 @@ endpoint_groups:
 
   - name: オンボーディング (internal REST — gateway → scenario)
     description: >
-      ゲーム開始時に一度だけ読むオンボーディングシナリオ。読了時に初期 faction を
-      受け取り、account / card / gateway に Pub/Sub `player-onboarded` イベントを
-      配信する。表示名はオンボード内 name 入力ステップで account に対し REST 同期書込で
-      確定するため、本完了 API では受け取らない。
-      完了は transactional outbox で保証される（詳細は ADR-021 / ADR-022 / ADR-025）。
+      ゲーム開始時に一度だけ読むオンボーディングシナリオ。各ステップ完了で scenario が
+      対応する Pub/Sub イベント (onboarding-name-set / onboarding-faction-set /
+      player-onboarded) を outbox 経由で発行し、account がこれを subscribe して
+      players.name / selected_faction / onboarding_status を反映する。
+      オンボード進行状態は account.players.onboarding_status カラムが SSoT で、
+      クライアントは account の GET /internal/v1/players/:playerId のレスポンスから
+      取得する。
     endpoints:
-      - method: GET
-        path: /internal/v1/players/:playerId/onboarding/status
-        summary: オンボーディング完了状態を返す（クライアント起動時のオンボ画面表示判定）
-        auth: ClusterIP（gateway 経由）
-        response_type: OnboardingStatus
-        response_example: '{"player_id": "uuid", "onboarded": false}'
-
       - method: GET
         path: /internal/v1/players/:playerId/onboarding/script
         summary: オンボーディングシナリオ本文を取得（GCS からロード）
@@ -74,35 +69,33 @@ endpoint_groups:
           - {status: 409, reason: "既にオンボーディング完了済み"}
           - {status: 500, reason: "GCS 等インフラ障害"}
 
-      - method: GET
-        path: /internal/v1/players/:playerId/onboarding/resume
-        summary: オンボーディング再開時の次の checkpoint を返す（account の業務真実から導出）
-        auth: ClusterIP（gateway 経由）
-        response_type: OnboardingResumeResponse
-        response_example: '{"player_id": "uuid", "next_checkpoint": "name_set"}'
-        errors:
-          - {status: 404, reason: "プレイヤーが account に存在しない（Register 未実施）"}
-          - {status: 500, reason: "DB / account 連携の障害"}
-
       - method: PUT
         path: /internal/v1/players/:playerId/onboarding/name
-        summary: オンボード内 name 入力ステップで受け取った表示名を account に同期書込で確定する
+        summary: オンボード内 name 入力ステップ。account に validate を依頼し、成功時に onboarding-name-set を outbox publish
         auth: ClusterIP（gateway 経由）
         request_type: OnboardingNameRequest
         response_example: '204 No Content'
         errors:
           - {status: 400, reason: "name が account のバリデーション (空 / 全空白 / 制御文字 / 上限超) に違反"}
           - {status: 404, reason: "プレイヤーが account に存在しない（Register 未実施）"}
-          - {status: 500, reason: "account 連携の障害"}
+          - {status: 500, reason: "account 連携 / outbox 書き込みの障害"}
+
+      - method: POST
+        path: /internal/v1/players/:playerId/onboarding/faction
+        summary: オンボード内 faction 選択ステップ。SelectableFactions で validate し、成功時に onboarding-faction-set を outbox publish
+        auth: ClusterIP（gateway 経由）
+        request_type: OnboardingFactionRequest
+        response_example: '204 No Content'
+        errors:
+          - {status: 400, reason: "initial_faction_id が SelectableFactions に含まれない"}
+          - {status: 500, reason: "outbox 書き込みの障害"}
 
       - method: POST
         path: /internal/v1/players/:playerId/onboarding/complete
-        summary: オンボーディング完了を記録し player-onboarded を発行
+        summary: scenario 読了時に呼ばれ、scenario.player_onboarding INSERT + player-onboarded outbox publish を 1 tx で実行
         auth: ClusterIP（gateway 経由）
-        request_type: OnboardingCompleteRequest
         response_type: OnboardingCompleteResponse
         response_example: '{"message": "onboarding completed", "player_id": "uuid"}'
         errors:
-          - {status: 400, reason: "initial_faction_id の検証失敗"}
-          - {status: 409, reason: "既にオンボーディング完了済み"}
+          - {status: 409, reason: "既にオンボーディング完了済み / faction 選択ステップを経ていない"}
           - {status: 500, reason: "DB / outbox 書き込み失敗"}

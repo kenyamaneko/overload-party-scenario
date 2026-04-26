@@ -29,29 +29,6 @@ func NewOnboardingRepository(pool *pgxpool.Pool) *OnboardingRepository {
 	return &OnboardingRepository{pool: pool}
 }
 
-// GetStatus は scenario.player_onboarding から completed_at を引いて状態を返す。
-// 行が存在しない場合は「未完了」として Onboarded=false で返し、エラーにはしない
-// (ビジネス的な "status" クエリは "not found" を正常系として扱うため)。
-func (r *OnboardingRepository) GetStatus(ctx context.Context, playerID string) (port.OnboardingStatus, error) {
-	row := r.pool.QueryRow(ctx,
-		`SELECT completed_at
-		   FROM scenario.player_onboarding
-		  WHERE player_id = $1`,
-		playerID)
-
-	var status port.OnboardingStatus
-	status.PlayerID = playerID
-
-	if err := row.Scan(&status.CompletedAt); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return status, nil
-		}
-		return port.OnboardingStatus{}, fmt.Errorf("query onboarding status: %w", err)
-	}
-	status.Onboarded = true
-	return status, nil
-}
-
 // MarkComplete はビジネス行 (scenario.player_onboarding への INSERT) と
 // outbox イベント行の INSERT を同一トランザクションで実行する。
 // 一意制約違反は port.ErrAlreadyOnboarded に classify する。
@@ -76,6 +53,31 @@ func (r *OnboardingRepository) MarkComplete(ctx context.Context, playerID string
 		}
 		return fmt.Errorf("insert player_onboarding: %w", err)
 	}
+
+	for _, ev := range events {
+		if err := writeOutboxEvent(ctx, tx, ev); err != nil {
+			return fmt.Errorf("write outbox event: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
+}
+
+// PublishEvents は outbox 行のみを単一トランザクションで INSERT する。
+// scenario 側にビジネス書き込みを伴わないステップ (name-set / faction-set など) で、
+// 同一 publish 単位の atomic enqueue を保証する。events が空なら no-op。
+func (r *OnboardingRepository) PublishEvents(ctx context.Context, events ...port.OutboxEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	for _, ev := range events {
 		if err := writeOutboxEvent(ctx, tx, ev); err != nil {

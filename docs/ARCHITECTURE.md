@@ -133,24 +133,30 @@ CLAUDE.md の「GCS エラーを握りつぶさない。日本語へのフォー
 
 | 項目 | 値 |
 |---|---|
-| トピック | `player-onboarded`（`PLAYER_ONBOARDED_TOPIC` env で上書き可、クロスプロジェクト検証用） |
-| ペイロード型 | `PlayerOnboardedEvent` (`overload-party-scenario/packages/api-scenario`) |
+| トピック | `onboarding-name-set` / `onboarding-faction-set` / `player-onboarded`（業務事実ごとに 3 本に分離。[ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md)） |
+| ペイロード型 | `OnboardingNameSetEvent` / `OnboardingFactionSetEvent` / `PlayerOnboardedEvent` (`overload-party-scenario/packages/api-scenario`) |
 | publish 経路 | `internal/adapter/pubsub/publisher.go`（topic 名 → `*pubsub.Topic` の map ラッパ）を outbox worker が呼ぶ |
 | 配信保証 | at-least-once（subscriber 側で `event_id` ベースに重複排除する前提） |
 
-[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) により旧 `faction-selected` は廃止され、onboarding 起因の初期 faction ハンドオフは `PlayerOnboardedEvent` に吸収された（`initial_faction_id` フィールド）。scenario が publish する topic はこの 1 本のみ。
+scenario が publish する topic は上記 3 本。各 event は 1 業務事実 (name set / faction set / completion) に対応する。
 
 ### トリガー
 
-scenario の live publish は全て outbox 経由で起きる。具体的には `OnboardingService.Complete` が `scenario.player_onboarding` への INSERT と `scenario.outbox_events` への 1 行挿入を同一トランザクションで commit し、常駐 worker (`internal/handler/worker/outbox_ticker.go`) が未配信行を claim して `adapter/pubsub.Publisher.Publish` を呼ぶ。旧 `StoryService.NotifyInitialFactionSelected` は [ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) で削除されたため、`story.Service` は publisher 依存を持たない。
+scenario の live publish は全て outbox 経由で起きる:
+
+- `OnboardingService.UpdateName`: account の validate REST 成功後に `onboarding-name-set` event を outbox に積む (PublishEvents、ビジネス書き込みなしの単一 tx)
+- `OnboardingService.SelectFaction`: `SelectableFactions` 検証成功後に `onboarding-faction-set` event を outbox に積む (PublishEvents)
+- `OnboardingService.Complete`: `scenario.player_onboarding` INSERT と `player-onboarded` event の outbox INSERT を同一 tx で commit (MarkComplete)
+
+常駐 worker (`internal/handler/worker/outbox_ticker.go`) が未配信行を claim して `adapter/pubsub.Publisher.Publish` を呼ぶ。
 
 ### subscriber 側の責務
 
-scenario は publish して終わり。`player-onboarded` 1 イベントから以下の副作用が派生する（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) §決定.1）:
+scenario は publish して終わり。各 event から派生する副作用は以下:
 
-- account: `player_factions` INSERT、`players.selected_faction` UPDATE。表示名は本イベントでは更新しない（オンボード内 name 入力ステップで REST 同期書込済み。[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）
-- card: `player_cards` に faction + Neutral のカードを付与
-- gateway: WS `onboarding_complete` push で完了通知
+- `onboarding-name-set` → account: `players.name` + `onboarding_status='name_set'` を 1 tx で UPDATE
+- `onboarding-faction-set` → account: `selected_faction` UPDATE + `player_factions` INSERT (`source='initial_selection'`) + `onboarding_status='faction_set'` を 1 tx で実行
+- `player-onboarded` → account: `onboarding_status='completed'` UPDATE のみ。card: `player_cards` に faction + Neutral のカードを付与
 
 ### scenario の Outbox
 
@@ -172,7 +178,7 @@ shop との差分は「何を積むか」だけで、インフラ側は共通化
 
 ## オンボーディングシナリオ
 
-「一度きり読了で表示名と初期 faction を集める」ユースケースは、既存 `ScenarioEpisode` 配管と **サービス層・テーブル・API・イベントのいずれも分離** する（[ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md)）。表示名はオンボード内 name 入力ステップで scenario が account に対し REST 同期書込で確定する。これはドメイン間 HTTP 直叩きの原則禁止に対する onboarding 限定の例外として許容される（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）。詳細仕様は [FEATURE_SPEC.md](FEATURE_SPEC.md) と ADR-021 / ADR-022 / ADR-025 に委ね、ここでは別フロー化した設計観点だけ残す。
+「一度きり読了で表示名と初期 faction を集める」ユースケースは、既存 `ScenarioEpisode` 配管と **サービス層・テーブル・API・イベントのいずれも分離** する。各ステップ完了で対応する Pub/Sub event を発行し、業務データの永続化は account 側 subscriber に委ねる ([ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md))。account への REST は表示名のバリデーションと完了 publish 用の faction 取得に限定する。詳細仕様は [FEATURE_SPEC.md](FEATURE_SPEC.md) と ADR-021 / ADR-026 を参照。
 
 ### なぜ別ユースケースにしたか
 
@@ -180,21 +186,21 @@ shop との差分は「何を積むか」だけで、インフラ側は共通化
 
 - faction もレベルも無い状態で最初に走るため、既存 unlock モデルに条件を注入できない
 - 「一度きり」セマンティクスのため、完了後は本文を返さず 409 で弾く必要がある
-- 完了時に identity 副作用（初期 faction hand-off。表示名はオンボード途中の REST 同期書込で先に確定）を atomic に伴う
+- 完了時に identity 副作用（初期 faction hand-off）を atomic に伴う
 
-これらを既存エピソードに載せると `checkUnlock` / `GetScript` / `CompleteEpisode` の全てに「オンボ時だけ違う」横串分岐が増え、「一つの関数に複数の責務を負わせない」に反する。したがって `internal/service/onboarding/` として独立 service を構え、`scenario.player_onboarding`（PK = `player_id` で 2 度目の INSERT が一意制約違反になる形で「一度きり」を保証）と上記 outbox を通じて `player-onboarded` 1 イベントを atomic publish する配線に分離する（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md)）。
+これらを既存エピソードに載せると `checkUnlock` / `GetScript` / `CompleteEpisode` の全てに「オンボ時だけ違う」横串分岐が増え、「一つの関数に複数の責務を負わせない」に反する。したがって `internal/service/onboarding/` として独立 service を構え、`scenario.player_onboarding`（PK = `player_id` で 2 度目の INSERT が一意制約違反になる形で「一度きり」を保証）と outbox を通じて `player-onboarded` 1 イベントを atomic publish する。
 
 ### SSoT 分離
 
-scenario は「オンボ完了フラグ」と「スクリプト」の SSoT を持つが、表示名や所持 faction は **保持しない**。表示名は name 入力時点で account に対し REST 同期書込（scenario → account の onboarding 限定例外。[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）し、初期 faction は完了時に publish するだけで、identity の SSoT は account 側に残す。これにより scenario は将来表示名変更機能などが account 側に入っても影響を受けない。
+scenario は「オンボ完了フラグ」と「スクリプト」の SSoT を持つが、表示名 / 所持 faction / オンボード進行状態は **保持しない**。これらの SSoT は account 側 (`players.name` / `players.selected_faction` / `players.onboarding_status`) に残し、scenario は publish のみで業務データを伝播させる。これにより scenario は将来表示名変更機能などが account 側に入っても影響を受けない。
 
 ### account 直叩きの構造的封じ込め
 
-ADR-025 で許容された scenario → account の HTTP 直叩きは「拡散させない」ことが許容条件と一体になっている。`internal/adapter/http/accountclient.go` を `packages/` 外に置いて他リポからの import を構造的に禁じ、service 層には `port.OnboardingNameUpdater` / `port.OnboardingPlayerReader` という **ユースケース名を冠した狭い port** だけを露出させる。汎用的な `AccountClient` を service が引き取らないため、onboarding 以外の経路で account を叩く実装は構造的に書けない。account の業務エラー (400 → `ErrInvalidName`、404 → `ErrPlayerNotFound`) は adapter 内で port sentinel に翻訳し、HTTP の概念を service より上に漏らさない。
+scenario → account の HTTP 直叩きは「拡散させない」ことが許容条件と一体になっている。`internal/adapter/http/accountclient.go` を `packages/` 外に置いて他リポからの import を構造的に禁じ、service 層には `port.OnboardingNameValidator` / `port.OnboardingPlayerReader` という **ユースケース名を冠した狭い port** だけを露出させる。汎用的な `AccountClient` を service が引き取らないため、onboarding 以外の経路で account を叩く実装は構造的に書けない。account の業務エラー (400 → `ErrInvalidName`、404 → `ErrPlayerNotFound`) は adapter 内で port sentinel に翻訳し、HTTP の概念を service より上に漏らさない。
 
-### 再開判定の業務真実
+### 進行状態の取得経路
 
-オンボ再開時の checkpoint は scenario 側で永続化せず、`account.Player.Name` / `SelectedFaction` の nullable 状態と `scenario.player_onboarding` の完了マーク存在から `Resume` で導出する。scenario が独自に進行レコードを持つと account の業務真実と整合させる責務が増えるため、派生値として毎回計算する側を取る。
+オンボ進行状態は account の `GET /internal/v1/players/:playerId` レスポンスに含まれる `onboarding_status` カラム値が SSoT。scenario 側に進行状態取得用エンドポイントは持たず、クライアントは account へ直接問い合わせる ([ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md))。
 
 ## 構造的安全性
 
@@ -209,7 +215,7 @@ scenario は「静かに no-op で起動する」「nil publisher がログだ�
 - `STORY_BUCKET=local:<path>` のとき `<path>` 非空
 - `PUBSUB_PROJECT_ID` 必須
 - `FIRESTORE_PROJECT_ID` 必須（現在 runtime からは未参照だが、起動時にプロジェクト ID の典型的タイポを検出する目的で必須化）
-- `ACCOUNT_BASE_URL` 必須（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md) で許容された onboarding 限定の account 直叩き先。未設定だと name 入力ステップと再開判定がサイレントに 5xx 化するため起動時に拒否）
+- `ACCOUNT_BASE_URL` 必須（onboarding 限定の account 直叩き先 = name validate と Complete 時の faction 取得。未設定だと name 入力ステップと完了 publish がサイレントに 5xx 化するため起動時に拒否。[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md) / [ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md)）
 
 ### outbox worker 構築時のゼロ値拒否と unknown topic 明示エラー
 

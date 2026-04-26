@@ -21,29 +21,6 @@ func NewOnboardingHandler(svc *onboarding.Service) *OnboardingHandler {
 	return &OnboardingHandler{svc: svc}
 }
 
-// GetStatus はプレイヤーのオンボーディング完了状態を返す。
-// GET /internal/v1/players/:playerId/onboarding/status
-func (h *OnboardingHandler) GetStatus(c *gin.Context) {
-	playerID := c.Param("playerId")
-	if playerID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "playerId is required"})
-		return
-	}
-
-	status, err := h.svc.GetStatus(c.Request.Context(), playerID)
-	if err != nil {
-		slog.Error("get onboarding status failed", "error", err, "player_id", playerID)
-		respondOnboardingError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusOK, apiscenario.OnboardingStatus{
-		PlayerID:    playerID,
-		Onboarded:   status.Onboarded,
-		CompletedAt: status.CompletedAt,
-	})
-}
-
 // GetScript はオンボーディングシナリオ本文を返す。
 // GET /internal/v1/players/:playerId/onboarding/script?lang=ja|en
 func (h *OnboardingHandler) GetScript(c *gin.Context) {
@@ -64,8 +41,8 @@ func (h *OnboardingHandler) GetScript(c *gin.Context) {
 	c.JSON(http.StatusOK, apiscenario.OnboardingScriptResponse{Script: body})
 }
 
-// UpdateName はオンボード内 name 入力ステップで受け取った表示名を account に確定する。
-// account のバリデーション (ErrInvalidName) は 400 にそのまま中継する。
+// UpdateName はオンボード内 name 入力ステップを処理する。
+// account に validate を REST で依頼し、成功時に onboarding-name-set event を outbox に積む。
 // PUT /internal/v1/players/:playerId/onboarding/name
 func (h *OnboardingHandler) UpdateName(c *gin.Context) {
 	playerID := c.Param("playerId")
@@ -94,34 +71,38 @@ func (h *OnboardingHandler) UpdateName(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// Resume はオンボーディング再開時の次の checkpoint を返す。
-// GET /internal/v1/players/:playerId/onboarding/resume
-func (h *OnboardingHandler) Resume(c *gin.Context) {
+// SelectFaction はオンボード内 faction 選択ステップを処理する。
+// scenario 内で SelectableFactions 検証を行い、成功時に onboarding-faction-set event を
+// outbox に積む。
+// POST /internal/v1/players/:playerId/onboarding/faction
+func (h *OnboardingHandler) SelectFaction(c *gin.Context) {
 	playerID := c.Param("playerId")
 	if playerID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "playerId is required"})
 		return
 	}
 
-	cp, err := h.svc.Resume(c.Request.Context(), playerID)
-	if err != nil {
+	var req apiscenario.OnboardingFactionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		slog.Info("select onboarding faction bind failed", "error", err, "player_id", playerID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.svc.SelectFaction(c.Request.Context(), playerID, req.InitialFactionID); err != nil {
 		if isOnboardingRejected(err) {
-			slog.Info("resume onboarding rejected", "error", err, "player_id", playerID)
+			slog.Info("select onboarding faction rejected", "error", err, "player_id", playerID)
 		} else {
-			slog.Error("resume onboarding failed", "error", err, "player_id", playerID)
+			slog.Error("select onboarding faction failed", "error", err, "player_id", playerID)
 		}
 		respondOnboardingError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, apiscenario.OnboardingResumeResponse{
-		PlayerID:       playerID,
-		NextCheckpoint: string(cp),
-	})
+	c.Status(http.StatusNoContent)
 }
 
-// Complete はオンボーディング完了を記録し、outbox に player-onboarded を
-// atomic に積む (ADR-022)。
+// Complete はオンボーディング完了を記録し、player-onboarded を outbox に atomic に積む。
 // POST /internal/v1/players/:playerId/onboarding/complete
 func (h *OnboardingHandler) Complete(c *gin.Context) {
 	playerID := c.Param("playerId")
@@ -130,14 +111,7 @@ func (h *OnboardingHandler) Complete(c *gin.Context) {
 		return
 	}
 
-	var req apiscenario.OnboardingCompleteRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		slog.Info("complete onboarding bind failed", "error", err, "player_id", playerID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := h.svc.Complete(c.Request.Context(), playerID, req.InitialFactionID); err != nil {
+	if err := h.svc.Complete(c.Request.Context(), playerID); err != nil {
 		if isOnboardingRejected(err) {
 			slog.Info("complete onboarding rejected", "error", err, "player_id", playerID)
 		} else {
@@ -167,7 +141,8 @@ func onboardingErrorStatus(err error) int {
 	case errors.Is(err, onboarding.ErrScriptNotFound),
 		errors.Is(err, onboarding.ErrPlayerNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, onboarding.ErrAlreadyOnboarded):
+	case errors.Is(err, onboarding.ErrAlreadyOnboarded),
+		errors.Is(err, onboarding.ErrFactionNotSelected):
 		return http.StatusConflict
 	case errors.Is(err, onboarding.ErrInvalidFaction),
 		errors.Is(err, onboarding.ErrInvalidName):
@@ -178,13 +153,14 @@ func onboardingErrorStatus(err error) int {
 }
 
 // isOnboardingRejected は仕様通りの拒否 (クライアントの入力不備 / 既に完了済み /
-// スクリプト不在 / プレイヤー不在) か判定する。これらはログレベルを info に落とす。
+// スクリプト不在 / プレイヤー不在 / フロー違反) か判定する。これらはログレベルを info に落とす。
 func isOnboardingRejected(err error) bool {
 	return errors.Is(err, onboarding.ErrAlreadyOnboarded) ||
 		errors.Is(err, onboarding.ErrScriptNotFound) ||
 		errors.Is(err, onboarding.ErrInvalidFaction) ||
 		errors.Is(err, onboarding.ErrInvalidName) ||
-		errors.Is(err, onboarding.ErrPlayerNotFound)
+		errors.Is(err, onboarding.ErrPlayerNotFound) ||
+		errors.Is(err, onboarding.ErrFactionNotSelected)
 }
 
 // logGetOnboardingScriptError は GetScript のエラー種別ごとのログレベルを決定する。

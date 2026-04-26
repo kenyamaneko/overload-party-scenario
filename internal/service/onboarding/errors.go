@@ -1,8 +1,8 @@
 // Package onboarding はオンボーディング (初回プロローグ) のユースケースを提供する。
-// status 取得・script 取得・完了記録 + outbox enqueue を束ね、initial_faction_id は
-// account / card / gateway に Transactional Outbox 経由で伝播させる。
-// 表示名はオンボード内 name 入力ステップで account に対し REST 同期書込で確定するため、
-// 本パッケージでは扱わない。
+// 各ステップの完了で対応する outbox event (onboarding-name-set / onboarding-faction-set /
+// player-onboarded) を発行し、業務データの永続化は account 側 subscriber に委ねる。
+// account への REST 呼び出しは表示名のバリデーションと完了 publish 用の
+// faction 取得に限定し、書き込みは scenario 側で行わない。
 package onboarding
 
 import "errors"
@@ -30,4 +30,8 @@ var (
 	// オンボード経路では Register 直後を前提とするため通常発生しないが、
 	// 握りつぶさず構造的に表現する。handler は HTTP 404 にマップする。
 	ErrPlayerNotFound = errors.New("onboarding: player not found")
+
+	// ErrFactionNotSelected は完了 API が faction 選択ステップ未完了で叩かれた
+	// フロー違反を表す。handler は HTTP 409 Conflict にマップする。
+	ErrFactionNotSelected = errors.New("onboarding: initial faction not selected")
 )

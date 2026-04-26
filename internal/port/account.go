@@ -11,28 +11,32 @@ import (
 var ErrInvalidName = errors.New("account: invalid name")
 
 // ErrPlayerNotFound は対象 playerID が account に存在しないことを表す。
-// オンボード再開判定では Register 直後を前提とするため通常発生しないが、
+// オンボード経路では Register 直後を前提とするため通常発生しないが、
 // adapter 層で 404 を握りつぶさず構造的に表現する。
 var ErrPlayerNotFound = errors.New("account: player not found")
 
-// AccountPlayer は再開判定で必要となる account.Player の最小サブセット。
-// 表示名と選択中 faction の nullable 状態だけが checkpoint 導出に効く。
-// 汎用 Player 全体を scenario に持ち込まないことを構造的に表す。
+// ErrFactionNotSelected はオンボード Complete 時点で account 側に初期 faction が
+// 未設定だった場合に accountclient adapter が返す sentinel。faction 選択ステップを
+// 経ずに完了 API が叩かれたフロー違反を構造的に表現する。
+var ErrFactionNotSelected = errors.New("account: initial faction not selected")
+
+// AccountPlayer はオンボード Complete 時に scenario が account から取得する最小サブセット。
+// 完了 publish ペイロード (PlayerOnboardedEvent.InitialFactionID) を組み立てるために
+// 選択 faction が必要となる。
 type AccountPlayer struct {
 	PlayerID        string
-	Name            *string
 	SelectedFaction *string
 }
 
-// OnboardingNameUpdater はオンボーディング内 name 入力ステップ専用の
-// account 表示名確定ポート。
-// account の業務バリデーションを SSoT とし、違反は ErrInvalidName で返す。
-type OnboardingNameUpdater interface {
-	UpdateOnboardingName(ctx context.Context, playerID, name string) error
+// OnboardingNameValidator はオンボーディング内 name 入力ステップ専用の
+// account 表示名バリデーションポート。書き込みは行わず、4xx を即時にユーザーへ返すための
+// 同期確認のみを担う。書き込みは onboarding-name-set event subscriber が後段で実行する。
+type OnboardingNameValidator interface {
+	ValidateOnboardingName(ctx context.Context, playerID, name string) error
 }
 
-// OnboardingPlayerReader はオンボーディング再開判定専用の account 状態取得ポート。
-// 返す情報は AccountPlayer に絞られ、汎用 Player 取得には使わない。
+// OnboardingPlayerReader はオンボード Complete 時に PlayerOnboardedEvent payload に詰める
+// 選択 faction を account から取得するためのポート。
 type OnboardingPlayerReader interface {
 	GetOnboardingPlayer(ctx context.Context, playerID string) (AccountPlayer, error)
 }

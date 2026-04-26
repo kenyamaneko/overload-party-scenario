@@ -63,34 +63,22 @@ files:
           - {name: Message, type: string, json: "message"}
           - {name: EpisodeID, type: string, json: "episode_id"}
 
-      - name: OnboardingStatus
-        comment: "OnboardingStatus indicates whether a player has completed onboarding."
-        fields:
-          - {name: PlayerID, type: string, json: "player_id"}
-          - {name: Onboarded, type: bool, json: "onboarded"}
-          - {name: CompletedAt, type: "*time.Time", json: "completed_at,omitempty"}
-
       - name: OnboardingScriptResponse
         fields:
           - {name: Script, type: string, json: "script"}
 
-      - name: OnboardingCompleteRequest
-        comment: "OnboardingCompleteRequest is the body sent when the player finishes reading the onboarding scenario."
-        fields:
-          - {name: InitialFactionID, type: string, json: "initial_faction_id"}
-
       - name: OnboardingCompleteResponse
+        comment: "OnboardingCompleteResponse is returned by POST /internal/v1/players/:playerId/onboarding/complete. The complete request body is empty; the initial faction is captured by the prior POST /onboarding/faction step."
         fields:
           - {name: Message, type: string, json: "message"}
           - {name: PlayerID, type: string, json: "player_id"}
 
       - name: OnboardingNameRequest
-        comment: "OnboardingNameRequest is the body for the onboarding name input step. Scenario relays the value to account, which is the validation SSoT."
+        comment: "OnboardingNameRequest is the body for the onboarding name input step. Scenario delegates validation to account via POST /onboarding/name/validate, then publishes onboarding-name-set on success."
         fields:
           - {name: Name, type: string, json: "name"}
 
-      - name: OnboardingResumeResponse
-        comment: "OnboardingResumeResponse carries the next checkpoint to resume from. The value is derived from account state and the onboarding completion mark."
+      - name: OnboardingFactionRequest
+        comment: "OnboardingFactionRequest is the body for the onboarding faction selection step. Scenario validates against SelectableFactions internally, then publishes onboarding-faction-set on success."
         fields:
-          - {name: PlayerID, type: string, json: "player_id"}
-          - {name: NextCheckpoint, type: string, json: "next_checkpoint"}
+          - {name: InitialFactionID, type: string, json: "initial_faction_id"}

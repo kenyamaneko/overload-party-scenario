@@ -30,44 +30,54 @@ func insertOnboardingRow(t *testing.T, playerID string) {
 	require.NoError(t, err)
 }
 
-func TestOnboardingRepository_GetStatus(t *testing.T) {
+func TestOnboardingRepository_PublishEvents(t *testing.T) {
 	repo := postgres.NewOnboardingRepository(sharedPg.Pool)
 	ctx := context.Background()
 
+	makeEvents := func(n int) []port.OutboxEvent {
+		out := make([]port.OutboxEvent, 0, n)
+		for i := range n {
+			out = append(out, port.OutboxEvent{
+				EventID:   uuid.New(),
+				EventType: fmt.Sprintf("publish-test-event-%d", i),
+				Payload:   []byte(fmt.Sprintf(`{"i":%d}`, i)),
+			})
+		}
+		return out
+	}
+
 	tests := []struct {
-		name          string
-		setup         func(t *testing.T, playerID string)
-		wantOnboarded bool
+		name            string
+		events          []port.OutboxEvent
+		wantOutboxCount int
 	}{
 		{
-			name:          "行が無ければ未完了として Onboarded=false / CompletedAt=nil を返す",
-			setup:         func(t *testing.T, playerID string) {},
-			wantOnboarded: false,
+			name:            "events 複数: 単一 tx で全行が outbox に積まれる",
+			events:          makeEvents(2),
+			wantOutboxCount: 2,
 		},
 		{
-			name: "行が在れば完了済みとして Onboarded=true / CompletedAt を返す",
-			setup: func(t *testing.T, playerID string) {
-				insertOnboardingRow(t, playerID)
-			},
-			wantOnboarded: true,
+			name:            "events 1 件: 単独でも outbox に 1 行積む",
+			events:          makeEvents(1),
+			wantOutboxCount: 1,
+		},
+		{
+			name:            "events 0 件: no-op で outbox に何も積まない",
+			events:          nil,
+			wantOutboxCount: 0,
 		},
 	}
 
-	for i, tt := range tests {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sharedPg.Truncate(t)
-			playerID := newPlayerID(i, 0)
-			tt.setup(t, playerID)
 
-			got, err := repo.GetStatus(ctx, playerID)
-			require.NoError(t, err)
+			require.NoError(t, repo.PublishEvents(ctx, tt.events...))
 
-			assert.Equal(t, playerID, got.PlayerID, "PlayerID は入力通り")
-			assert.Equal(t, tt.wantOnboarded, got.Onboarded)
-
-			// CompletedAt の有無は Onboarded と連動する: 完了時は now() 相当、未完了時は nil。
-			wantCompletedAtNil := !tt.wantOnboarded
-			assert.Equal(t, wantCompletedAtNil, got.CompletedAt == nil, "CompletedAt の nil/非 nil は Onboarded と一致")
+			var outboxCount int
+			require.NoError(t, sharedPg.Pool.QueryRow(ctx,
+				`SELECT COUNT(*) FROM scenario.outbox_events`).Scan(&outboxCount))
+			assert.Equal(t, tt.wantOutboxCount, outboxCount)
 		})
 	}
 }

@@ -19,10 +19,10 @@ scenario は以下の機能ドメインを所有する。
 | プレイヤー進行管理 | プレイヤーごとのエピソード完了記録を冪等に永続化する |
 | 多言語スクリプト配信 | `{lang}` テンプレートで切り替えた外部ストア (GCS または local FS) からスクリプト本文を配信する |
 | アンロック条件判定 | プレイヤーレベル・所有 faction・前提エピソード完了の複合 AND でエピソードのロック状態を算出する |
-| オンボーディングシナリオ | 初回起動時に一度だけ読ませ、name 入力時に account へ表示名を REST 同期書込し、読了時に初期 faction を確定して `player-onboarded` Pub/Sub イベントを atomic publish する（§10） |
-| 初期 faction 選択 hand-off | オンボーディング完了時に `player-onboarded` Pub/Sub イベントの `initial_faction_id` で後続サービスへ伝播する（§10。[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) により旧 `faction-selected` を統合） |
+| オンボーディングシナリオ | 初回起動時に一度だけ読ませる。各ステップ完了で `onboarding-name-set` / `onboarding-faction-set` / `player-onboarded` を outbox publish し、業務データの永続化は account の subscriber に委ねる（§10、[ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md)） |
+| 初期 faction 選択 hand-off | オンボーディング完了時に `player-onboarded` Pub/Sub イベントの `initial_faction_id` で card の初期パック配布へ伝播する（§10。`selected_faction` への永続化は先行する `onboarding-faction-set` で account に書込済み） |
 
-scenario は **scenario スキーマの DB 行と Firestore `game_config` を唯一の真実とし**、account スキーマ (`players.level` / `player_factions`) は cross-schema read のみで扱う。card / gateway を直接呼び出さない。account に対しては [ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md) で許容された onboarding 内 REST 直叩き（表示名確定と再開判定）に限り例外的に呼び出す。
+scenario は **scenario スキーマの DB 行と Firestore `game_config` を唯一の真実とし**、account スキーマ (`players.level` / `player_factions`) は cross-schema read のみで扱う。card / gateway を直接呼び出さない。account に対しては onboarding 内 REST 直叩き 2 経路（表示名 validate と Complete 時の faction 取得）に限り例外的に呼び出す（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md) / [ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md)）。
 
 ### 非対象
 
@@ -241,7 +241,9 @@ GCS / local FS / DB / Pub/Sub のエラーをログのみで握りつぶして�
 
 | トピック | ペイロード | 発行契機 |
 |---|---|---|
-| `player-onboarded` | `PlayerOnboardedEvent {event_id, event_type, timestamp, player_id, initial_faction_id}` | `OnboardingService.Complete` の DB commit 後（outbox worker が `scenario.outbox_events` 行を消費）。account / card / gateway が subscribe。表示名はオンボード途中で account に REST 同期書込済みのため payload には載せない（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)） |
+| `onboarding-name-set` | `OnboardingNameSetEvent {event_id, event_type, timestamp, player_id, name}` | `OnboardingService.UpdateName` が account の validate REST 成功後に outbox に積む。account が subscribe して `players.name` + `onboarding_status='name_set'` を 1 tx で UPDATE |
+| `onboarding-faction-set` | `OnboardingFactionSetEvent {event_id, event_type, timestamp, player_id, initial_faction_id}` | `OnboardingService.SelectFaction` が `SelectableFactions` 検証成功後に outbox に積む。account が subscribe して `selected_faction` UPDATE + `player_factions` INSERT + `onboarding_status='faction_set'` を 1 tx で実行 |
+| `player-onboarded` | `PlayerOnboardedEvent {event_id, event_type, timestamp, player_id, initial_faction_id}` | `OnboardingService.Complete` の DB commit 後（outbox worker が `scenario.outbox_events` 行を消費）。account: `onboarding_status='completed'` UPDATE のみ。card: 初期パック配布 |
 
 scenario が publish する topic はこの 1 本のみ。[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) で旧 `faction-selected` は廃止され、初期 faction ハンドオフは `PlayerOnboardedEvent.initial_faction_id` に統合された。publish 契約の詳細は §6 および [ARCHITECTURE.md](ARCHITECTURE.md#pubsub-publisher) を参照。
 
@@ -265,15 +267,23 @@ scenario は「サイレント no-op で起動する」「設定欠損の publis
 
 ## 10. オンボーディングシナリオ
 
-初回起動時に 1 度だけ読ませ、**表示名** と **初期 faction** を集約するユースケース。既存 `ScenarioEpisode` 配管（§3〜§5）とはサービス層・テーブル・API・イベントすべて分離している。表示名はオンボード内 name 入力ステップで scenario が account に対し REST 同期書込で確定する（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）。設計上の意図は [ARCHITECTURE.md#オンボーディングシナリオ](ARCHITECTURE.md#オンボーディングシナリオ) と [ADR-021](../../overload-party-common/docs/adr/021-onboarding-scenario.md) / [ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md) を参照。
+初回起動時に 1 度だけ読ませる業務フロー。各ステップ完了で対応する Pub/Sub event
+(`onboarding-name-set` / `onboarding-faction-set` / `player-onboarded`) を outbox 経由で発行し、
+業務データの永続化は account 側 subscriber に委ねる ([ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md))。
+account の REST 呼び出しは表示名のバリデーションと完了 publish 用の faction 取得に限定し、
+scenario 側で account の業務カラムを直接書き換えない。
+進行状態は `account.players.onboarding_status` カラムが SSoT で、クライアントは account の
+`GET /internal/v1/players/:playerId` レスポンスから取得する。
 
 ### 10.1 ユースケース
 
-1. **GET `/internal/v1/players/:playerId/onboarding/status`**: 完了済みかどうかを返す。クライアント起動時のオンボ画面表示判定に使う
-2. **GET `/internal/v1/players/:playerId/onboarding/script?lang=ja|en`**: 本文取得
-3. **GET `/internal/v1/players/:playerId/onboarding/resume`**: 再開時の次の checkpoint (`started` / `name_set` / `faction_set` / `completed`) を返す。account の業務真実と完了マークから導出する派生値で、scenario 側に永続化しない
-4. **PUT `/internal/v1/players/:playerId/onboarding/name`**: name 入力ステップで受け取った表示名を account へ REST 同期書込で確定する。account のバリデーション (`ErrInvalidName` 相当) は 400 にそのまま中継する（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）
-5. **POST `/internal/v1/players/:playerId/onboarding/complete`**: `initial_faction_id` を受け取り、完了記録 + `player-onboarded` publish を atomic に行う（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md)）。表示名は本 API では受け取らず、name 入力ステップで先に account へ REST 同期書込済みである前提
+1. **GET `/internal/v1/players/:playerId/onboarding/script?lang=ja|en`**: 本文取得
+2. **PUT `/internal/v1/players/:playerId/onboarding/name`**: 表示名を受け取り、account に validate REST を依頼。成功時に `onboarding-name-set` event を outbox publish。account の 400 (`ErrInvalidName` 相当) はそのまま中継する
+3. **POST `/internal/v1/players/:playerId/onboarding/faction`**: `initial_faction_id` を受け取り、`SelectableFactions` で scenario 側 validate。成功時に `onboarding-faction-set` event を outbox publish
+4. **POST `/internal/v1/players/:playerId/onboarding/complete`**: scenario 読了時に呼ばれる。account の `GetPlayer` で `selected_faction` を取得して `player-onboarded` payload を組み立て、`scenario.player_onboarding` INSERT + `player-onboarded` publish を atomic に実行
+
+オンボード進行状態取得 (`onboarding_status`) は account の `GET /internal/v1/players/:playerId` 経由で
+クライアントが直接取得する。scenario 側に進行状態取得用エンドポイントは持たない。
 
 API の完全なリクエスト／レスポンス仕様は [API_REFERENCE.md](API_REFERENCE.md) が SSoT（`data/endpoints.yaml` から codegen）。
 
@@ -285,32 +295,38 @@ API の完全なリクエスト／レスポンス仕様は [API_REFERENCE.md](AP
 
 ### 10.3 入力バリデーション
 
-- 表示名: account の `internal/model/name.go`（`MaxNameRunes = 20`、空 / 全空白 / 制御文字 / 上限超で `ErrInvalidName`）が業務 SSoT。scenario 側はバリデーションを持たず、name 入力ステップで account の 400 をそのまま中継する（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）
-- `initial_faction_id`: `overload-party-common/packages/game-design-constants.SelectableFactions` に対して membership 検証。該当なしは `ErrInvalidFaction` → 400。`is_collectible=false` の `Neutral` は codegen フィルタ時点で除外されるため service 層で重ね書きしない
+- 表示名: account の `internal/model/name.go`（`MaxNameRunes = 20`、空 / 全空白 / 制御文字 / 上限超で `ErrInvalidName`）が業務 SSoT。scenario 側はバリデーションを持たず、`POST /onboarding/name/validate` の 400 をそのまま中継する
+- `initial_faction_id`: `overload-party-common/packages/game-design-constants.SelectableFactions` に対して membership 検証を scenario 側で実行。該当なしは `ErrInvalidFaction` → 400。`is_collectible=false` の `Neutral` は codegen フィルタ時点で除外されるため service 層で重ね書きしない
 - 一意性は検査しない（表示名衝突は許容、playerID が identity の SSoT）
 
 ### 10.4 スクリプト配置
 
 `scripts/onboarding/{lang}.ks` に配置する（既存 `stories/{lang}/*.ks` と別ツリー）。言語フォールバックは既存エピソードと同じく **行わない**（§7 / [ARCHITECTURE.md#言語フォールバックを行わない](ARCHITECTURE.md#言語フォールバックを行わない)）。`{lang}` 不在なら 404 `script_not_found`。
 
-### 10.5 完了時に publish する 1 イベント
+### 10.5 各ステップで publish するイベント
 
-`OnboardingService.Complete` が `scenario.player_onboarding` INSERT と以下 1 行の outbox 挿入を **同一トランザクションで commit** する（§6 参照）。publish 対象は `player-onboarded` 1 イベントのみ（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md)）。表示名は payload に載せない（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md)）。
+業務事実ごとに 3 トピックに分離する。各 event は scenario の outbox 経由で atomic に enqueue され、
+account の subscriber が単一 tx で「業務データ永続化 + `onboarding_status` 遷移」を反映する。
 
-| トピック | payload | subscriber | 用途 |
-|---|---|---|---|
-| `player-onboarded` | `event_id` / `event_type` / `timestamp` / `player_id` / `initial_faction_id` | account, card, gateway | account: `player_factions` INSERT + `players.selected_faction` UPDATE（表示名は onboarding 内 REST 同期書込済み）。card: faction + Neutral の初期パック配布。gateway: WS `onboarding_complete` push |
+| トピック | publisher | subscriber | payload | 副作用 |
+|---|---|---|---|---|
+| `onboarding-name-set` | scenario | account | `event_id` / `event_type` / `timestamp` / `player_id` / `name` | account: `players.name` + `onboarding_status='name_set'` を 1 tx で UPDATE |
+| `onboarding-faction-set` | scenario | account | `event_id` / `event_type` / `timestamp` / `player_id` / `initial_faction_id` | account: `players.selected_faction` UPDATE + `player_factions` INSERT (`source='initial_selection'`) + `onboarding_status='faction_set'` を 1 tx で実行 |
+| `player-onboarded` | scenario | account, card | `event_id` / `event_type` / `timestamp` / `player_id` / `initial_faction_id` | account: `onboarding_status='completed'` UPDATE。card: `GrantInitialPack(player_id, initial_faction_id)` で初期パック配布 |
 
-subscriber は `event_id` を冪等性キーに重複排除する（ADR-012 の契約）。同一プレイヤーに対して `initial_faction_id` は不変なので、再配送時も副作用は一致する。
+subscriber は `event_id` を冪等性キーに `processed_events` で重複排除する。
+state machine の一方向遷移性 (`not_started` → `name_set` → `faction_set` → `completed`) を活用した
+条件付き UPDATE で out-of-order 配信に対しても整合性が保たれる。
 
 ### 10.6 エラー分類
 
 | 失敗 | エラー | HTTP |
 |---|---|---|
 | 完了済みプレイヤーの `GET script` / `POST complete` | `ErrAlreadyOnboarded` | 409 |
+| `POST /complete` で faction 選択ステップ未完了 (`selected_faction` が account に未設定) | `ErrFactionNotSelected` | 409 |
 | `initial_faction_id` が `SelectableFactions` に非該当 | `ErrInvalidFaction` | 400 |
 | `PUT /onboarding/name` で account の `ValidateName` に違反 | `ErrInvalidName` | 400 |
-| `PUT /onboarding/name` / `GET /onboarding/resume` で account に Player が存在しない | `ErrPlayerNotFound` | 404 |
+| `PUT /onboarding/name` / `POST /onboarding/complete` で account に Player が存在しない | `ErrPlayerNotFound` | 404 |
 | 要求言語のスクリプト未配置 | `ErrScriptNotFound` | 404 |
 | GCS / local FS のインフラ障害 | `ErrScriptInfra` | 500 |
 | DB commit 失敗 / account 連携の障害 | 分類なし | 500（outbox 行も巻き戻るため部分送信は発生しない。account 側 5xx は中継する） |
