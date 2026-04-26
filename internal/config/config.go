@@ -12,9 +12,9 @@ const localStoryPrefix = "local:"
 
 // Config は scenario サービスの起動設定を保持する。
 type Config struct {
-	Port        int
-	Env         string
-	DatabaseURL string
+	Port         int
+	Env          string
+	DatabaseConn string
 	// GCS バケット名（本番）または "local:" プレフィクス付きローカルパス（開発）。
 	// 必須 — scenario がサイレントに no-op 状態で起動することを防ぐ。
 	StoryBucket string
@@ -47,7 +47,7 @@ func FromEnv() (*Config, error) {
 	cfg := &Config{
 		Port:                 9007,
 		Env:                  getEnv("ENV", "dev"),
-		DatabaseURL:          os.Getenv("DATABASE_URL"),
+		DatabaseConn:         os.Getenv("DATABASE_CONN"),
 		StoryBucket:          os.Getenv("STORY_BUCKET"),
 		PubsubProjectID:      os.Getenv("PUBSUB_PROJECT_ID"),
 		PlayerOnboardedTopic: getEnv("PLAYER_ONBOARDED_TOPIC", "player-onboarded"),
@@ -62,8 +62,8 @@ func FromEnv() (*Config, error) {
 		cfg.Port = n
 	}
 
-	if cfg.DatabaseURL == "" {
-		return nil, fmt.Errorf("config: DATABASE_URL is required")
+	if cfg.DatabaseConn == "" {
+		return nil, fmt.Errorf("config: DATABASE_CONN is required")
 	}
 	if cfg.StoryBucket == "" {
 		return nil, fmt.Errorf("config: STORY_BUCKET is required (GCS bucket name, or \"local:<path>\" for dev)")

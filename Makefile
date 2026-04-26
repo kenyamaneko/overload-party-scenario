@@ -32,7 +32,7 @@ db-reset: ## Drop volume and recreate DB
 
 run: db-up ## Run scenario server locally against compose Postgres (local env 込み)
 	PORT=9007 \
-	DATABASE_URL="host=localhost port=5432 dbname=scenario user=scenario password=scenario sslmode=disable" \
+	DATABASE_CONN="host=localhost port=5432 dbname=scenario user=scenario password=scenario sslmode=disable" \
 	GOOGLE_CLOUD_PROJECT=scenario-local \
 	PUBSUB_PROJECT_ID=scenario-local \
 	FIRESTORE_PROJECT_ID=scenario-local \

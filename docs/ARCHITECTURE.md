@@ -196,7 +196,7 @@ scenario は「静かに no-op で起動する」「nil publisher がログだ�
 
 `internal/config/config.go.FromEnv` が下記を検証し、欠損 / 不正があれば即 error を返し main が exit 1 する:
 
-- `DATABASE_URL` 必須
+- `DATABASE_CONN` 必須（libpq キーワード形式）
 - `STORY_BUCKET` 必須
 - `STORY_BUCKET=local:<path>` のとき `<path>` 非空
 - `PUBSUB_PROJECT_ID` 必須
