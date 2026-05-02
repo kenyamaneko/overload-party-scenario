@@ -52,7 +52,7 @@ type validateNameRequest struct {
 // onboarding-name-set event を publish し、account subscriber が同一 tx で永続化する)。
 //
 // account の 400 (ErrInvalidName 相当) は port.ErrInvalidName に、404 は
-// port.ErrPlayerNotFound に翻訳して service 層へ伝える。
+// port.ErrPlayerNotFound に翻訳して usecase 層へ伝える。
 func (c *AccountClient) ValidateOnboardingName(ctx context.Context, playerID, name string) error {
 	if playerID == "" {
 		return errors.New("accountclient: playerID is empty")

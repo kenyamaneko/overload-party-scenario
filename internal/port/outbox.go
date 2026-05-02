@@ -25,7 +25,7 @@ type ClaimedOutboxEvent struct {
 	FailureCount int
 }
 
-// OutboxStore は outbox 行の消費側 (claim + mark/fail) を service 層から抽象化する。
+// OutboxStore は outbox 行の消費側 (claim + mark/fail) を usecase 層から抽象化する。
 // 書き込み側 (enqueue) は aggregate repo が担うため、この interface では扱わない。
 //
 // ClaimUnpublished は visibility timeout パターンで二重配信を避ける

@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/kenyamaneko/overload-party-scenario/internal/service/story"
+	"github.com/kenyamaneko/overload-party-scenario/internal/usecase/story"
 )
 
 // StoryHandler はシナリオ（ストーリー）の REST ハンドラを提供する。

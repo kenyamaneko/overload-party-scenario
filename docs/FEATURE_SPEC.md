@@ -296,7 +296,7 @@ API の完全なリクエスト／レスポンス仕様は [API_REFERENCE.md](AP
 ### 10.3 入力バリデーション
 
 - 表示名: account の `internal/model/name.go`（`MaxNameRunes = 20`、空 / 全空白 / 制御文字 / 上限超で `ErrInvalidName`）が業務 SSoT。scenario 側はバリデーションを持たず、`POST /onboarding/name/validate` の 400 をそのまま中継する
-- `initial_faction_id`: `overload-party-common/packages/game-design-constants.SelectableFactions` に対して membership 検証を scenario 側で実行。該当なしは `ErrInvalidFaction` → 400。`is_collectible=false` の `Neutral` は codegen フィルタ時点で除外されるため service 層で重ね書きしない
+- `initial_faction_id`: `overload-party-common/packages/game-design-constants.SelectableFactions` に対して membership 検証を scenario 側で実行。該当なしは `ErrInvalidFaction` → 400。`is_collectible=false` の `Neutral` は codegen フィルタ時点で除外されるため usecase 層で重ね書きしない
 - 一意性は検査しない（表示名衝突は許容、playerID が identity の SSoT）
 
 ### 10.4 スクリプト配置

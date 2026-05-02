@@ -23,7 +23,7 @@ scenario は他サービスを **直接呼ばない**。副作用を他サービ
 
 ## レイヤー分割
 
-shop と揃えた Clean Architecture レイヤーに沿う。handler（transport） → service（use case） → port（抽象） → adapter / repository（具体実装）の片方向依存を守る。
+shop と揃えた Clean Architecture レイヤーに沿う。handler（transport） → usecase → port（抽象） → adapter / repository（具体実装）の片方向依存を守る。
 
 ```
 cmd/server/main.go
@@ -31,9 +31,9 @@ cmd/server/main.go
   ├─ internal/handler/rest/*          # Gin ハンドラ、HTTP ↔ sentinel 変換 (story / onboarding)
   ├─ internal/handler/worker/*        # 常駐 worker エントリ (OutboxTicker)
   │     │
-  │     ├─ internal/service/story       # ユースケース (ListEpisodes / GetScript / CompleteEpisode)
-  │     ├─ internal/service/onboarding  # ユースケース (GetStatus / GetScript / Complete)
-  │     └─ internal/service/outbox      # outbox 消費ユースケース (RunOnce)
+  │     ├─ internal/usecase/story       # ユースケース (ListEpisodes / GetScript / CompleteEpisode)
+  │     ├─ internal/usecase/onboarding  # ユースケース (GetStatus / GetScript / Complete)
+  │     └─ internal/usecase/outbox      # outbox 消費ユースケース (RunOnce)
   │           │
   │           └─ internal/port/*      # interface 定義 (StoryRepo / OnboardingRepo / ScriptStore / OutboxStore / OutboxEventBuilder / RawEventPublisher / GameConfigRepo)
   │                 ▲
@@ -50,10 +50,10 @@ cmd/server/main.go
 
 依存方向:
 
-- `handler/rest` → `service/*` → `port` にのみ向く
-- `handler/worker` → `service/outbox` → `port` にのみ向く
-- `service/*` は `postgres` / `firestore` / `gcs` / `local` / `pubsub` の具体型を知らない
-- `port/mock_story_repo.go` が `service/story` のユニットテスト用 mock を保持する（旧 `internal/repository/mock_story_repo.go` は shop 準拠のレイアウトに合わせて port 直下に移動）
+- `handler/rest` → `usecase/*` → `port` にのみ向く
+- `handler/worker` → `usecase/outbox` → `port` にのみ向く
+- `usecase/*` は `postgres` / `firestore` / `gcs` / `local` / `pubsub` の具体型を知らない
+- `port/mock_story_repo.go` が `usecase/story` のユニットテスト用 mock を保持する（旧 `internal/repository/mock_story_repo.go` は shop 準拠のレイアウトに合わせて port 直下に移動）
 
 この並びは shop とほぼ同型で、layer のリファクタは shop 側の構造にサービス間で揃えるためのもの（ADR にある「サービス横断のテンプレート化」方針）。
 
@@ -66,13 +66,13 @@ cmd/server/main.go
 | `op-scenario-scripts-prod` (GCS バケット名) | GCS | `internal/adapter/gcs.ScriptStore` |
 | `local:./testdata/stories` | ローカル FS | `internal/adapter/local.ScriptStore` |
 
-`cmd/server/main.go.buildScriptStore` が `config.Config.IsLocalStory()` を見て 2 実装から 1 つだけを返す。起動後は handler / service からは `port.ScriptStore` interface 越しにしか見えず、判定ロジックが service 層に漏れない。
+`cmd/server/main.go.buildScriptStore` が `config.Config.IsLocalStory()` を見て 2 実装から 1 つだけを返す。起動後は handler / usecase からは `port.ScriptStore` interface 越しにしか見えず、判定ロジックが usecase 層に漏れない。
 
 **意図**: 開発マシンで GCS 認証なしに動かしたい、CI の e2e テストでテストデータを placement したい、という開発運用要件を、本番コードの静的配線で吸収する。リクエスト単位の切替（例: GCS 失敗時にローカルにフォールバック）は意図的に採用していない。「起動時に 1 度だけ決める」ことで、本番で誤ってローカルデータを読む事故を構造的に排除する。
 
 ### `{lang}` テンプレート解決
 
-`scenario_episodes.script_path` にはテンプレート (例: `stories/{lang}/she_ep1.ks`) を格納する。`service.story.readScript` はリクエスト時の `lang` で `{lang}` を `ReplaceAll` 置換し、得られたキーで `ScriptStore.ReadScript` を呼ぶ。
+`scenario_episodes.script_path` にはテンプレート (例: `stories/{lang}/she_ep1.ks`) を格納する。`usecase.story.readScript` はリクエスト時の `lang` で `{lang}` を `ReplaceAll` 置換し、得られたキーで `ScriptStore.ReadScript` を呼ぶ。
 
 変換ロジックは scripted store 手前に閉じ、ストア実装は「キー → バイト列」の純粋な read しか知らない。
 
@@ -171,14 +171,14 @@ shop との差分は「何を積むか」だけで、インフラ側は共通化
 | 積む event kind | `BuildFactionPurchased` / `BuildPremiumUpdated` | `BuildPlayerOnboarded`（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) で 1 kind に縮退） |
 | テーブルスキーマ | `shop.outbox_events` | `scenario.outbox_events`（カラム・インデックス同一） |
 | port 契約 (`OutboxStore` / `OutboxEventBuilder`) | shop | scenario でも同一インターフェース |
-| poller 実装 | `internal/service/outbox_publisher.go` + `internal/handler/worker/outbox_ticker.go` | 同名パスで同一構造 |
+| poller 実装 | `internal/usecase/outbox/relay.go` + `internal/handler/worker/outbox_ticker.go` | 同名パスで同一構造 |
 | 配信保証 | at-least-once + visibility timeout + `failure_count` 閾値 | 同一 |
 
 結果として scenario の publisher は「`adapter/pubsub.Publisher` が topic 名から `*pubsub.Topic` を引いて送出する」薄いラッパに退避し、atomic 性の責務は outbox 側に集約されている。運用観測メトリクス名もサービスプレフィックスのみ差し替えた同一体系（`scenario_outbox_unpublished_gauge` 等）を採る。
 
 ## オンボーディングシナリオ
 
-「一度きり読了で表示名と初期 faction を集める」ユースケースは、既存 `ScenarioEpisode` 配管と **サービス層・テーブル・API・イベントのいずれも分離** する。各ステップ完了で対応する Pub/Sub event を発行し、業務データの永続化は account 側 subscriber に委ねる ([ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md))。account への REST は表示名のバリデーションと完了 publish 用の faction 取得に限定する。詳細仕様は [FEATURE_SPEC.md](FEATURE_SPEC.md) と ADR-021 / ADR-026 を参照。
+「一度きり読了で表示名と初期 faction を集める」ユースケースは、既存 `ScenarioEpisode` 配管と **usecase 層・テーブル・API・イベントのいずれも分離** する。各ステップ完了で対応する Pub/Sub event を発行し、業務データの永続化は account 側 subscriber に委ねる ([ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md))。account への REST は表示名のバリデーションと完了 publish 用の faction 取得に限定する。詳細仕様は [FEATURE_SPEC.md](FEATURE_SPEC.md) と ADR-021 / ADR-026 を参照。
 
 ### なぜ別ユースケースにしたか
 
@@ -188,7 +188,7 @@ shop との差分は「何を積むか」だけで、インフラ側は共通化
 - 「一度きり」セマンティクスのため、完了後は本文を返さず 409 で弾く必要がある
 - 完了時に identity 副作用（初期 faction hand-off）を atomic に伴う
 
-これらを既存エピソードに載せると `checkUnlock` / `GetScript` / `CompleteEpisode` の全てに「オンボ時だけ違う」横串分岐が増え、「一つの関数に複数の責務を負わせない」に反する。したがって `internal/service/onboarding/` として独立 service を構え、`scenario.player_onboarding`（PK = `player_id` で 2 度目の INSERT が一意制約違反になる形で「一度きり」を保証）と outbox を通じて `player-onboarded` 1 イベントを atomic publish する。
+これらを既存エピソードに載せると `checkUnlock` / `GetScript` / `CompleteEpisode` の全てに「オンボ時だけ違う」横串分岐が増え、「一つの関数に複数の責務を負わせない」に反する。したがって `internal/usecase/onboarding/` として独立 usecase を構え、`scenario.player_onboarding`（PK = `player_id` で 2 度目の INSERT が一意制約違反になる形で「一度きり」を保証）と outbox を通じて `player-onboarded` 1 イベントを atomic publish する。
 
 ### SSoT 分離
 
@@ -196,7 +196,7 @@ scenario は「オンボ完了フラグ」と「スクリプト」の SSoT を�
 
 ### account 直叩きの構造的封じ込め
 
-scenario → account の HTTP 直叩きは「拡散させない」ことが許容条件と一体になっている。`internal/adapter/http/accountclient.go` を `packages/` 外に置いて他リポからの import を構造的に禁じ、service 層には `port.OnboardingNameValidator` / `port.OnboardingPlayerReader` という **ユースケース名を冠した狭い port** だけを露出させる。汎用的な `AccountClient` を service が引き取らないため、onboarding 以外の経路で account を叩く実装は構造的に書けない。account の業務エラー (400 → `ErrInvalidName`、404 → `ErrPlayerNotFound`) は adapter 内で port sentinel に翻訳し、HTTP の概念を service より上に漏らさない。
+scenario → account の HTTP 直叩きは「拡散させない」ことが許容条件と一体になっている。`internal/adapter/http/accountclient.go` を `packages/` 外に置いて他リポからの import を構造的に禁じ、usecase 層には `port.OnboardingNameValidator` / `port.OnboardingPlayerReader` という **ユースケース名を冠した狭い port** だけを露出させる。汎用的な `AccountClient` を usecase が引き取らないため、onboarding 以外の経路で account を叩く実装は構造的に書けない。account の業務エラー (400 → `ErrInvalidName`、404 → `ErrPlayerNotFound`) は adapter 内で port sentinel に翻訳し、HTTP の概念を usecase より上に漏らさない。
 
 ### 進行状態の取得経路
 
@@ -228,7 +228,7 @@ publisher 関連の fail-fast は [ADR-021](../../overload-party-common/docs/adr
 
 ### `IsLocalStory` 判定の閉じ込め
 
-`config.Config.IsLocalStory()` と `StoryLocalPath()` はストア判定ロジックを config 層に閉じ込める。service / handler からは `port.ScriptStore` 越しにしか見えず、`local:` プレフィクスの扱いが散らばらない。
+`config.Config.IsLocalStory()` と `StoryLocalPath()` はストア判定ロジックを config 層に閉じ込める。usecase / handler からは `port.ScriptStore` 越しにしか見えず、`local:` プレフィクスの扱いが散らばらない。
 
 ## テスト戦略
 
@@ -236,7 +236,7 @@ shop の方針に準拠し、以下の 3 層でテストする。
 
 | 対象 | 手段 |
 |---|---|
-| `service/story` / `service/onboarding` のユースケースロジック | `internal/port` 配下の mock / stub（`MockStoryRepository` / `ScriptStore` / `OnboardingRepo` / `OutboxEventBuilder` 等）でユニットテスト |
+| `usecase/story` / `usecase/onboarding` のユースケースロジック | `internal/port` 配下の mock / stub（`MockStoryRepository` / `ScriptStore` / `OnboardingRepo` / `OutboxEventBuilder` 等）でユニットテスト |
 | `repository/postgres` | testcontainers で実 PostgreSQL を起動し、`schema.sql` を流した上で CRUD を検証（整備予定） |
 | `repository/firestore` | Firestore emulator に対する統合テスト (`repository/firestore/game_config_repo_test.go`) |
 

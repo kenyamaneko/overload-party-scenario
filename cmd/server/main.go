@@ -26,9 +26,9 @@ import (
 	scenariofirestore "github.com/kenyamaneko/overload-party-scenario/internal/repository/firestore"
 	"github.com/kenyamaneko/overload-party-scenario/internal/repository/postgres"
 	"github.com/kenyamaneko/overload-party-scenario/internal/router"
-	"github.com/kenyamaneko/overload-party-scenario/internal/service/onboarding"
-	outboxsvc "github.com/kenyamaneko/overload-party-scenario/internal/service/outbox"
-	"github.com/kenyamaneko/overload-party-scenario/internal/service/story"
+	"github.com/kenyamaneko/overload-party-scenario/internal/usecase/onboarding"
+	outboxuc "github.com/kenyamaneko/overload-party-scenario/internal/usecase/outbox"
+	"github.com/kenyamaneko/overload-party-scenario/internal/usecase/story"
 )
 
 func main() {
@@ -136,7 +136,7 @@ func run() error {
 	onboardingH := rest.NewOnboardingHandler(onboardingSvc)
 
 	outboxRepo := postgres.NewOutboxRepository(pool)
-	outboxRelay, err := outboxsvc.New(outboxRepo, pubPublisher, outboxsvc.Config{
+	outboxRelay, err := outboxuc.New(outboxRepo, pubPublisher, outboxuc.Config{
 		BatchSize:         cfg.OutboxBatchSize,
 		FailureThreshold:  cfg.OutboxFailureThreshold,
 		VisibilityTimeout: cfg.OutboxVisibilityTimeout,

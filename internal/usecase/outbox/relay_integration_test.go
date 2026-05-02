@@ -18,7 +18,7 @@ import (
 	"github.com/kenyamaneko/overload-party-scenario/internal/adapter/pubsub/pubsubtest"
 	"github.com/kenyamaneko/overload-party-scenario/internal/repository/postgres"
 	"github.com/kenyamaneko/overload-party-scenario/internal/repository/postgres/postgrestest"
-	"github.com/kenyamaneko/overload-party-scenario/internal/service/outbox"
+	"github.com/kenyamaneko/overload-party-scenario/internal/usecase/outbox"
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
@@ -131,7 +131,7 @@ func TestIntegration_RunOnce_PublishesAndMarks(t *testing.T) {
 	assert.Nil(t, lastError)
 }
 
-// service 層が組み立てる shape の payload (apiscenario.PlayerOnboardedEvent JSON)
+// usecase 層が組み立てる shape の payload (apiscenario.PlayerOnboardedEvent JSON)
 // を outbox に積んで Publisher で送出したときに、subscriber 側で round-trip
 // できることを固定する。
 func TestIntegration_RunOnce_DeliversTypedPayload(t *testing.T) {

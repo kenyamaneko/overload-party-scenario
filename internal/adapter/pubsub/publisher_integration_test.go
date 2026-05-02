@@ -52,7 +52,7 @@ func setupPublisher(t *testing.T) (*Publisher, string) {
 	return pub, topic
 }
 
-// buildPlayerOnboardedOutbox は service 層と同じ shape の OutboxEvent を組み立てる。
+// buildPlayerOnboardedOutbox は usecase 層と同じ shape の OutboxEvent を組み立てる。
 func buildPlayerOnboardedOutbox(t *testing.T, playerID, initialFactionID string) port.OutboxEvent {
 	t.Helper()
 	id := uuid.New()

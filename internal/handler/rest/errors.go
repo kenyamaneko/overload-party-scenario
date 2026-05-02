@@ -7,12 +7,12 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
-	"github.com/kenyamaneko/overload-party-scenario/internal/service/story"
+	"github.com/kenyamaneko/overload-party-scenario/internal/usecase/story"
 )
 
 // errorStatus はドメインエラーを HTTP ステータスに分類する。
-// service 層の sentinel を「not found / locked / infra」のいずれに翻訳するかは
-// transport (handler) に閉じ、service からは HTTP を隠蔽する。
+// usecase 層の sentinel を「not found / locked / infra」のいずれに翻訳するかは
+// transport (handler) に閉じ、usecase からは HTTP を隠蔽する。
 //
 // default は 500 — DB 一時障害や未分類のエラーはクライアント側リトライに委ねる。
 func errorStatus(err error) int {

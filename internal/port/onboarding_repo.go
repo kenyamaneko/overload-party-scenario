@@ -8,7 +8,7 @@ import (
 // ErrAlreadyOnboarded は同一 playerID が二度目のオンボーディング完了を試みたとき
 // リポジトリ層が返す sentinel。scenario.player_onboarding の PRIMARY KEY
 // 一意制約違反 (SQLSTATE 23505) を repo 層が classify してこのエラーに変換する。
-// service 層はこれを受けて onboarding.ErrAlreadyOnboarded に翻訳し、
+// usecase 層はこれを受けて onboarding.ErrAlreadyOnboarded に翻訳し、
 // handler は HTTP 409 Conflict にマップする。
 var ErrAlreadyOnboarded = errors.New("onboarding: already completed")
 

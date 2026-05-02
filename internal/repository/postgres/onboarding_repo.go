@@ -14,7 +14,7 @@ import (
 
 // pgCodeUniqueViolation は PostgreSQL の一意制約違反を表す SQLSTATE。
 // scenario.player_onboarding の PRIMARY KEY (player_id) 違反をここで検出し、
-// port.ErrAlreadyOnboarded に翻訳することで service 層から pgx/pgconn を隠蔽する。
+// port.ErrAlreadyOnboarded に翻訳することで usecase 層から pgx/pgconn を隠蔽する。
 const pgCodeUniqueViolation = "23505"
 
 var _ port.OnboardingRepo = (*OnboardingRepository)(nil)

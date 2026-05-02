@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
-	"github.com/kenyamaneko/overload-party-scenario/internal/service/onboarding"
+	"github.com/kenyamaneko/overload-party-scenario/internal/usecase/onboarding"
 )
 
 // OnboardingHandler はオンボーディング (初回プロローグ) の REST ハンドラを提供する。
@@ -127,7 +127,7 @@ func (h *OnboardingHandler) Complete(c *gin.Context) {
 	})
 }
 
-// respondOnboardingError は onboarding service の sentinel を HTTP status にマップする。
+// respondOnboardingError は onboarding usecase の sentinel を HTTP status にマップする。
 // 既存 respondError の分類 (story 用) を流用すると "completed → 404" のように
 // 誤分類するため、onboarding handler 専用の分類関数を分けて責務を閉じる。
 func respondOnboardingError(c *gin.Context, err error) {

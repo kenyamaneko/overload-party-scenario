@@ -7,7 +7,7 @@ import (
 
 // ErrInvalidName は account の表示名バリデーション違反を表す sentinel。
 // 表示名のバリデーション SSoT は account に集約されており、accountclient adapter が
-// account の 400 レスポンスを本 sentinel に翻訳して service 層へ渡す。
+// account の 400 レスポンスを本 sentinel に翻訳して usecase 層へ渡す。
 var ErrInvalidName = errors.New("account: invalid name")
 
 // ErrPlayerNotFound は対象 playerID が account に存在しないことを表す。
