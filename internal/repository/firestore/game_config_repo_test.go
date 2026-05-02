@@ -17,9 +17,7 @@ import (
 	scenariofirestore "github.com/kenyamaneko/overload-party-scenario/internal/repository/firestore"
 )
 
-// Firestore emulator を前提とする integration test。
-// FIRESTORE_EMULATOR_HOST が未設定の場合はスキップ。
-// CI では .github/workflows/ci.yaml がエミュレーターを起動する。
+// TestFirestoreGameConfigRepository は emulator を前提とする integration test (FIRESTORE_EMULATOR_HOST 未設定時はスキップ)。
 func TestFirestoreGameConfigRepository(t *testing.T) {
 	host := os.Getenv("FIRESTORE_EMULATOR_HOST")
 	if host == "" {

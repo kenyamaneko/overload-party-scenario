@@ -21,8 +21,7 @@ import (
 
 var sharedEmulator *pubsubtest.Emulator
 
-// TestMain は package 共有で emulator を 1 回だけ起動する (起動コストを
-// package scope で償却)。テスト間の分離は topic / subscription の UUID suffix。
+// TestMain は package 共有で emulator を 1 回だけ起動する。
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 	em, err := pubsubtest.StartEmulator(ctx, "scenario-test")

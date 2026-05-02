@@ -11,7 +11,6 @@ import (
 var _ StoryRepo = (*MockStoryRepository)(nil)
 
 // MockStoryRepository はテスト用の自己完結型インメモリ StoryRepo 実装。
-// プレイヤーレベルと所有 faction を他の mock と連携せず直接保持する。
 type MockStoryRepository struct {
 	mu            sync.Mutex
 	episodes      []*apiscenario.ScenarioEpisode

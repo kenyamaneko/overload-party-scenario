@@ -70,7 +70,6 @@ func (h *StoryHandler) CompleteEpisode(c *gin.Context) {
 }
 
 // logGetScriptError は GetScript のエラー種別ごとのログレベルを決定する。
-// not-found / locked は仕様通りの拒否なので info、infra は原因を error で記録する。
 func logGetScriptError(err error, playerID, episodeID, lang string) {
 	attrs := []any{"error", err, "player_id", playerID, "episode_id", episodeID, "lang", lang}
 	switch {

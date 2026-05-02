@@ -16,8 +16,6 @@ import (
 )
 
 // Service はオンボーディングのユースケースを束ねる。
-// account への REST 呼び出しは validate と GetPlayer の 2 経路に限定し、
-// 業務データの永続化はすべて scenario の outbox publish 経由で account に依頼する。
 type Service struct {
 	repo          port.OnboardingRepo
 	scriptStore   port.ScriptStore
@@ -41,13 +39,6 @@ func New(
 }
 
 // GetScript はオンボーディングシナリオ本文を返す。
-// 要求言語のスクリプトが存在しなければ ErrScriptNotFound を返す
-// (代替言語へフォールバックしない)。
-//
-// 完了済み判定 (ErrAlreadyOnboarded) は scenario 側の責務として scenario.player_onboarding
-// 完了行の存在を確認する形で行う。完了状態の取得経路は account の GetPlayer
-// (onboarding_status) 経由が SSoT だが、ここでは GCS フェッチ前の short-circuit に必要な
-// 局所判定として完了マーク行の存在のみを利用する。
 func (s *Service) GetScript(ctx context.Context, playerID, lang string) (string, error) {
 	key := fmt.Sprintf("scripts/onboarding/%s.ks", lang)
 	body, err := s.scriptStore.ReadScript(ctx, key)
@@ -61,8 +52,6 @@ func (s *Service) GetScript(ctx context.Context, playerID, lang string) (string,
 }
 
 // UpdateName はオンボード内 name 入力ステップを処理する。
-// account に validate を REST で依頼し、成功時に onboarding-name-set event を
-// outbox に積む。name の永続化は account 側 subscriber が同一 tx で実行する。
 func (s *Service) UpdateName(ctx context.Context, playerID, name string) error {
 	if err := s.nameValidator.ValidateOnboardingName(ctx, playerID, name); err != nil {
 		if errors.Is(err, port.ErrInvalidName) {
@@ -85,9 +74,6 @@ func (s *Service) UpdateName(ctx context.Context, playerID, name string) error {
 }
 
 // SelectFaction はオンボード内 faction 選択ステップを処理する。
-// SelectableFactions に対する検証を scenario 側で行い、成功時に
-// onboarding-faction-set event を outbox に積む。faction の永続化は account 側
-// subscriber が同一 tx で実行する。
 func (s *Service) SelectFaction(ctx context.Context, playerID, initialFactionID string) error {
 	if err := validateFaction(initialFactionID); err != nil {
 		return err
@@ -103,13 +89,7 @@ func (s *Service) SelectFaction(ctx context.Context, playerID, initialFactionID 
 	return nil
 }
 
-// Complete はオンボーディング完了を記録し、player-onboarded event を outbox に
-// 同一 tx で積む。二度目以降の完了は ErrAlreadyOnboarded を返す。
-//
-// PlayerOnboardedEvent payload の InitialFactionID は account から取得する
-// (faction 選択ステップで account.players.selected_faction に書き込み済み)。
-// account 側に未設定なら ErrFactionNotSelected を返し、faction 選択を経ずに
-// 完了 API が叩かれたフロー違反を 409 として伝播する。
+// Complete はオンボーディング完了を記録し、player-onboarded event を outbox に同一 tx で積む。
 func (s *Service) Complete(ctx context.Context, playerID string) error {
 	player, err := s.playerReader.GetOnboardingPlayer(ctx, playerID)
 	if err != nil {
@@ -137,7 +117,6 @@ func (s *Service) Complete(ctx context.Context, playerID string) error {
 }
 
 // validateFaction は initial_faction_id が SelectableFactions に含まれるか検証する。
-// gamedesign.SelectableFactions が game-design-constants から注入される値の SSoT。
 func validateFaction(factionID string) error {
 	if !slices.Contains(gamedesign.SelectableFactions, factionID) {
 		return ErrInvalidFaction
@@ -146,8 +125,6 @@ func validateFaction(factionID string) error {
 }
 
 // buildOnboardingNameSetEvent は onboarding-name-set の outbox 行 payload を構築する。
-// EventID は payload 内 eventId と outbox 行 PK の双方に使い、subscriber が
-// 冪等性キーとして使える。
 func buildOnboardingNameSetEvent(playerID, name string) (port.OutboxEvent, error) {
 	if playerID == "" {
 		return port.OutboxEvent{}, errors.New("onboarding: playerID is empty")

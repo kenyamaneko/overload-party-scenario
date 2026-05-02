@@ -11,8 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeRunner は outboxRunner (usecase.OutboxPublisher のテスト代替)。
-// RunOnce の呼び出し回数を原子的にカウントし、指定エラーを返す。
+// fakeRunner は outboxRunner のテスト代替。
 type fakeRunner struct {
 	calls int32
 	err   error
@@ -60,11 +59,6 @@ func TestNewOutboxTicker_Validation(t *testing.T) {
 	}
 }
 
-// Run は ctx の状態と runner の挙動で 2 つの不変条件を満たす:
-//  1. ctx cancel で return する
-//  2. runner が tick ごとに呼ばれる (エラーを返しても停止しない)
-//
-// 各ケースを runner 設定 + 期待する最小呼び出し回数で固定する。
 func TestOutboxTicker_Run(t *testing.T) {
 	tests := []struct {
 		name         string

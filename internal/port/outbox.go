@@ -8,9 +8,6 @@ import (
 )
 
 // OutboxEvent は scenario.outbox_events への 1 行分の書き込み表現。
-// EventID は payload 内 eventId と一致し、再試行でも変えない (subscriber 冪等性キー)。
-// EventType は論理イベント種別 (apiscenario.EventType*) で、物理 topic への解決は
-// pubsub adapter 内で行う。
 type OutboxEvent struct {
 	EventID   uuid.UUID
 	EventType string
@@ -26,11 +23,6 @@ type ClaimedOutboxEvent struct {
 }
 
 // OutboxStore は outbox 行の消費側 (claim + mark/fail) を usecase 層から抽象化する。
-// 書き込み側 (enqueue) は aggregate repo が担うため、この interface では扱わない。
-//
-// ClaimUnpublished は visibility timeout パターンで二重配信を避ける
-// (claim 時に last_attempted_at を更新し、以降 visibilityTimeout の間は他 worker の
-// claim から除外される)。
 type OutboxStore interface {
 	ClaimUnpublished(ctx context.Context, limit int, visibilityTimeout time.Duration, failureThreshold int) ([]ClaimedOutboxEvent, error)
 	MarkPublished(ctx context.Context, eventID uuid.UUID) error

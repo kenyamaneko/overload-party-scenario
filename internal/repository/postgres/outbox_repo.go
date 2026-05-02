@@ -14,9 +14,7 @@ import (
 
 var _ port.OutboxStore = (*OutboxRepository)(nil)
 
-// writeOutboxEvent はビジネス行と同一トランザクション内で outbox 行を INSERT する
-// パッケージ内ヘルパ。dual-write 問題を避けるため、各 aggregate repo は
-// Create/Update の tx に outbox INSERT を相乗りさせる。
+// writeOutboxEvent は受け取った tx に outbox 行を INSERT する。
 func writeOutboxEvent(ctx context.Context, tx pgx.Tx, ev port.OutboxEvent) error {
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO scenario.outbox_events (event_id, event_type, payload)
@@ -37,12 +35,9 @@ func NewOutboxRepository(pool *pgxpool.Pool) *OutboxRepository {
 	return &OutboxRepository{pool: pool}
 }
 
-// ClaimUnpublished は未配信で、かつ直近 visibilityTimeout 以内に試行されていない
-// 行を最大 limit 件取得する。単一 SQL で claim 選定 + last_attempted_at 更新 +
-// RETURNING を完結させ、SKIP LOCKED により並行 worker と行の奪い合いをしない。
+// ClaimUnpublished は未配信で、かつ直近 visibilityTimeout 以内に試行されていない行を最大 limit 件取得する。
 func (r *OutboxRepository) ClaimUnpublished(ctx context.Context, limit int, visibilityTimeout time.Duration, failureThreshold int) ([]port.ClaimedOutboxEvent, error) {
-	// time.Duration.String() の "30s" 形式は Postgres interval に渡せないため
-	// ms 単位で明示的に組み立てる。
+	// Why: time.Duration.String() の "30s" 形式は Postgres interval に渡せないため ms 単位で組み立てる。
 	visibilityInterval := fmt.Sprintf("%d milliseconds", visibilityTimeout.Milliseconds())
 
 	rows, err := r.pool.Query(ctx,
@@ -83,7 +78,6 @@ func (r *OutboxRepository) ClaimUnpublished(ctx context.Context, limit int, visi
 }
 
 // MarkPublished は publish 成功した行に published_at を立て、last_error を解除する。
-// 既に published_at が入っている行に対しても安全 (値の上書きのみ)。
 func (r *OutboxRepository) MarkPublished(ctx context.Context, eventID uuid.UUID) error {
 	if _, err := r.pool.Exec(ctx,
 		`UPDATE scenario.outbox_events

@@ -10,10 +10,7 @@ import (
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
-// Service はエピソード一覧取得・スクリプト取得・完了記録を束ねる
-// ストーリーのユースケース実装。
-//
-// scriptStore は起動時 (config 判定) に一度だけ決定される (GCS か local filesystem)。
+// Service はエピソード一覧取得・スクリプト取得・完了記録を束ねるストーリーのユースケース。
 type Service struct {
 	storyRepo   port.StoryRepo
 	scriptStore port.ScriptStore
@@ -110,7 +107,6 @@ func (s *Service) validateUnlock(ctx context.Context, ep *apiscenario.ScenarioEp
 }
 
 // readScript は pathTemplate の {lang} を指定言語で置換し ScriptStore から読む。
-// 要求言語のスクリプトが存在しなければ ErrScriptNotFound を返す（代替言語へフォールバックしない）。
 func (s *Service) readScript(ctx context.Context, pathTemplate, lang string) (string, error) {
 	key := strings.ReplaceAll(pathTemplate, "{lang}", lang)
 	body, err := s.scriptStore.ReadScript(ctx, key)

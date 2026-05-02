@@ -39,7 +39,6 @@ func main() {
 }
 
 // setupLogger は ENV に応じてグローバル slog ロガーを初期化する。
-// 本番は Cloud Logging 互換 JSON、それ以外は人間可読な text handler。
 func setupLogger(env string) {
 	var h slog.Handler
 	if env == "prod" {
@@ -51,7 +50,6 @@ func setupLogger(env string) {
 }
 
 // newCloudLoggingHandler は Cloud Logging 互換の JSON ハンドラを返す。
-// slog のデフォルトフィールド名・値では Cloud Logging が認識しないため変換する。
 func newCloudLoggingHandler() slog.Handler {
 	return slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
@@ -99,8 +97,7 @@ func run() error {
 		return fmt.Errorf("firestore new client: %w", err)
 	}
 	defer func() { _ = fsClient.Close() }()
-	// game_config は現在 scenario の runtime パスから参照していない。
-	// クライアント到達性は起動時に検証するため、repo を生成だけしておく。
+	// Why: game_config は現在 runtime から参照していないが、クライアント到達性を起動時に検証するため repo を生成だけしておく。
 	_ = scenariofirestore.NewGameConfigRepository(fsClient)
 
 	pubPublisher, err := scenariopubsub.New(ctx, cfg.PubsubProjectID, cfg.PlayerOnboardedTopic)
@@ -165,8 +162,7 @@ func run() error {
 	return runHTTP(ctx, srv, outboxTicker)
 }
 
-// buildScriptStore は StoryBucket の形式に応じて GCS / local ScriptStore を構築する。
-// GCS を選んだ場合は close すべき client も返し、呼び出し側でリソースリリースさせる。
+// buildScriptStore は StoryBucket の形式に応じて GCS / local ScriptStore を構築する (GCS 選択時は close 用の client も返す)。
 func buildScriptStore(ctx context.Context, cfg *config.Config) (port.ScriptStore, *storage.Client, error) {
 	if cfg.IsLocalStory() {
 		root := cfg.StoryLocalPath()
@@ -183,7 +179,6 @@ func buildScriptStore(ctx context.Context, cfg *config.Config) (port.ScriptStore
 }
 
 // runHTTP は HTTP server と outbox ticker を起動し、ctx キャンセル時に graceful shutdown する。
-// ADR-021 で scenario に常駐 worker (outbox poller) が入ったため errgroup で束ねる。
 func runHTTP(ctx context.Context, srv *http.Server, outboxTicker *worker.OutboxTicker) error {
 	g, gCtx := errgroup.WithContext(ctx)
 

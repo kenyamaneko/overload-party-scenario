@@ -11,10 +11,6 @@ import (
 )
 
 // errorStatus はドメインエラーを HTTP ステータスに分類する。
-// usecase 層の sentinel を「not found / locked / infra」のいずれに翻訳するかは
-// transport (handler) に閉じ、usecase からは HTTP を隠蔽する。
-//
-// default は 500 — DB 一時障害や未分類のエラーはクライアント側リトライに委ねる。
 func errorStatus(err error) int {
 	switch {
 	case isNotFound(err):
@@ -33,7 +29,6 @@ func respondError(c *gin.Context, err error) {
 }
 
 // isNotFound はエピソードまたはスクリプトファイルが見つからないエラーか判定する。
-// ErrScriptNotFound は「要求言語にスクリプトが存在しない」を指す（代替言語フォールバックはしない）。
 func isNotFound(err error) bool {
 	return errors.Is(err, story.ErrEpisodeNotFound) ||
 		errors.Is(err, port.ErrScriptNotFound)
@@ -44,8 +39,7 @@ func isLocked(err error) bool {
 	return errors.Is(err, story.ErrEpisodeLocked)
 }
 
-// isInfra はストレージ層の非 not-found 障害か判定する（GCS / ファイルシステムのネットワーク・権限エラー等）。
-// 原因詳細はクライアントに漏らさず、ログのみに残す。
+// isInfra はストレージ層の非 not-found 障害か判定する。
 func isInfra(err error) bool {
 	return errors.Is(err, port.ErrScriptInfra)
 }

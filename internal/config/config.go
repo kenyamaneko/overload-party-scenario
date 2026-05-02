@@ -15,38 +15,26 @@ type Config struct {
 	Port         int
 	Env          string
 	DatabaseConn string
-	// GCS バケット名（本番）または "local:" プレフィクス付きローカルパス（開発）。
-	// 必須 — scenario がサイレントに no-op 状態で起動することを防ぐ。
+	// StoryBucket は GCS バケット名 (本番)、または "local:" プレフィクス付きローカルパス (開発)。
 	StoryBucket string
 
-	// player-onboarded topic をホストする Google Cloud project。必須 — オンボーディング
-	// 完了 hand-off を静かにドロップせず fail-fast する。
+	// PubsubProjectID は scenario が publish する Pub/Sub topic のホスト Google Cloud project。
 	PubsubProjectID string
 
-	// player-onboarded topic 名 (scenario → account / card / gateway …)。
-	// デフォルト "player-onboarded"。クロスプロジェクトテスト用にのみ変更する。
-	// ADR-022 により faction-selected は廃止し、faction 情報も本イベントに同居する。
+	// PlayerOnboardedTopic は scenario が publish する完了イベントの topic 名。
 	PlayerOnboardedTopic string
 
 	// FirestoreProjectID は game_config の読み取り先プロジェクト ID。
-	// ローカル/CI では FIRESTORE_EMULATOR_HOST を別途設定することでエミュレーターに接続。
 	FirestoreProjectID string
 
-	// AccountBaseURL はオンボーディング内 name 入力ステップと再開判定で
-	// scenario が account の internal REST に直叩きする際のベース URL。
-	// ClusterIP DNS (例: http://account.<ns>.svc.cluster.local:9000) を想定する。
-	// onboarding 限定の例外であり、汎用 account クライアントは共有しない
-	// (ARCHITECTURE.md「account 直叩きの構造的封じ込め」)。
+	// AccountBaseURL はオンボーディング内 name 入力ステップと完了 publish 用に account の internal REST を叩く際のベース URL。
 	AccountBaseURL string
 
-	// Outbox worker 設定。scenario.outbox_events を消費する常駐 worker のチューニング値。
-	// ハードコードではなく env で持つのは、負荷試験やインシデント時にデプロイなしで
-	// 試行錯誤できるようにするため (CLAUDE.md「デフォルト値へのフォールバック禁止」に
-	// 従い、全値必須で起動時 fail-fast する)。
-	OutboxPollInterval      time.Duration // 例: 1s
-	OutboxBatchSize         int           // 1 tick で claim する最大行数
-	OutboxFailureThreshold  int           // この回数以上の連続失敗で ERROR ログ (死蔵検知)
-	OutboxVisibilityTimeout time.Duration // claim 後この期間は他 worker が同じ行を拾わない
+	// Outbox worker 設定 (scenario.outbox_events を消費する常駐 worker のチューニング値)。
+	OutboxPollInterval      time.Duration
+	OutboxBatchSize         int
+	OutboxFailureThreshold  int
+	OutboxVisibilityTimeout time.Duration
 }
 
 // FromEnv は環境変数から Config を構築する。
@@ -95,9 +83,7 @@ func FromEnv() (*Config, error) {
 	return cfg, nil
 }
 
-// loadOutboxConfig は outbox worker のチューニング値を env から読む。
-// 全値必須で、パース不能・非正値は fail-fast する (CLAUDE.md「デフォルト値への
-// フォールバック禁止」方針。shop と同方針)。
+// loadOutboxConfig は outbox worker のチューニング値を env から読む (全値必須で fail-fast)。
 func loadOutboxConfig(cfg *Config) error {
 	raw := os.Getenv("OUTBOX_POLL_INTERVAL")
 	if raw == "" {
@@ -153,14 +139,12 @@ func loadOutboxConfig(cfg *Config) error {
 	return nil
 }
 
-// IsLocalStory は StoryBucket が GCS バケットではなくローカルファイルシステム
-// （"local:<path>" 形式）を指しているかを返す。
+// IsLocalStory は StoryBucket が "local:<path>" 形式を指しているかを返す。
 func (c *Config) IsLocalStory() bool {
 	return strings.HasPrefix(c.StoryBucket, localStoryPrefix)
 }
 
 // StoryLocalPath は IsLocalStory() が true のときファイルシステムパスを返す。
-// それ以外は空文字列を返す。
 func (c *Config) StoryLocalPath() string {
 	if !c.IsLocalStory() {
 		return ""

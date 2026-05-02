@@ -22,7 +22,6 @@ func NewOnboardingHandler(svc *onboarding.Service) *OnboardingHandler {
 }
 
 // GetScript はオンボーディングシナリオ本文を返す。
-// GET /internal/v1/players/:playerId/onboarding/script?lang=ja|en
 func (h *OnboardingHandler) GetScript(c *gin.Context) {
 	playerID := c.Param("playerId")
 	if playerID == "" {
@@ -42,8 +41,6 @@ func (h *OnboardingHandler) GetScript(c *gin.Context) {
 }
 
 // UpdateName はオンボード内 name 入力ステップを処理する。
-// account に validate を REST で依頼し、成功時に onboarding-name-set event を outbox に積む。
-// PUT /internal/v1/players/:playerId/onboarding/name
 func (h *OnboardingHandler) UpdateName(c *gin.Context) {
 	playerID := c.Param("playerId")
 	if playerID == "" {
@@ -72,9 +69,6 @@ func (h *OnboardingHandler) UpdateName(c *gin.Context) {
 }
 
 // SelectFaction はオンボード内 faction 選択ステップを処理する。
-// scenario 内で SelectableFactions 検証を行い、成功時に onboarding-faction-set event を
-// outbox に積む。
-// POST /internal/v1/players/:playerId/onboarding/faction
 func (h *OnboardingHandler) SelectFaction(c *gin.Context) {
 	playerID := c.Param("playerId")
 	if playerID == "" {
@@ -103,7 +97,6 @@ func (h *OnboardingHandler) SelectFaction(c *gin.Context) {
 }
 
 // Complete はオンボーディング完了を記録し、player-onboarded を outbox に atomic に積む。
-// POST /internal/v1/players/:playerId/onboarding/complete
 func (h *OnboardingHandler) Complete(c *gin.Context) {
 	playerID := c.Param("playerId")
 	if playerID == "" {
@@ -128,14 +121,11 @@ func (h *OnboardingHandler) Complete(c *gin.Context) {
 }
 
 // respondOnboardingError は onboarding usecase の sentinel を HTTP status にマップする。
-// 既存 respondError の分類 (story 用) を流用すると "completed → 404" のように
-// 誤分類するため、onboarding handler 専用の分類関数を分けて責務を閉じる。
 func respondOnboardingError(c *gin.Context, err error) {
 	c.JSON(onboardingErrorStatus(err), gin.H{"error": err.Error()})
 }
 
 // onboardingErrorStatus は onboarding 特有のエラーを HTTP status に翻訳する。
-// default は 500 (DB 一時障害・未分類) でクライアント側のリトライに委ねる。
 func onboardingErrorStatus(err error) int {
 	switch {
 	case errors.Is(err, onboarding.ErrScriptNotFound),
@@ -152,8 +142,7 @@ func onboardingErrorStatus(err error) int {
 	}
 }
 
-// isOnboardingRejected は仕様通りの拒否 (クライアントの入力不備 / 既に完了済み /
-// スクリプト不在 / プレイヤー不在 / フロー違反) か判定する。これらはログレベルを info に落とす。
+// isOnboardingRejected は仕様通りの拒否か判定する (handler のログレベルを info に落とすために使う)。
 func isOnboardingRejected(err error) bool {
 	return errors.Is(err, onboarding.ErrAlreadyOnboarded) ||
 		errors.Is(err, onboarding.ErrScriptNotFound) ||
@@ -164,7 +153,6 @@ func isOnboardingRejected(err error) bool {
 }
 
 // logGetOnboardingScriptError は GetScript のエラー種別ごとのログレベルを決定する。
-// 仕様通りの拒否は info、それ以外は error で記録する。
 func logGetOnboardingScriptError(err error, playerID, lang string) {
 	attrs := []any{"error", err, "player_id", playerID, "lang", lang}
 	switch {

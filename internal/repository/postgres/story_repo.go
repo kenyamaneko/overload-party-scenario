@@ -25,8 +25,6 @@ func NewStoryRepository(pool *pgxpool.Pool) *StoryRepository {
 }
 
 // ListActiveEpisodes はアクティブなエピソード一覧を返す。
-// required_factions は正規化された episode_required_factions テーブルから
-// 集約して返す（schema 上 scenario_episodes に列は存在しない）。
 func (r *StoryRepository) ListActiveEpisodes(ctx context.Context) ([]*apiscenario.ScenarioEpisode, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT e.episode_id, e.faction, e.episode_number, e.title_ja, e.title_en,
@@ -64,8 +62,6 @@ func (r *StoryRepository) ListActiveEpisodes(ctx context.Context) ([]*apiscenari
 }
 
 // FindEpisodeByID は指定 ID のエピソードを返す。
-// required_factions は正規化された episode_required_factions テーブルから
-// 集約して返す（ListActiveEpisodes と同様）。
 func (r *StoryRepository) FindEpisodeByID(ctx context.Context, episodeID string) (*apiscenario.ScenarioEpisode, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT e.episode_id, e.faction, e.episode_number, e.title_ja, e.title_en,
@@ -120,8 +116,6 @@ func (r *StoryRepository) GetCompletedEpisodeIDs(ctx context.Context, playerID s
 }
 
 // GetUnlockContext は players, player_factions, player_story_progress を結合して返す。
-// 暫定: スキーマ分割後は accountclient（players + player_factions）とローカル repo
-// （player_story_progress）に分離する必要がある。
 func (r *StoryRepository) GetUnlockContext(ctx context.Context, playerID string) (*apiscenario.StoryUnlockContext, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT
@@ -155,7 +149,7 @@ func (r *StoryRepository) GetUnlockContext(ctx context.Context, playerID string)
 	}, nil
 }
 
-// MarkComplete はエピソードの完了を記録する。重複は ON CONFLICT でべき等に処理する。
+// MarkComplete はエピソードの完了を記録する (重複は ON CONFLICT でべき等)。
 func (r *StoryRepository) MarkComplete(ctx context.Context, playerID, episodeID string) error {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO player_story_progress (player_id, episode_id)

@@ -1,9 +1,4 @@
 // Package postgrestest は DB を用いるテスト全般のヘルパを提供する。
-//
-// postgres:16-alpine の Testcontainers を起動して実 PostgreSQL に対してテストを
-// 実行する。コンテナはパッケージ単位で 1 回だけ起動し（RunMain）、テスト関数間の
-// 状態リセットは Truncate（登録された schema 配下の全テーブルを動的に列挙して
-// TRUNCATE）で行う。
 package postgrestest
 
 import (
@@ -42,8 +37,6 @@ type config struct {
 type Option func(*config)
 
 // WithSchemaFile は repo-root 起点の相対パスでスキーマ SQL を登録する。
-// 順序通りに pool.Exec で適用される。複数指定可（gateway のように
-// 他サービススキーマに app-level FK を持つケースで使う）。
 func WithSchemaFile(repoRelativePath string) Option {
 	return func(c *config) {
 		c.schemaFiles = append(c.schemaFiles, repoRelativePath)
@@ -57,18 +50,14 @@ func WithSchema(name string) Option {
 	}
 }
 
-// WithSearchPath は pool 全体（AfterConnect 時）に適用する search_path を登録する。
-// 本番ユーザが $user 解決で schema に辿り着くのに対し、テストコンテナの既定ユーザは
-// `test` のため unqualified 参照を使う repository では本オプションで schema を通す必要がある。
-// 複数指定時はそのまま順番に `SET search_path TO a, b` に渡される。
+// WithSearchPath は pool 全体に適用する search_path を登録する。
 func WithSearchPath(schemas ...string) Option {
 	return func(c *config) {
 		c.searchPath = append(c.searchPath, schemas...)
 	}
 }
 
-// Start は postgres:16-alpine コンテナを起動し、登録された schema SQL を順に
-// 適用したうえで接続プールを返す。終了時は Close を呼ぶ（RunMain が代行）。
+// Start は postgres:16-alpine コンテナを起動し、登録された schema SQL を適用したうえで接続プールを返す。
 func Start(ctx context.Context, opts ...Option) (*Postgres, error) {
 	cfg := &config{}
 	for _, opt := range opts {
@@ -110,8 +99,7 @@ func Start(ctx context.Context, opts ...Option) (*Postgres, error) {
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("parse pool config: %w", err), container.Terminate(ctx))
 	}
-	// search_path を後段テストで使う場合は AfterConnect で毎接続にセットする。
-	// ALTER DATABASE / ALTER ROLE は既存接続には反映されないため AfterConnect が確実。
+	// Why: ALTER DATABASE / ALTER ROLE は既存接続には反映されないため、AfterConnect で毎接続にセットする。
 	if len(cfg.searchPath) > 0 {
 		setStmt := "SET search_path TO " + strings.Join(quoteIdents(cfg.searchPath), ", ")
 		poolCfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
@@ -151,8 +139,6 @@ func (p *Postgres) Close(ctx context.Context) error {
 }
 
 // Truncate は登録 schema 配下の全 BASE TABLE を動的に列挙して TRUNCATE する。
-// テーブル追加時に postgrestest 側を更新せずに済ませることが目的（横展開時の
-// 更新漏れバグを防ぐ）。
 func (p *Postgres) Truncate(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
@@ -189,10 +175,7 @@ func (p *Postgres) Truncate(t *testing.T) {
 	}
 }
 
-// RunMain は TestMain のボイラープレートを集約する。コンテナ起動 → m.Run →
-// クリーンアップを保証する。各テストパッケージは
-// `os.Exit(postgrestest.RunMain(m, &sharedPg, opts...))` と書き、`sharedPg.Pool`
-// と `sharedPg.Truncate(t)` を使う。
+// RunMain は TestMain のボイラープレートを集約する (コンテナ起動 → m.Run → クリーンアップ)。
 func RunMain(m *testing.M, out **Postgres, opts ...Option) int {
 	ctx := context.Background()
 
@@ -212,7 +195,6 @@ func RunMain(m *testing.M, out **Postgres, opts ...Option) int {
 }
 
 // repoRoot は本ファイルの位置から go.mod を持つディレクトリを探索して返す。
-// build tag やソースキャッシュに左右されないよう runtime.Caller を anchor とする。
 func repoRoot() (string, error) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
@@ -231,7 +213,7 @@ func repoRoot() (string, error) {
 	}
 }
 
-// quoteIdents は identifier を二重引用符でエスケープする（search_path 用）。
+// quoteIdents は identifier を二重引用符でエスケープする。
 func quoteIdents(names []string) []string {
 	out := make([]string, len(names))
 	for i, n := range names {

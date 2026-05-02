@@ -1,5 +1,4 @@
-// Package pubsub は scenario の Pub/Sub publisher。worker (outbox) から呼ばれる
-// 低レベル送信層で、論理 eventType を物理 topic に解決して送出する。
+// Package pubsub は scenario の Pub/Sub publisher を提供する。
 package pubsub
 
 import (
@@ -21,8 +20,7 @@ type Publisher struct {
 	byEventType map[string]*gpubsub.Publisher
 }
 
-// New は eventType → topic mapping を構築する。topic は Terraform (modules/pubsub)
-// で事前作成されている前提。
+// New は eventType → topic mapping を構築する。
 func New(ctx context.Context, projectID, playerOnboardedTopic string) (*Publisher, error) {
 	if projectID == "" {
 		return nil, errors.New("pubsub: projectID is empty")
@@ -50,9 +48,7 @@ func (p *Publisher) Close() error {
 	return p.client.Close()
 }
 
-// Publish は eventType に対応する topic に payload を送出する。
-// 未登録 eventType は Pub/Sub SDK に届く前にエラーで返し、outbox 行の設定ミスを
-// alert 経路に載せる。
+// Publish は eventType に対応する topic に payload を送出する (未登録 eventType はエラー)。
 func (p *Publisher) Publish(ctx context.Context, eventType string, payload []byte) error {
 	pub, ok := p.byEventType[eventType]
 	if !ok {

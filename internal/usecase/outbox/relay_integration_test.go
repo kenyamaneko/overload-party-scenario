@@ -27,9 +27,7 @@ var (
 	sharedEmulator *pubsubtest.Emulator
 )
 
-// TestMain は package 共有で Postgres と Pub/Sub emulator を 1 回だけ起動する
-// (container 起動コストを package scope で償却)。テスト間の状態リセットは
-// sharedPg.Truncate と topic UUID suffix で行う。
+// TestMain は package 共有で Postgres と Pub/Sub emulator を 1 回だけ起動する。
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
@@ -62,8 +60,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// setupRelay は emulator に topic を 1 本作り、その topic を Publisher に紐づけて
-// OutboxRepository / outbox.Relay を組み上げる。
+// setupRelay は emulator に topic を 1 本作り、Publisher と OutboxRepository を組み上げて Relay を返す。
 func setupRelay(t *testing.T) (*outbox.Relay, *pubsubtest.Subscription, string) {
 	t.Helper()
 	sharedPg.Truncate(t)
@@ -86,8 +83,7 @@ func setupRelay(t *testing.T) (*outbox.Relay, *pubsubtest.Subscription, string) 
 	return relay, sub, topic
 }
 
-// insertOutboxRow は scenario.outbox_events に 1 行直接 INSERT して event_id を返す。
-// 書き込み API は package 外に非公開のため raw SQL で seed する。
+// insertOutboxRow は scenario.outbox_events に 1 行 INSERT して event_id を返す。
 func insertOutboxRow(t *testing.T, eventType string, payload []byte) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
@@ -110,8 +106,6 @@ func fetchOutboxState(t *testing.T, id uuid.UUID) (publishedAt *time.Time, failu
 	return
 }
 
-// 未配信行が claim → publish → MarkPublished の順で処理され、subscriber まで
-// payload が bytes そのまま到達することを固定する。
 func TestIntegration_RunOnce_PublishesAndMarks(t *testing.T) {
 	relay, sub, _ := setupRelay(t)
 
@@ -131,9 +125,6 @@ func TestIntegration_RunOnce_PublishesAndMarks(t *testing.T) {
 	assert.Nil(t, lastError)
 }
 
-// usecase 層が組み立てる shape の payload (apiscenario.PlayerOnboardedEvent JSON)
-// を outbox に積んで Publisher で送出したときに、subscriber 側で round-trip
-// できることを固定する。
 func TestIntegration_RunOnce_DeliversTypedPayload(t *testing.T) {
 	relay, sub, _ := setupRelay(t)
 
@@ -165,9 +156,6 @@ func TestIntegration_RunOnce_DeliversTypedPayload(t *testing.T) {
 	assert.Equal(t, "SHE", decoded.InitialFactionID)
 }
 
-// 未登録 eventType への publish は adapter で弾かれ、行は MarkPublished されず
-// RecordFailure (failure_count++ / last_error 記録) で終わる。RunOnce 自体は
-// エラーにならない契約を固定する。
 func TestIntegration_RunOnce_UnknownEventType_RecordsFailure(t *testing.T) {
 	relay, sub, _ := setupRelay(t)
 
@@ -186,8 +174,6 @@ func TestIntegration_RunOnce_UnknownEventType_RecordsFailure(t *testing.T) {
 	assert.Contains(t, *lastError, "unknown event type")
 }
 
-// 既配信行 (published_at セット済み) は claim 対象から除外され publish が走らない、
-// すなわち重複配信されないことを publish 経路込みで固定する。
 func TestIntegration_RunOnce_AlreadyPublished_NoOp(t *testing.T) {
 	relay, sub, _ := setupRelay(t)
 
