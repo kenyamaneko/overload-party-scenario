@@ -178,37 +178,9 @@ shop との差分は「何を積むか」だけで、インフラ側は共通化
 
 ## Presenter 層の位置づけ
 
-`internal/presenter/` は domain ↔ wire DTO (`packages/api-scenario`) の境界変換を集約するパッケージ。usecase / handler / repository から変換ロジックを物理的に分離し、wire 表現の変更が業務層に波及しないようにする。
+`internal/presenter/` は domain ↔ wire DTO (`packages/api-scenario`) の境界変換を集約するパッケージ。位置づけと将来の移行方針は overload-party-card の同名セクションを参照。
 
-**現状は厳密な Presenter パターンではない。** Uncle Bob クリーンアーキテクチャ原典の Presenter は output port (interface) を介して usecase が結果を「押し出す」構造を取り、usecase 層は wire DTO 型を一切 import しない。本サービスでは usecase が presenter 関数を直接呼び、戻り値で wire DTO を返すため、依存方向としては usecase → wire DTO 型への参照が残っている。実態は Mapper パターンに近い (overload-party-card と同方針)。
-
-この折衷を選んだ理由:
-
-- Go 慣用は「戻り値で返す」スタイルを好み、output port の副作用ベース設計とは噛み合わせが悪い
-- wire 形式が REST + Pub/Sub のみで複数 wire (gRPC / GraphQL) の差し替え要件が現状ない
-- 厳密な Presenter は endpoint ごとに output port interface と presenter struct が必要になり、サービス × N endpoint の規模では割に合わない
-
-**命名規則:**
-
-- `ToXxx`: 単純射影 (引数の値をそのまま wire 形に詰め替える)。計算は presenter 内では行わず呼び出し側で済ませる
-- `BuildXxx`: 派生計算 (複数引数からの算出) を伴う組み立て。例: `BuildEpisodeWithStatus` は `IsUnlocked = len(reasons) == 0` を内部で算出する
-- `XxxFromRequest`: wire request DTO → domain 変換 (本リポでは現状未使用)
-
-**Outbox event の取り扱い:**
-
-`presenter/event.go` は wire event 構造体 (`apiscenario.OnboardingNameSetEvent` 等) の組み立てだけを担い、uuid 採番・時刻採取・`json.Marshal`・`port.OutboxEvent` への wrap は呼び出し側 (usecase) が担う。これは presenter の「副作用ゼロ・port 非依存」という規律を保つための配線。usecase 側の `buildXxxEvent` private 関数が「presenter で wire 構造体を作る → marshal して outbox 行に詰める」という 2 段構造でこれをまとめている。
-
-**ロック理由の domain 値オブジェクト化:**
-
-エピソードのアンロック判定 (`Episode.LockReasons`) は domain 層に置き、wire の `apiscenario.LockReason` は presenter (`ToLockReason`) で domain 値から射影する。ロック判定は業務ルールであり wire 表現に依存させたくないため。
-
-**将来の移行パス。** 複数 wire 形式の差し替えが必要になった時点で、以下の順で段階的に厳密 Presenter へ昇格できる:
-
-1. presenter 関数のシグネチャを output port interface (`type XxxOutput interface { Present(...) }`) に置き換える
-2. usecase struct に output port を依存注入し、戻り値返却を `s.output.Present(...)` 呼び出しに差し替える
-3. handler 側で wire 形式ごとに presenter struct を実装 (`JSONPresenter` / `GRPCPresenter`)、endpoint 構築時に注入
-
-現状の package 配置 (`internal/presenter/`) と命名はこの移行を阻害しない。usecase の wire DTO への依存を切り離す改修だけで Presenter パターンに到達できる。
+エピソードのアンロック判定 (`Episode.LockReasons`) は domain 層に置き、wire の `apiscenario.LockReason` への射影だけを presenter が担う。判定ロジックを wire 表現に依存させないための分離。
 
 ## オンボーディングシナリオ
 
