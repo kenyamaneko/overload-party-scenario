@@ -124,7 +124,7 @@ scenario は **scenario スキーマの DB 行と Firestore `game_config` を唯
 ### 4.1 バリデーション順序（fail-fast）
 
 1. **エピソード存在確認**: `episodeID` で取得 → 不在または `is_active = false` なら `ErrEpisodeNotFound`
-2. **アンロック判定**: プレイヤーの `StoryUnlockContext` を取得し `checkUnlock` を評価。未達条件があれば `ErrEpisodeLocked`
+2. **アンロック判定**: プレイヤーの `StoryUnlockContext` を取得し `Episode.LockReasons` を評価。未達条件があれば `ErrEpisodeLocked`
 3. **スクリプト読み出し**: `script_path` テンプレートの `{lang}` を要求言語で置換し、ScriptStore から読む
    - 要求言語が存在しない: `ErrScriptNotFound`
    - ネットワーク / 権限エラー等: `ErrScriptInfra`

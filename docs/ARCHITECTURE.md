@@ -176,6 +176,40 @@ shop との差分は「何を積むか」だけで、インフラ側は共通化
 
 結果として scenario の publisher は「`adapter/pubsub.Publisher` が topic 名から `*pubsub.Topic` を引いて送出する」薄いラッパに退避し、atomic 性の責務は outbox 側に集約されている。運用観測メトリクス名もサービスプレフィックスのみ差し替えた同一体系（`scenario_outbox_unpublished_gauge` 等）を採る。
 
+## Presenter 層の位置づけ
+
+`internal/presenter/` は domain ↔ wire DTO (`packages/api-scenario`) の境界変換を集約するパッケージ。usecase / handler / repository から変換ロジックを物理的に分離し、wire 表現の変更が業務層に波及しないようにする。
+
+**現状は厳密な Presenter パターンではない。** Uncle Bob クリーンアーキテクチャ原典の Presenter は output port (interface) を介して usecase が結果を「押し出す」構造を取り、usecase 層は wire DTO 型を一切 import しない。本サービスでは usecase が presenter 関数を直接呼び、戻り値で wire DTO を返すため、依存方向としては usecase → wire DTO 型への参照が残っている。実態は Mapper パターンに近い (overload-party-card と同方針)。
+
+この折衷を選んだ理由:
+
+- Go 慣用は「戻り値で返す」スタイルを好み、output port の副作用ベース設計とは噛み合わせが悪い
+- wire 形式が REST + Pub/Sub のみで複数 wire (gRPC / GraphQL) の差し替え要件が現状ない
+- 厳密な Presenter は endpoint ごとに output port interface と presenter struct が必要になり、サービス × N endpoint の規模では割に合わない
+
+**命名規則:**
+
+- `ToXxx`: 単純射影 (引数の値をそのまま wire 形に詰め替える)。計算は presenter 内では行わず呼び出し側で済ませる
+- `BuildXxx`: 派生計算 (複数引数からの算出) を伴う組み立て。例: `BuildEpisodeWithStatus` は `IsUnlocked = len(reasons) == 0` を内部で算出する
+- `XxxFromRequest`: wire request DTO → domain 変換 (本リポでは現状未使用)
+
+**Outbox event の取り扱い:**
+
+`presenter/event.go` は wire event 構造体 (`apiscenario.OnboardingNameSetEvent` 等) の組み立てだけを担い、uuid 採番・時刻採取・`json.Marshal`・`port.OutboxEvent` への wrap は呼び出し側 (usecase) が担う。これは presenter の「副作用ゼロ・port 非依存」という規律を保つための配線。usecase 側の `buildXxxEvent` private 関数が「presenter で wire 構造体を作る → marshal して outbox 行に詰める」という 2 段構造でこれをまとめている。
+
+**ロック理由の domain 値オブジェクト化:**
+
+エピソードのアンロック判定 (`Episode.LockReasons`) は domain 層に置き、wire の `apiscenario.LockReason` は presenter (`ToLockReason`) で domain 値から射影する。ロック判定は業務ルールであり wire 表現に依存させたくないため。
+
+**将来の移行パス。** 複数 wire 形式の差し替えが必要になった時点で、以下の順で段階的に厳密 Presenter へ昇格できる:
+
+1. presenter 関数のシグネチャを output port interface (`type XxxOutput interface { Present(...) }`) に置き換える
+2. usecase struct に output port を依存注入し、戻り値返却を `s.output.Present(...)` 呼び出しに差し替える
+3. handler 側で wire 形式ごとに presenter struct を実装 (`JSONPresenter` / `GRPCPresenter`)、endpoint 構築時に注入
+
+現状の package 配置 (`internal/presenter/`) と命名はこの移行を阻害しない。usecase の wire DTO への依存を切り離す改修だけで Presenter パターンに到達できる。
+
 ## オンボーディングシナリオ
 
 「一度きり読了で表示名と初期 faction を集める」ユースケースは、既存 `ScenarioEpisode` 配管と **usecase 層・テーブル・API・イベントのいずれも分離** する。各ステップ完了で対応する Pub/Sub event を発行し、業務データの永続化は account 側 subscriber に委ねる ([ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md))。account への REST は表示名のバリデーションと完了 publish 用の faction 取得に限定する。詳細仕様は [FEATURE_SPEC.md](FEATURE_SPEC.md) と ADR-021 / ADR-026 を参照。
@@ -188,7 +222,7 @@ shop との差分は「何を積むか」だけで、インフラ側は共通化
 - 「一度きり」セマンティクスのため、完了後は本文を返さず 409 で弾く必要がある
 - 完了時に identity 副作用（初期 faction hand-off）を atomic に伴う
 
-これらを既存エピソードに載せると `checkUnlock` / `GetScript` / `CompleteEpisode` の全てに「オンボ時だけ違う」横串分岐が増え、「一つの関数に複数の責務を負わせない」に反する。したがって `internal/usecase/onboarding/` として独立 usecase を構え、`scenario.player_onboarding`（PK = `player_id` で 2 度目の INSERT が一意制約違反になる形で「一度きり」を保証）と outbox を通じて `player-onboarded` 1 イベントを atomic publish する。
+これらを既存エピソードに載せると `Episode.LockReasons` / `GetScript` / `CompleteEpisode` の全てに「オンボ時だけ違う」横串分岐が増え、「一つの関数に複数の責務を負わせない」に反する。したがって `internal/usecase/onboarding/` として独立 usecase を構え、`scenario.player_onboarding`（PK = `player_id` で 2 度目の INSERT が一意制約違反になる形で「一度きり」を保証）と outbox を通じて `player-onboarded` 1 イベントを atomic publish する。
 
 ### SSoT 分離
 
