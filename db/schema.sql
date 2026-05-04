@@ -28,17 +28,17 @@ $$ LANGUAGE plpgsql;
 
 CREATE TABLE scenario.scenario_episodes (
   episode_id        VARCHAR(50) NOT NULL,            -- エピソードID（例: she_ep1, final）
-  category          VARCHAR(20) NOT NULL DEFAULT 'main' CHECK (category IN ('main', 'side', 'event')), -- エピソード種別 (main / side / event)
+  category          VARCHAR(20) NOT NULL CHECK (category IN ('main', 'side', 'event')), -- エピソード種別 (main / side / event)
   faction           VARCHAR(20) CHECK (faction IS NULL OR faction IN ('SHE', 'Tenki', 'Sugar', 'Tuners', 'Neutral')), -- 所属陣営（NULL: 全陣営共通）
   episode_number    BIGINT NOT NULL,                 -- 陣営内の章番号
   title_ja          VARCHAR(200) NOT NULL,           -- 日本語タイトル
   title_en          VARCHAR(200) NOT NULL,           -- 英語タイトル
-  required_level    BIGINT NOT NULL DEFAULT 1,       -- アンロックに必要なレベル (Default: 1)
-  required_episodes TEXT[] NOT NULL DEFAULT '{}',    -- アンロックに必要な完了済みエピソード
+  required_level    BIGINT NOT NULL,                 -- アンロックに必要なレベル
+  required_episodes TEXT[] NOT NULL,                 -- アンロックに必要な完了済みエピソード
   script_path       VARCHAR(500) NOT NULL,           -- スクリプトパステンプレート（{lang} を言語コードに置換）
   thumbnail_path    VARCHAR(500),                    -- サムネイル画像パス
   sort_order        BIGINT NOT NULL,                 -- 表示順
-  is_active         BOOLEAN NOT NULL DEFAULT true,   -- 公開フラグ (Default: true)
+  is_active         BOOLEAN NOT NULL,                -- 公開フラグ
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(), -- 作成日時
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(), -- 更新日時
   PRIMARY KEY (episode_id)
@@ -97,7 +97,7 @@ CREATE TABLE scenario.outbox_events (
   payload           JSONB        NOT NULL,                    -- JSON Marshal 済みイベント本体
   created_at        TIMESTAMPTZ  NOT NULL DEFAULT now(),      -- enqueue 日時
   published_at      TIMESTAMPTZ,                              -- NULL = 未配信
-  failure_count     INT          NOT NULL DEFAULT 0,          -- 連続失敗回数
+  failure_count     INT          NOT NULL,                    -- 連続失敗回数
   last_error        TEXT,                                     -- 直近エラーメッセージ
   last_attempted_at TIMESTAMPTZ,                              -- 直近 publish 試行日時
   PRIMARY KEY (event_id)

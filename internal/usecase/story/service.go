@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
@@ -95,7 +96,7 @@ func (s *Service) CompleteEpisode(ctx context.Context, playerID, episodeID strin
 	return nil
 }
 
-func (s *Service) validateUnlock(ctx context.Context, ep *apiscenario.ScenarioEpisode, playerID string) error {
+func (s *Service) validateUnlock(ctx context.Context, ep *domain.Episode, playerID string) error {
 	uc, err := s.storyRepo.GetUnlockContext(ctx, playerID)
 	if err != nil {
 		return fmt.Errorf("get unlock context: %w", err)
@@ -116,7 +117,9 @@ func (s *Service) readScript(ctx context.Context, pathTemplate, lang string) (st
 	return body, nil
 }
 
-func checkUnlock(ep *apiscenario.ScenarioEpisode, uc *apiscenario.StoryUnlockContext) []apiscenario.LockReason {
+// checkUnlock は domain の Episode と UnlockContext から API 応答用の LockReason 群を組み立てる。
+// LockReason は API 契約 (apiscenario) に直結する出力なので usecase でそのまま生成して返す。
+func checkUnlock(ep *domain.Episode, uc *domain.UnlockContext) []apiscenario.LockReason {
 	var reasons []apiscenario.LockReason
 
 	if uc.PlayerLevel < ep.RequiredLevel {
@@ -135,7 +138,7 @@ func checkUnlock(ep *apiscenario.ScenarioEpisode, uc *apiscenario.StoryUnlockCon
 	return reasons
 }
 
-func episodeTitle(ep *apiscenario.ScenarioEpisode, lang string) string {
+func episodeTitle(ep *domain.Episode, lang string) string {
 	if lang == "en" {
 		return ep.TitleEn
 	}

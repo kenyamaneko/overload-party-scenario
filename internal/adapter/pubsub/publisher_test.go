@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNew_Validation(t *testing.T) {
+func TestNew(t *testing.T) {
 	tests := []struct {
 		name                 string
 		projectID            string

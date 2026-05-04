@@ -30,9 +30,9 @@ func seedEpisode(
 	}
 	_, err := sharedPg.Pool.Exec(context.Background(),
 		`INSERT INTO scenario.scenario_episodes
-		   (episode_id, faction, episode_number, title_ja, title_en,
+		   (episode_id, category, faction, episode_number, title_ja, title_en,
 		    required_level, required_episodes, script_path, sort_order, is_active)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		 VALUES ($1, 'main', $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		episodeID, faction, episodeNumber, titleJa, titleEn,
 		requiredLevel, reqEps, scriptPath, sortOrder, isActive)
 	require.NoError(t, err)

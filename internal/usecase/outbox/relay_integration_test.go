@@ -88,8 +88,8 @@ func insertOutboxRow(t *testing.T, eventType string, payload []byte) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
 	_, err := sharedPg.Pool.Exec(context.Background(),
-		`INSERT INTO scenario.outbox_events (event_id, event_type, payload)
-		 VALUES ($1, $2, $3)`,
+		`INSERT INTO scenario.outbox_events (event_id, event_type, payload, failure_count)
+		 VALUES ($1, $2, $3, 0)`,
 		id, eventType, payload)
 	require.NoError(t, err)
 	return id
@@ -138,8 +138,8 @@ func TestIntegration_RunOnce_DeliversTypedPayload(t *testing.T) {
 	})
 	require.NoError(t, err)
 	_, err = sharedPg.Pool.Exec(context.Background(),
-		`INSERT INTO scenario.outbox_events (event_id, event_type, payload)
-		 VALUES ($1, $2, $3)`,
+		`INSERT INTO scenario.outbox_events (event_id, event_type, payload, failure_count)
+		 VALUES ($1, $2, $3, 0)`,
 		id, apiscenario.EventTypePlayerOnboarded, payload)
 	require.NoError(t, err)
 

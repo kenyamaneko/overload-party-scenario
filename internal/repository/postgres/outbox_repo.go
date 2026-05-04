@@ -17,8 +17,8 @@ var _ port.OutboxStore = (*OutboxRepository)(nil)
 // writeOutboxEvent は受け取った tx に outbox 行を INSERT する。
 func writeOutboxEvent(ctx context.Context, tx pgx.Tx, ev port.OutboxEvent) error {
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO scenario.outbox_events (event_id, event_type, payload)
-		 VALUES ($1, $2, $3)`,
+		`INSERT INTO scenario.outbox_events (event_id, event_type, payload, failure_count)
+		 VALUES ($1, $2, $3, 0)`,
 		ev.EventID, ev.EventType, ev.Payload,
 	); err != nil {
 		return fmt.Errorf("insert outbox event: %w", err)

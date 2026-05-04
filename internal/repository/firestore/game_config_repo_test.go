@@ -17,8 +17,8 @@ import (
 	scenariofirestore "github.com/kenyamaneko/overload-party-scenario/internal/repository/firestore"
 )
 
-// TestFirestoreGameConfigRepository は emulator を前提とする integration test (FIRESTORE_EMULATOR_HOST 未設定時はスキップ)。
-func TestFirestoreGameConfigRepository(t *testing.T) {
+// TestGameConfigRepository は emulator を前提とする integration test (FIRESTORE_EMULATOR_HOST 未設定時はスキップ)。
+func TestGameConfigRepository(t *testing.T) {
 	host := os.Getenv("FIRESTORE_EMULATOR_HOST")
 	if host == "" {
 		t.Skip("FIRESTORE_EMULATOR_HOST not set; skipping Firestore integration test")

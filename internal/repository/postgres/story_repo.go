@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
+	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 )
 
@@ -25,7 +25,7 @@ func NewStoryRepository(pool *pgxpool.Pool) *StoryRepository {
 }
 
 // ListActiveEpisodes はアクティブなエピソード一覧を返す。
-func (r *StoryRepository) ListActiveEpisodes(ctx context.Context) ([]*apiscenario.ScenarioEpisode, error) {
+func (r *StoryRepository) ListActiveEpisodes(ctx context.Context) ([]*domain.Episode, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT e.episode_id, e.faction, e.episode_number, e.title_ja, e.title_en,
 		        e.required_level,
@@ -43,9 +43,9 @@ func (r *StoryRepository) ListActiveEpisodes(ctx context.Context) ([]*apiscenari
 	}
 	defer rows.Close()
 
-	var episodes []*apiscenario.ScenarioEpisode
+	var episodes []*domain.Episode
 	for rows.Next() {
-		var ep apiscenario.ScenarioEpisode
+		var ep domain.Episode
 		if err := rows.Scan(
 			&ep.EpisodeID, &ep.Faction, &ep.EpisodeNumber, &ep.TitleJa, &ep.TitleEn,
 			&ep.RequiredLevel, &ep.RequiredFactions, &ep.RequiredEpisodes,
@@ -62,7 +62,7 @@ func (r *StoryRepository) ListActiveEpisodes(ctx context.Context) ([]*apiscenari
 }
 
 // FindEpisodeByID は指定 ID のエピソードを返す。
-func (r *StoryRepository) FindEpisodeByID(ctx context.Context, episodeID string) (*apiscenario.ScenarioEpisode, error) {
+func (r *StoryRepository) FindEpisodeByID(ctx context.Context, episodeID string) (*domain.Episode, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT e.episode_id, e.faction, e.episode_number, e.title_ja, e.title_en,
 		        e.required_level,
@@ -76,7 +76,7 @@ func (r *StoryRepository) FindEpisodeByID(ctx context.Context, episodeID string)
 		 WHERE e.episode_id = $1`,
 		episodeID)
 
-	var ep apiscenario.ScenarioEpisode
+	var ep domain.Episode
 	err := row.Scan(
 		&ep.EpisodeID, &ep.Faction, &ep.EpisodeNumber, &ep.TitleJa, &ep.TitleEn,
 		&ep.RequiredLevel, &ep.RequiredFactions, &ep.RequiredEpisodes,
@@ -116,7 +116,7 @@ func (r *StoryRepository) GetCompletedEpisodeIDs(ctx context.Context, playerID s
 }
 
 // GetUnlockContext は players, player_factions, player_story_progress を結合して返す。
-func (r *StoryRepository) GetUnlockContext(ctx context.Context, playerID string) (*apiscenario.StoryUnlockContext, error) {
+func (r *StoryRepository) GetUnlockContext(ctx context.Context, playerID string) (*domain.UnlockContext, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT
 		   p.level,
@@ -142,7 +142,7 @@ func (r *StoryRepository) GetUnlockContext(ctx context.Context, playerID string)
 		episodeSet[e] = true
 	}
 
-	return &apiscenario.StoryUnlockContext{
+	return &domain.UnlockContext{
 		PlayerLevel:       level,
 		OwnedFactions:     factionSet,
 		CompletedEpisodes: episodeSet,

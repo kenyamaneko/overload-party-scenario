@@ -1,27 +1,28 @@
-package port
+package story
 
 import (
 	"context"
 	"fmt"
 	"sync"
 
-	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
+	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
+	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 )
 
-var _ StoryRepo = (*MockStoryRepository)(nil)
+var _ port.StoryRepo = (*mockStoryRepository)(nil)
 
-// MockStoryRepository はテスト用の自己完結型インメモリ StoryRepo 実装。
-type MockStoryRepository struct {
+// mockStoryRepository はテスト用の自己完結型インメモリ StoryRepo 実装。
+type mockStoryRepository struct {
 	mu            sync.Mutex
-	episodes      []*apiscenario.ScenarioEpisode
+	episodes      []*domain.Episode
 	completed     map[string]map[string]bool
 	playerLevels  map[string]int64
 	ownedFactions map[string]map[string]bool
 }
 
-// NewMockStoryRepository はテスト用の MockStoryRepository を構築する。
-func NewMockStoryRepository() *MockStoryRepository {
-	return &MockStoryRepository{
+// newMockStoryRepository はテスト用の mockStoryRepository を構築する。
+func newMockStoryRepository() *mockStoryRepository {
+	return &mockStoryRepository{
 		completed:     make(map[string]map[string]bool),
 		playerLevels:  make(map[string]int64),
 		ownedFactions: make(map[string]map[string]bool),
@@ -29,21 +30,21 @@ func NewMockStoryRepository() *MockStoryRepository {
 }
 
 // SeedEpisodes はテスト用にエピソードデータをプリセットする。
-func (r *MockStoryRepository) SeedEpisodes(episodes []*apiscenario.ScenarioEpisode) {
+func (r *mockStoryRepository) SeedEpisodes(episodes []*domain.Episode) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.episodes = episodes
 }
 
 // SetPlayerLevel はテスト用にプレイヤーレベルを設定する。
-func (r *MockStoryRepository) SetPlayerLevel(playerID string, level int64) {
+func (r *mockStoryRepository) SetPlayerLevel(playerID string, level int64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.playerLevels[playerID] = level
 }
 
 // GrantFaction はテスト用にプレイヤーへ faction 所有を付与する。
-func (r *MockStoryRepository) GrantFaction(playerID, faction string) {
+func (r *mockStoryRepository) GrantFaction(playerID, faction string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.ownedFactions[playerID] == nil {
@@ -53,10 +54,10 @@ func (r *MockStoryRepository) GrantFaction(playerID, faction string) {
 }
 
 // ListActiveEpisodes はアクティブなエピソード一覧をインメモリから返す。
-func (r *MockStoryRepository) ListActiveEpisodes(_ context.Context) ([]*apiscenario.ScenarioEpisode, error) {
+func (r *mockStoryRepository) ListActiveEpisodes(_ context.Context) ([]*domain.Episode, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var result []*apiscenario.ScenarioEpisode
+	var result []*domain.Episode
 	for _, ep := range r.episodes {
 		if ep.IsActive {
 			result = append(result, ep)
@@ -66,7 +67,7 @@ func (r *MockStoryRepository) ListActiveEpisodes(_ context.Context) ([]*apiscena
 }
 
 // FindEpisodeByID は指定 ID のエピソードをインメモリから返す。
-func (r *MockStoryRepository) FindEpisodeByID(_ context.Context, episodeID string) (*apiscenario.ScenarioEpisode, error) {
+func (r *mockStoryRepository) FindEpisodeByID(_ context.Context, episodeID string) (*domain.Episode, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, ep := range r.episodes {
@@ -74,11 +75,11 @@ func (r *MockStoryRepository) FindEpisodeByID(_ context.Context, episodeID strin
 			return ep, nil
 		}
 	}
-	return nil, fmt.Errorf("episode %s: %w", episodeID, ErrNotFound)
+	return nil, fmt.Errorf("episode %s: %w", episodeID, port.ErrNotFound)
 }
 
 // GetCompletedEpisodeIDs はプレイヤーの完了済みエピソード ID 一覧をインメモリから返す。
-func (r *MockStoryRepository) GetCompletedEpisodeIDs(_ context.Context, playerID string) ([]string, error) {
+func (r *mockStoryRepository) GetCompletedEpisodeIDs(_ context.Context, playerID string) ([]string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var ids []string
@@ -89,7 +90,7 @@ func (r *MockStoryRepository) GetCompletedEpisodeIDs(_ context.Context, playerID
 }
 
 // GetUnlockContext はプレイヤーのアンロック判定コンテキストをインメモリから返す。
-func (r *MockStoryRepository) GetUnlockContext(_ context.Context, playerID string) (*apiscenario.StoryUnlockContext, error) {
+func (r *mockStoryRepository) GetUnlockContext(_ context.Context, playerID string) (*domain.UnlockContext, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -103,7 +104,7 @@ func (r *MockStoryRepository) GetUnlockContext(_ context.Context, playerID strin
 		completedSet[id] = true
 	}
 
-	return &apiscenario.StoryUnlockContext{
+	return &domain.UnlockContext{
 		PlayerLevel:       r.playerLevels[playerID],
 		OwnedFactions:     factionSet,
 		CompletedEpisodes: completedSet,
@@ -111,7 +112,7 @@ func (r *MockStoryRepository) GetUnlockContext(_ context.Context, playerID strin
 }
 
 // MarkComplete はエピソード完了をインメモリに記録する。
-func (r *MockStoryRepository) MarkComplete(_ context.Context, playerID, episodeID string) error {
+func (r *mockStoryRepository) MarkComplete(_ context.Context, playerID, episodeID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.completed[playerID] == nil {

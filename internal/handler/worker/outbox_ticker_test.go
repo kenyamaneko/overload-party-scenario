@@ -24,7 +24,7 @@ func (f *fakeRunner) RunOnce(_ context.Context) error {
 
 func (f *fakeRunner) Calls() int32 { return atomic.LoadInt32(&f.calls) }
 
-func TestNewOutboxTicker_Validation(t *testing.T) {
+func TestNewOutboxTicker(t *testing.T) {
 	tests := []struct {
 		name     string
 		runner   outboxRunner
@@ -59,7 +59,7 @@ func TestNewOutboxTicker_Validation(t *testing.T) {
 	}
 }
 
-func TestOutboxTicker_Run(t *testing.T) {
+func TestRun(t *testing.T) {
 	tests := []struct {
 		name         string
 		runnerErr    error

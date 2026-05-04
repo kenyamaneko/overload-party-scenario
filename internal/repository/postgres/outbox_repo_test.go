@@ -39,8 +39,8 @@ func insertOutboxRow(t *testing.T, testIdx, seedIdx int, payload []byte) uuid.UU
 	eventType := fmt.Sprintf("test-event-type-%d-%d", testIdx, seedIdx)
 
 	_, err := sharedPg.Pool.Exec(context.Background(),
-		`INSERT INTO scenario.outbox_events (event_id, event_type, payload)
-		 VALUES ($1, $2, $3)`,
+		`INSERT INTO scenario.outbox_events (event_id, event_type, payload, failure_count)
+		 VALUES ($1, $2, $3, 0)`,
 		id, eventType, payload)
 	require.NoError(t, err)
 	return id
@@ -117,7 +117,7 @@ const defaultVisibility = 30 * time.Second
 // 既存テストは閾値超過行を扱わないため、十分大きい値を設定。
 const defaultFailureThreshold = 100
 
-func TestOutboxRepository_ClaimUnpublished(t *testing.T) {
+func TestClaimUnpublished(t *testing.T) {
 	repo := postgres.NewOutboxRepository(sharedPg.Pool)
 	ctx := context.Background()
 
@@ -216,7 +216,7 @@ func TestOutboxRepository_ClaimUnpublished(t *testing.T) {
 
 // limit の効き目は「claim 件数 <= limit」「残り unpublished = 全体 - claim 数」で固定する。
 // どの行が選ばれるかは同 ms 挿入時に不定なので、本体テーブルから分離して件数のみ検証する。
-func TestOutboxRepository_ClaimUnpublished_RespectsLimit(t *testing.T) {
+func TestClaimUnpublished_RespectsLimit(t *testing.T) {
 	sharedPg.Truncate(t)
 	ctx := context.Background()
 	repo := postgres.NewOutboxRepository(sharedPg.Pool)
@@ -239,7 +239,7 @@ func TestOutboxRepository_ClaimUnpublished_RespectsLimit(t *testing.T) {
 	assert.Equal(t, totalSeeded-limit, remaining, "claim されなかった行は未試行のまま残る")
 }
 
-func TestOutboxRepository_ClaimUnpublished_UpdatesLastAttemptedAt(t *testing.T) {
+func TestClaimUnpublished_UpdatesLastAttemptedAt(t *testing.T) {
 	sharedPg.Truncate(t)
 	ctx := context.Background()
 	repo := postgres.NewOutboxRepository(sharedPg.Pool)
@@ -256,7 +256,7 @@ func TestOutboxRepository_ClaimUnpublished_UpdatesLastAttemptedAt(t *testing.T) 
 	assert.True(t, lastAttemptedNotNull, "claim 成功後は last_attempted_at が now() に更新される")
 }
 
-func TestOutboxRepository_MarkPublished(t *testing.T) {
+func TestMarkPublished(t *testing.T) {
 	repo := postgres.NewOutboxRepository(sharedPg.Pool)
 	ctx := context.Background()
 
@@ -293,7 +293,7 @@ func TestOutboxRepository_MarkPublished(t *testing.T) {
 	}
 }
 
-func TestOutboxRepository_RecordFailure(t *testing.T) {
+func TestRecordFailure(t *testing.T) {
 	repo := postgres.NewOutboxRepository(sharedPg.Pool)
 	ctx := context.Background()
 

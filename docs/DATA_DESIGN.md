@@ -29,12 +29,12 @@ scenario スキーマはストーリーエピソードのマスターデータ�
 | `episode_number` | BIGINT | No | 陣営内の章番号 |
 | `title_ja` | VARCHAR(200) | No | 日本語タイトル |
 | `title_en` | VARCHAR(200) | No | 英語タイトル |
-| `required_level` | BIGINT | No | アンロックに必要なレベル (Default: 1) |
+| `required_level` | BIGINT | No | アンロックに必要なレベル |
 | `required_episodes` | TEXT[] | No | アンロックに必要な完了済みエピソード |
 | `script_path` | VARCHAR(500) | No | スクリプトパステンプレート（{lang} を言語コードに置換） |
 | `thumbnail_path` | VARCHAR(500) | Yes | サムネイル画像パス |
 | `sort_order` | BIGINT | No | 表示順 |
-| `is_active` | BOOLEAN | No | 公開フラグ (Default: true) |
+| `is_active` | BOOLEAN | No | 公開フラグ |
 | `created_at` | TIMESTAMPTZ | No | 作成日時 |
 | `updated_at` | TIMESTAMPTZ | No | 更新日時 |
 <!-- END GENERATED: scenario_episodes -->

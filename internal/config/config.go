@@ -38,26 +38,31 @@ type Config struct {
 }
 
 // FromEnv は環境変数から Config を構築する。
+// 未設定の必須環境変数があれば即エラーで返し、デフォルトへの暗黙 fallback は行わない。
 func FromEnv() (*Config, error) {
 	cfg := &Config{
-		Port:                 9007,
-		Env:                  getEnv("ENV", "dev"),
+		Env:                  os.Getenv("ENV"),
 		DatabaseConn:         os.Getenv("DATABASE_CONN"),
 		StoryBucket:          os.Getenv("STORY_BUCKET"),
 		PubsubProjectID:      os.Getenv("PUBSUB_PROJECT_ID"),
-		PlayerOnboardedTopic: getEnv("PLAYER_ONBOARDED_TOPIC", "player-onboarded"),
+		PlayerOnboardedTopic: os.Getenv("PLAYER_ONBOARDED_TOPIC"),
 		FirestoreProjectID:   os.Getenv("FIRESTORE_PROJECT_ID"),
 		AccountBaseURL:       os.Getenv("ACCOUNT_BASE_URL"),
 	}
 
-	if raw := os.Getenv("PORT"); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil {
-			return nil, fmt.Errorf("config: PORT %q: %w", raw, err)
-		}
-		cfg.Port = n
+	rawPort := os.Getenv("PORT")
+	if rawPort == "" {
+		return nil, fmt.Errorf("config: PORT is required")
 	}
+	n, err := strconv.Atoi(rawPort)
+	if err != nil {
+		return nil, fmt.Errorf("config: PORT %q: %w", rawPort, err)
+	}
+	cfg.Port = n
 
+	if cfg.Env == "" {
+		return nil, fmt.Errorf("config: ENV is required")
+	}
 	if cfg.DatabaseConn == "" {
 		return nil, fmt.Errorf("config: DATABASE_CONN is required")
 	}
@@ -70,6 +75,9 @@ func FromEnv() (*Config, error) {
 	if cfg.PubsubProjectID == "" {
 		return nil, fmt.Errorf("config: PUBSUB_PROJECT_ID is required (scenario publishes player-onboarded events to Pub/Sub)")
 	}
+	if cfg.PlayerOnboardedTopic == "" {
+		return nil, fmt.Errorf("config: PLAYER_ONBOARDED_TOPIC is required")
+	}
 	if cfg.FirestoreProjectID == "" {
 		return nil, fmt.Errorf("config: FIRESTORE_PROJECT_ID is required (game_config)")
 	}
@@ -77,66 +85,59 @@ func FromEnv() (*Config, error) {
 		return nil, fmt.Errorf("config: ACCOUNT_BASE_URL is required (onboarding name relay and resume judgement)")
 	}
 
-	if err := loadOutboxConfig(cfg); err != nil {
-		return nil, err
+	rawPoll := os.Getenv("OUTBOX_POLL_INTERVAL")
+	if rawPoll == "" {
+		return nil, fmt.Errorf("config: OUTBOX_POLL_INTERVAL is required")
 	}
-	return cfg, nil
-}
-
-// loadOutboxConfig は outbox worker のチューニング値を env から読む (全値必須で fail-fast)。
-func loadOutboxConfig(cfg *Config) error {
-	raw := os.Getenv("OUTBOX_POLL_INTERVAL")
-	if raw == "" {
-		return fmt.Errorf("config: OUTBOX_POLL_INTERVAL is required")
-	}
-	d, err := time.ParseDuration(raw)
+	pollInterval, err := time.ParseDuration(rawPoll)
 	if err != nil {
-		return fmt.Errorf("config: OUTBOX_POLL_INTERVAL %q: %w", raw, err)
+		return nil, fmt.Errorf("config: OUTBOX_POLL_INTERVAL %q: %w", rawPoll, err)
 	}
-	if d <= 0 {
-		return fmt.Errorf("config: OUTBOX_POLL_INTERVAL must be positive, got %q", raw)
+	if pollInterval <= 0 {
+		return nil, fmt.Errorf("config: OUTBOX_POLL_INTERVAL must be positive, got %q", rawPoll)
 	}
-	cfg.OutboxPollInterval = d
+	cfg.OutboxPollInterval = pollInterval
 
 	rawBatch := os.Getenv("OUTBOX_BATCH_SIZE")
 	if rawBatch == "" {
-		return fmt.Errorf("config: OUTBOX_BATCH_SIZE is required")
+		return nil, fmt.Errorf("config: OUTBOX_BATCH_SIZE is required")
 	}
-	n, err := strconv.Atoi(rawBatch)
+	batch, err := strconv.Atoi(rawBatch)
 	if err != nil {
-		return fmt.Errorf("config: OUTBOX_BATCH_SIZE %q: %w", rawBatch, err)
+		return nil, fmt.Errorf("config: OUTBOX_BATCH_SIZE %q: %w", rawBatch, err)
 	}
-	if n <= 0 {
-		return fmt.Errorf("config: OUTBOX_BATCH_SIZE must be positive, got %q", rawBatch)
+	if batch <= 0 {
+		return nil, fmt.Errorf("config: OUTBOX_BATCH_SIZE must be positive, got %q", rawBatch)
 	}
-	cfg.OutboxBatchSize = n
+	cfg.OutboxBatchSize = batch
 
 	rawThreshold := os.Getenv("OUTBOX_FAILURE_THRESHOLD")
 	if rawThreshold == "" {
-		return fmt.Errorf("config: OUTBOX_FAILURE_THRESHOLD is required")
+		return nil, fmt.Errorf("config: OUTBOX_FAILURE_THRESHOLD is required")
 	}
-	t, err := strconv.Atoi(rawThreshold)
+	threshold, err := strconv.Atoi(rawThreshold)
 	if err != nil {
-		return fmt.Errorf("config: OUTBOX_FAILURE_THRESHOLD %q: %w", rawThreshold, err)
+		return nil, fmt.Errorf("config: OUTBOX_FAILURE_THRESHOLD %q: %w", rawThreshold, err)
 	}
-	if t <= 0 {
-		return fmt.Errorf("config: OUTBOX_FAILURE_THRESHOLD must be positive, got %q", rawThreshold)
+	if threshold <= 0 {
+		return nil, fmt.Errorf("config: OUTBOX_FAILURE_THRESHOLD must be positive, got %q", rawThreshold)
 	}
-	cfg.OutboxFailureThreshold = t
+	cfg.OutboxFailureThreshold = threshold
 
 	rawVis := os.Getenv("OUTBOX_VISIBILITY_TIMEOUT")
 	if rawVis == "" {
-		return fmt.Errorf("config: OUTBOX_VISIBILITY_TIMEOUT is required")
+		return nil, fmt.Errorf("config: OUTBOX_VISIBILITY_TIMEOUT is required")
 	}
-	v, err := time.ParseDuration(rawVis)
+	visibility, err := time.ParseDuration(rawVis)
 	if err != nil {
-		return fmt.Errorf("config: OUTBOX_VISIBILITY_TIMEOUT %q: %w", rawVis, err)
+		return nil, fmt.Errorf("config: OUTBOX_VISIBILITY_TIMEOUT %q: %w", rawVis, err)
 	}
-	if v < time.Millisecond {
-		return fmt.Errorf("config: OUTBOX_VISIBILITY_TIMEOUT must be >= 1ms, got %q", rawVis)
+	if visibility < time.Millisecond {
+		return nil, fmt.Errorf("config: OUTBOX_VISIBILITY_TIMEOUT must be >= 1ms, got %q", rawVis)
 	}
-	cfg.OutboxVisibilityTimeout = v
-	return nil
+	cfg.OutboxVisibilityTimeout = visibility
+
+	return cfg, nil
 }
 
 // IsLocalStory は StoryBucket が "local:<path>" 形式を指しているかを返す。
@@ -150,11 +151,4 @@ func (c *Config) StoryLocalPath() string {
 		return ""
 	}
 	return strings.TrimPrefix(c.StoryBucket, localStoryPrefix)
-}
-
-func getEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }

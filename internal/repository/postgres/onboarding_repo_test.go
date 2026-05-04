@@ -30,7 +30,7 @@ func insertOnboardingRow(t *testing.T, playerID string) {
 	require.NoError(t, err)
 }
 
-func TestOnboardingRepository_PublishEvents(t *testing.T) {
+func TestPublishEvents(t *testing.T) {
 	repo := postgres.NewOnboardingRepository(sharedPg.Pool)
 	ctx := context.Background()
 

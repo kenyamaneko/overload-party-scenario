@@ -19,7 +19,7 @@ const (
 	testPlayer2 = "22222222-2222-2222-2222-222222222222"
 )
 
-func TestStoryRepository_ListActiveEpisodes(t *testing.T) {
+func TestListActiveEpisodes(t *testing.T) {
 	repo := postgres.NewStoryRepository(sharedPg.Pool)
 	ctx := context.Background()
 
@@ -86,7 +86,7 @@ func TestStoryRepository_ListActiveEpisodes(t *testing.T) {
 	}
 }
 
-func TestStoryRepository_ListActiveEpisodes_AggregatesRequiredFactions(t *testing.T) {
+func TestListActiveEpisodes_AggregatesRequiredFactions(t *testing.T) {
 	sharedPg.Truncate(t)
 	repo := postgres.NewStoryRepository(sharedPg.Pool)
 	ctx := context.Background()
@@ -112,7 +112,7 @@ func TestStoryRepository_ListActiveEpisodes_AggregatesRequiredFactions(t *testin
 	assert.Empty(t, got["ep2"])
 }
 
-func TestStoryRepository_FindEpisodeByID(t *testing.T) {
+func TestFindEpisodeByID(t *testing.T) {
 	sharedPg.Truncate(t)
 	repo := postgres.NewStoryRepository(sharedPg.Pool)
 	ctx := context.Background()
@@ -164,7 +164,7 @@ func TestStoryRepository_FindEpisodeByID(t *testing.T) {
 	}
 }
 
-func TestStoryRepository_GetCompletedEpisodeIDs(t *testing.T) {
+func TestGetCompletedEpisodeIDs(t *testing.T) {
 	repo := postgres.NewStoryRepository(sharedPg.Pool)
 	ctx := context.Background()
 
@@ -225,7 +225,7 @@ func TestStoryRepository_GetCompletedEpisodeIDs(t *testing.T) {
 	}
 }
 
-func TestStoryRepository_GetUnlockContext(t *testing.T) {
+func TestGetUnlockContext(t *testing.T) {
 	repo := postgres.NewStoryRepository(sharedPg.Pool)
 	ctx := context.Background()
 

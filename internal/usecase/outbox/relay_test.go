@@ -70,7 +70,7 @@ func (p *fakeRawPublisher) Publish(_ context.Context, eventType string, payload 
 	return nil
 }
 
-func TestNew_Validation(t *testing.T) {
+func TestNew(t *testing.T) {
 	tests := []struct {
 		name    string
 		store   port.OutboxStore
@@ -123,7 +123,7 @@ func TestNew_Validation(t *testing.T) {
 	}
 }
 
-func TestRelay_RunOnce(t *testing.T) {
+func TestRunOnce_HappyPath(t *testing.T) {
 	okID := uuid.New()
 	ngID := uuid.New()
 
@@ -192,7 +192,7 @@ func TestRelay_RunOnce(t *testing.T) {
 	}
 }
 
-func TestRelay_RunOnce_ClaimErrorSurfaces(t *testing.T) {
+func TestRunOnce_ClaimErrorSurfaces(t *testing.T) {
 	store := &fakeOutboxStore{claimErr: errors.New("db down")}
 	pub := &fakeRawPublisher{}
 	s, err := New(store, pub, Config{
@@ -208,7 +208,7 @@ func TestRelay_RunOnce_ClaimErrorSurfaces(t *testing.T) {
 	assert.Empty(t, store.failures)
 }
 
-func TestRelay_RunOnce_PassesConfigToStore(t *testing.T) {
+func TestRunOnce_PassesConfigToStore(t *testing.T) {
 	store := &fakeOutboxStore{}
 	pub := &fakeRawPublisher{}
 	s, err := New(store, pub, Config{

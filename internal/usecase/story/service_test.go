@@ -7,17 +7,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
 type testEnv struct {
 	svc       *Service
-	storyRepo *port.MockStoryRepository
+	storyRepo *mockStoryRepository
 }
 
 func newTestEnv() *testEnv {
-	storyRepo := port.NewMockStoryRepository()
+	storyRepo := newMockStoryRepository()
 	return &testEnv{
 		svc:       New(storyRepo, nil),
 		storyRepo: storyRepo,
@@ -26,7 +27,7 @@ func newTestEnv() *testEnv {
 
 func seedTestEpisodes(env *testEnv) {
 	faction := "SHE"
-	env.storyRepo.SeedEpisodes([]*apiscenario.ScenarioEpisode{
+	env.storyRepo.SeedEpisodes([]*domain.Episode{
 		{
 			EpisodeID:        "she_ep1",
 			Faction:          &faction,
@@ -325,18 +326,18 @@ func (f *fakeScriptStore) ReadScript(_ context.Context, key string) (string, err
 func TestCheckUnlock(t *testing.T) {
 	tests := []struct {
 		name        string
-		ep          *apiscenario.ScenarioEpisode
-		uc          *apiscenario.StoryUnlockContext
+		ep          *domain.Episode
+		uc          *domain.UnlockContext
 		wantReasons []string
 	}{
 		{
 			name: "全条件を満たす場合は理由なし",
-			ep: &apiscenario.ScenarioEpisode{
+			ep: &domain.Episode{
 				RequiredLevel:    5,
 				RequiredFactions: []string{"SHE"},
 				RequiredEpisodes: []string{"she_ep1"},
 			},
-			uc: &apiscenario.StoryUnlockContext{
+			uc: &domain.UnlockContext{
 				PlayerLevel:       10,
 				OwnedFactions:     map[string]bool{"SHE": true},
 				CompletedEpisodes: map[string]bool{"she_ep1": true},
@@ -345,12 +346,12 @@ func TestCheckUnlock(t *testing.T) {
 		},
 		{
 			name: "全条件未達は level, faction, episode の3理由を返す",
-			ep: &apiscenario.ScenarioEpisode{
+			ep: &domain.Episode{
 				RequiredLevel:    5,
 				RequiredFactions: []string{"SHE"},
 				RequiredEpisodes: []string{"she_ep1"},
 			},
-			uc: &apiscenario.StoryUnlockContext{
+			uc: &domain.UnlockContext{
 				PlayerLevel:       1,
 				OwnedFactions:     map[string]bool{},
 				CompletedEpisodes: map[string]bool{},
