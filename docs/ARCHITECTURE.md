@@ -178,7 +178,7 @@ shop との差分は「何を積むか」だけで、インフラ側は共通化
 
 ## Presenter 層の位置づけ
 
-`internal/presenter/` は domain ↔ wire DTO (`packages/api-scenario`) の境界変換を集約するパッケージ。位置づけと将来の移行方針は overload-party-card の同名セクションを参照。
+`internal/presenter/` は domain ↔ wire DTO (`packages/api-scenario`) の境界変換を集約する。
 
 エピソードのアンロック判定 (`Episode.LockReasons`) は domain 層に置き、wire の `apiscenario.LockReason` への射影だけを presenter が担う。判定ロジックを wire 表現に依存させないための分離。
 
