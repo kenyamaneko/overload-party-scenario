@@ -56,7 +56,7 @@ func (c *AccountClient) ValidateOnboardingName(ctx context.Context, playerID, na
 	if err != nil {
 		return fmt.Errorf("accountclient: do: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case nethttp.StatusOK, nethttp.StatusNoContent:
@@ -92,7 +92,7 @@ func (c *AccountClient) GetOnboardingPlayer(ctx context.Context, playerID string
 	if err != nil {
 		return port.AccountPlayer{}, fmt.Errorf("accountclient: do: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case nethttp.StatusOK:
