@@ -27,13 +27,11 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      # overload-party-common の共有パッケージを取得するためにプライベートモジュールの認証を設定する
       - name: Configure Go private modules
-        env:
-          COMMON_GO_MODULES_FETCH: ${{ secrets.COMMON_GO_MODULES_FETCH }}
-          GOPRIVATE: github.com/kenyamaneko/overload-party-common
-          GONOSUMDB: github.com/kenyamaneko/overload-party-common
-        run: .github/scripts/ci/configure-go-private-modules.sh
+        uses: kenyamaneko/overload-party-common/.github/actions/setup-go-private-modules@main
+        with:
+          app-id: ${{ vars.CROSS_REPO_DEPS_APP_ID }}
+          private-key: ${{ secrets.CROSS_REPO_DEPS_APP_PRIVATE_KEY }}
       # golangci-lint-action のビルド済みバイナリは Go 1.25 未対応のため
       # go install でソースからビルドして使う
       - name: Install golangci-lint
@@ -72,13 +70,11 @@ jobs:
       # Testcontainers はテスト中に自動 pull するが、時間がかかりタイムアウトの原因になるため事前に取得する
       - name: Pre-pull postgres image (Testcontainers)
         run: docker pull postgres:16-alpine
-      # overload-party-common の共有パッケージを取得するためにプライベートモジュールの認証を設定する
       - name: Configure Go private modules
-        env:
-          COMMON_GO_MODULES_FETCH: ${{ secrets.COMMON_GO_MODULES_FETCH }}
-          GOPRIVATE: github.com/kenyamaneko/overload-party-common
-          GONOSUMDB: github.com/kenyamaneko/overload-party-common
-        run: .github/scripts/ci/configure-go-private-modules.sh
+        uses: kenyamaneko/overload-party-common/.github/actions/setup-go-private-modules@main
+        with:
+          app-id: ${{ vars.CROSS_REPO_DEPS_APP_ID }}
+          private-key: ${{ secrets.CROSS_REPO_DEPS_APP_PRIVATE_KEY }}
       - name: Run unit tests
         run: go test -race -count=1 ./...
         env:
@@ -115,13 +111,11 @@ jobs:
         run: docker pull postgres:16-alpine
       - name: Pre-pull Pub/Sub emulator image (Testcontainers)
         run: docker pull gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
-      # overload-party-common の共有パッケージを取得するためにプライベートモジュールの認証を設定する
       - name: Configure Go private modules
-        env:
-          COMMON_GO_MODULES_FETCH: ${{ secrets.COMMON_GO_MODULES_FETCH }}
-          GOPRIVATE: github.com/kenyamaneko/overload-party-common
-          GONOSUMDB: github.com/kenyamaneko/overload-party-common
-        run: .github/scripts/ci/configure-go-private-modules.sh
+        uses: kenyamaneko/overload-party-common/.github/actions/setup-go-private-modules@main
+        with:
+          app-id: ${{ vars.CROSS_REPO_DEPS_APP_ID }}
+          private-key: ${{ secrets.CROSS_REPO_DEPS_APP_PRIVATE_KEY }}
       - name: Run integration tests
         run: go test -race -count=1 -tags=integration ./...
         env:
@@ -134,18 +128,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      # overload-party-common の共有パッケージを取得するためにプライベートモジュールの認証を設定する
-      - name: Configure Go private modules
-        env:
-          COMMON_GO_MODULES_FETCH: ${{ secrets.COMMON_GO_MODULES_FETCH }}
-          GOPRIVATE: github.com/kenyamaneko/overload-party-common
-          GONOSUMDB: github.com/kenyamaneko/overload-party-common
-        run: .github/scripts/ci/configure-go-private-modules.sh
+      - name: Generate Cross-Repo Deps App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.CROSS_REPO_DEPS_APP_ID }}
+          private-key: ${{ secrets.CROSS_REPO_DEPS_APP_PRIVATE_KEY }}
+          owner: kenyamaneko
       - name: Build image
         env:
           DOCKER_BUILDKIT: "1"
-          COMMON_GO_MODULES_FETCH: ${{ secrets.COMMON_GO_MODULES_FETCH }}
-        run: docker build --secret id=COMMON_GO_MODULES_FETCH,env=COMMON_GO_MODULES_FETCH -t scenario:ci-scan .
+          GO_MODULES_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: docker build --secret id=GO_MODULES_TOKEN,env=GO_MODULES_TOKEN -t scenario:ci-scan .
       - name: Scan image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.35.0
         with:
@@ -162,10 +156,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Configure git auth for private modules
-        env:
-          COMMON_GO_MODULES_FETCH: ${{ secrets.COMMON_GO_MODULES_FETCH }}
-        run: .github/scripts/ci/configure-go-private-modules.sh
+      - name: Configure Go private modules
+        uses: kenyamaneko/overload-party-common/.github/actions/setup-go-private-modules@main
+        with:
+          app-id: ${{ vars.CROSS_REPO_DEPS_APP_ID }}
+          private-key: ${{ secrets.CROSS_REPO_DEPS_APP_PRIVATE_KEY }}
       - name: Install dependencies
         run: |
           pip install pyyaml \
