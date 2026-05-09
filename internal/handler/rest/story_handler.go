@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/usecase/story"
+	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
 // StoryHandler はシナリオ（ストーリー）の REST ハンドラを提供する。
@@ -34,7 +35,7 @@ func (h *StoryHandler) ListEpisodes(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"episodes": episodes})
+	c.JSON(http.StatusOK, apiscenario.EpisodesListResponse{Episodes: episodes})
 }
 
 // GetScript は指定エピソードのスクリプトを返す。
@@ -49,7 +50,7 @@ func (h *StoryHandler) GetScript(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"episode_id": episodeID, "script": script})
+	c.JSON(http.StatusOK, apiscenario.ScenarioScriptResponse{EpisodeID: episodeID, Script: script})
 }
 
 // CompleteEpisode はエピソードの完了を記録する。
@@ -66,7 +67,7 @@ func (h *StoryHandler) CompleteEpisode(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "episode completed", "episode_id": episodeID})
+	c.JSON(http.StatusOK, apiscenario.ScenarioCompleteResponse{Message: "episode completed", EpisodeID: episodeID})
 }
 
 // logGetScriptError は GetScript のエラー種別ごとのログレベルを決定する。

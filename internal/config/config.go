@@ -21,7 +21,11 @@ type Config struct {
 	// PubsubProjectID は scenario が publish する Pub/Sub topic のホスト Google Cloud project。
 	PubsubProjectID string
 
-	// PlayerOnboardedTopic は scenario が publish する完了イベントの topic 名。
+	// OnboardingNameSetTopic は scenario が publish する name 入力ステップ完了イベントの topic 名。
+	OnboardingNameSetTopic string
+	// OnboardingFactionSetTopic は scenario が publish する faction 選択ステップ完了イベントの topic 名。
+	OnboardingFactionSetTopic string
+	// PlayerOnboardedTopic は scenario が publish する読了イベントの topic 名。
 	PlayerOnboardedTopic string
 
 	// FirestoreProjectID は game_config の読み取り先プロジェクト ID。
@@ -41,13 +45,15 @@ type Config struct {
 // 未設定の必須環境変数があれば即エラーで返し、デフォルトへの暗黙 fallback は行わない。
 func FromEnv() (*Config, error) {
 	cfg := &Config{
-		Env:                  os.Getenv("ENV"),
-		DatabaseConn:         os.Getenv("DATABASE_CONN"),
-		StoryBucket:          os.Getenv("STORY_BUCKET"),
-		PubsubProjectID:      os.Getenv("PUBSUB_PROJECT_ID"),
-		PlayerOnboardedTopic: os.Getenv("PLAYER_ONBOARDED_TOPIC"),
-		FirestoreProjectID:   os.Getenv("FIRESTORE_PROJECT_ID"),
-		AccountBaseURL:       os.Getenv("ACCOUNT_BASE_URL"),
+		Env:                       os.Getenv("ENV"),
+		DatabaseConn:              os.Getenv("DATABASE_CONN"),
+		StoryBucket:               os.Getenv("STORY_BUCKET"),
+		PubsubProjectID:           os.Getenv("PUBSUB_PROJECT_ID"),
+		OnboardingNameSetTopic:    os.Getenv("ONBOARDING_NAME_SET_TOPIC"),
+		OnboardingFactionSetTopic: os.Getenv("ONBOARDING_FACTION_SET_TOPIC"),
+		PlayerOnboardedTopic:      os.Getenv("PLAYER_ONBOARDED_TOPIC"),
+		FirestoreProjectID:        os.Getenv("FIRESTORE_PROJECT_ID"),
+		AccountBaseURL:            os.Getenv("ACCOUNT_BASE_URL"),
 	}
 
 	rawPort := os.Getenv("PORT")
@@ -73,7 +79,13 @@ func FromEnv() (*Config, error) {
 		return nil, fmt.Errorf("config: STORY_BUCKET=%q: local path must not be empty after %q", cfg.StoryBucket, localStoryPrefix)
 	}
 	if cfg.PubsubProjectID == "" {
-		return nil, fmt.Errorf("config: PUBSUB_PROJECT_ID is required (scenario publishes player-onboarded events to Pub/Sub)")
+		return nil, fmt.Errorf("config: PUBSUB_PROJECT_ID is required (scenario publishes onboarding events to Pub/Sub)")
+	}
+	if cfg.OnboardingNameSetTopic == "" {
+		return nil, fmt.Errorf("config: ONBOARDING_NAME_SET_TOPIC is required")
+	}
+	if cfg.OnboardingFactionSetTopic == "" {
+		return nil, fmt.Errorf("config: ONBOARDING_FACTION_SET_TOPIC is required")
 	}
 	if cfg.PlayerOnboardedTopic == "" {
 		return nil, fmt.Errorf("config: PLAYER_ONBOARDED_TOPIC is required")

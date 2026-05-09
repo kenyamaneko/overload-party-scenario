@@ -5,25 +5,39 @@ import (
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
-// ToLockReason は domain.LockReason を wire の apiscenario.LockReason に詰め替えます。
+// ToLockReason は domain.LockReason を wire の apiscenario.LockReason に詰め替える。
+// type ごとに有効なフィールドのみ埋める (他 variant のフィールドは nil で透過する)。
 func ToLockReason(r domain.LockReason) apiscenario.LockReason {
 	switch r.Type {
 	case domain.LockReasonLevel:
-		return apiscenario.NewLockReasonLevel(r.RequiredLevel, r.CurrentLevel)
+		required := r.RequiredLevel
+		current := r.CurrentLevel
+		return apiscenario.LockReason{
+			Type:          apiscenario.LockReasonTypeLevel,
+			RequiredLevel: &required,
+			CurrentLevel:  &current,
+		}
 	case domain.LockReasonFaction:
-		return apiscenario.NewLockReasonFaction(r.RequiredFaction)
+		faction := r.RequiredFaction
+		return apiscenario.LockReason{
+			Type:            apiscenario.LockReasonTypeFaction,
+			RequiredFaction: &faction,
+		}
 	case domain.LockReasonEpisode:
-		return apiscenario.NewLockReasonEpisode(r.RequiredEpisode)
+		episode := r.RequiredEpisode
+		return apiscenario.LockReason{
+			Type:            apiscenario.LockReasonTypeEpisode,
+			RequiredEpisode: &episode,
+		}
 	default:
-		return apiscenario.LockReason{Type: string(r.Type)}
+		return apiscenario.LockReason{Type: apiscenario.LockReasonType(r.Type)}
 	}
 }
 
-// ToLockReasons は domain.LockReason slice を wire LockReason slice に詰め替えます。
+// ToLockReasons は domain.LockReason slice を wire LockReason slice に詰め替える。
+// 0 件のときは nil を返す (wire 側の lock_reasons 配列としては nil でも JSON 上は null になるが、
+// EpisodeWithStatus の lock_reasons 自体は required 配列なので呼び出し側で空 slice を保証する)。
 func ToLockReasons(reasons []domain.LockReason) []apiscenario.LockReason {
-	if len(reasons) == 0 {
-		return nil
-	}
 	result := make([]apiscenario.LockReason, len(reasons))
 	for i, r := range reasons {
 		result[i] = ToLockReason(r)
@@ -32,7 +46,7 @@ func ToLockReasons(reasons []domain.LockReason) []apiscenario.LockReason {
 }
 
 // BuildEpisodeWithStatus は Episode と UnlockContext からアンロック状態と
-// ロック理由を派生させて wire の EpisodeWithStatus を組み立てます。
+// ロック理由を派生させて wire の EpisodeWithStatus を組み立てる。
 func BuildEpisodeWithStatus(ep *domain.Episode, uc *domain.UnlockContext, lang string) apiscenario.EpisodeWithStatus {
 	reasons := ep.LockReasons(uc)
 	return apiscenario.EpisodeWithStatus{
@@ -40,6 +54,7 @@ func BuildEpisodeWithStatus(ep *domain.Episode, uc *domain.UnlockContext, lang s
 		Faction:       ep.Faction,
 		EpisodeNumber: ep.EpisodeNumber,
 		Title:         ep.Title(lang),
+		ThumbnailURL:  ep.ThumbnailPath,
 		IsCompleted:   uc.CompletedEpisodes[ep.EpisodeID],
 		IsUnlocked:    len(reasons) == 0,
 		LockReasons:   ToLockReasons(reasons),
@@ -47,7 +62,7 @@ func BuildEpisodeWithStatus(ep *domain.Episode, uc *domain.UnlockContext, lang s
 }
 
 // BuildEpisodesWithStatus は Episode slice を共通の UnlockContext に対して評価し、
-// EpisodeWithStatus slice として返します。
+// EpisodeWithStatus slice として返す。
 func BuildEpisodesWithStatus(episodes []*domain.Episode, uc *domain.UnlockContext, lang string) []apiscenario.EpisodeWithStatus {
 	result := make([]apiscenario.EpisodeWithStatus, len(episodes))
 	for i, ep := range episodes {

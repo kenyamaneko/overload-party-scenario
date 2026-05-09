@@ -70,7 +70,7 @@ func seedTestEpisodes(env *testEnv) {
 	})
 }
 
-func findReasonByType(reasons []apiscenario.LockReason, typ string) *apiscenario.LockReason {
+func findReasonByType(reasons []apiscenario.LockReason, typ apiscenario.LockReasonType) *apiscenario.LockReason {
 	for i := range reasons {
 		if reasons[i].Type == typ {
 			return &reasons[i]
@@ -97,7 +97,7 @@ func TestListEpisodes(t *testing.T) {
 				require.Len(t, eps, 2)
 				assert.True(t, eps[0].IsUnlocked)
 				assert.False(t, eps[1].IsUnlocked)
-				assert.NotNil(t, findReasonByType(eps[1].LockReasons, "level"))
+				assert.NotNil(t, findReasonByType(eps[1].LockReasons, apiscenario.LockReasonTypeLevel))
 			},
 		},
 		{
@@ -108,9 +108,10 @@ func TestListEpisodes(t *testing.T) {
 			lang: "ja",
 			verify: func(t *testing.T, eps []apiscenario.EpisodeWithStatus) {
 				require.Len(t, eps, 2)
-				r := findReasonByType(eps[0].LockReasons, "faction")
+				r := findReasonByType(eps[0].LockReasons, apiscenario.LockReasonTypeFaction)
 				require.NotNil(t, r)
-				assert.Equal(t, "SHE", r.Required)
+				require.NotNil(t, r.RequiredFaction)
+				assert.Equal(t, "SHE", *r.RequiredFaction)
 			},
 		},
 		{
@@ -123,7 +124,7 @@ func TestListEpisodes(t *testing.T) {
 			verify: func(t *testing.T, eps []apiscenario.EpisodeWithStatus) {
 				require.Len(t, eps, 2)
 				assert.False(t, eps[1].IsUnlocked)
-				assert.NotNil(t, findReasonByType(eps[1].LockReasons, "episode"))
+				assert.NotNil(t, findReasonByType(eps[1].LockReasons, apiscenario.LockReasonTypeEpisode))
 			},
 		},
 		{

@@ -4,7 +4,8 @@
 
 関連ドキュメント:
 - 内部動作・配線・本番運用設定: [ARCHITECTURE.md](ARCHITECTURE.md)
-- HTTP エンドポイント契約: [API_REFERENCE.md](API_REFERENCE.md)
+- REST エンドポイント契約 (SSoT): [../data/openapi.yaml](../data/openapi.yaml)
+- Pub/Sub イベント契約 (SSoT): [../data/asyncapi.yaml](../data/asyncapi.yaml)
 - DB スキーマ: [DATA_DESIGN.md](DATA_DESIGN.md)
 
 ---
@@ -285,7 +286,7 @@ scenario 側で account の業務カラムを直接書き換えない。
 オンボード進行状態取得 (`onboarding_status`) は account の `GET /internal/v1/players/:playerId` 経由で
 クライアントが直接取得する。scenario 側に進行状態取得用エンドポイントは持たない。
 
-API の完全なリクエスト／レスポンス仕様は [API_REFERENCE.md](API_REFERENCE.md) が SSoT（`data/endpoints.yaml` から codegen）。
+API の完全なリクエスト／レスポンス仕様は [../data/openapi.yaml](../data/openapi.yaml) が SSoT。
 
 ### 10.2 一度きりセマンティクス
 

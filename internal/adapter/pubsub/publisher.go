@@ -20,13 +20,13 @@ type Publisher struct {
 	byEventType map[string]*gpubsub.Publisher
 }
 
-// New は eventType → topic mapping を構築する。
-func New(ctx context.Context, projectID, playerOnboardedTopic string) (*Publisher, error) {
+// New は eventType → topic mapping を構築する。topic 名は env から注入する。
+func New(ctx context.Context, projectID, onboardingNameSetTopic, onboardingFactionSetTopic, playerOnboardedTopic string) (*Publisher, error) {
 	if projectID == "" {
 		return nil, errors.New("pubsub: projectID is empty")
 	}
-	if playerOnboardedTopic == "" {
-		return nil, errors.New("pubsub: playerOnboardedTopic is required")
+	if onboardingNameSetTopic == "" || onboardingFactionSetTopic == "" || playerOnboardedTopic == "" {
+		return nil, errors.New("pubsub: all topic names are required")
 	}
 	client, err := gpubsub.NewClient(ctx, projectID)
 	if err != nil {
@@ -35,7 +35,9 @@ func New(ctx context.Context, projectID, playerOnboardedTopic string) (*Publishe
 	return &Publisher{
 		client: client,
 		byEventType: map[string]*gpubsub.Publisher{
-			apiscenario.EventTypePlayerOnboarded: client.Publisher(playerOnboardedTopic),
+			apiscenario.EventTypeOnboardingNameSet:    client.Publisher(onboardingNameSetTopic),
+			apiscenario.EventTypeOnboardingFactionSet: client.Publisher(onboardingFactionSetTopic),
+			apiscenario.EventTypePlayerOnboarded:      client.Publisher(playerOnboardedTopic),
 		},
 	}, nil
 }

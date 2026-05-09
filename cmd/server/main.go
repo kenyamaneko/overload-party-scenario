@@ -100,7 +100,13 @@ func run() error {
 	// Why: game_config は現在 runtime から参照していないが、クライアント到達性を起動時に検証するため repo を生成だけしておく。
 	_ = scenariofirestore.NewGameConfigRepository(fsClient)
 
-	pubPublisher, err := scenariopubsub.New(ctx, cfg.PubsubProjectID, cfg.PlayerOnboardedTopic)
+	pubPublisher, err := scenariopubsub.New(
+		ctx,
+		cfg.PubsubProjectID,
+		cfg.OnboardingNameSetTopic,
+		cfg.OnboardingFactionSetTopic,
+		cfg.PlayerOnboardedTopic,
+	)
 	if err != nil {
 		return fmt.Errorf("pubsub publisher: %w", err)
 	}
@@ -155,6 +161,8 @@ func run() error {
 	slog.Info("listening",
 		"addr", srv.Addr,
 		"pubsub_project", cfg.PubsubProjectID,
+		"onboarding_name_set_topic", cfg.OnboardingNameSetTopic,
+		"onboarding_faction_set_topic", cfg.OnboardingFactionSetTopic,
 		"player_onboarded_topic", cfg.PlayerOnboardedTopic,
 		"outbox_poll_interval", cfg.OutboxPollInterval,
 	)

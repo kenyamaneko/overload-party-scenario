@@ -8,51 +8,58 @@ import (
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
 	"github.com/kenyamaneko/overload-party-scenario/internal/presenter"
+	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
 func TestToLockReason(t *testing.T) {
+	requiredLv5 := int64(5)
+	currentLv2 := int64(2)
+	factionSHE := "SHE"
+	episodeSheEp1 := "she_ep1"
+
 	tests := []struct {
-		name         string
-		in           domain.LockReason
-		wantType     string
-		wantRequired interface{}
-		wantCurrent  interface{}
+		name string
+		in   domain.LockReason
+		want apiscenario.LockReason
 	}{
 		{
-			name:         "level は required と current を持つ",
-			in:           domain.LockReason{Type: domain.LockReasonLevel, RequiredLevel: 5, CurrentLevel: 2},
-			wantType:     "level",
-			wantRequired: int64(5),
-			wantCurrent:  int64(2),
+			name: "level は required_level と current_level のみ埋める",
+			in:   domain.LockReason{Type: domain.LockReasonLevel, RequiredLevel: 5, CurrentLevel: 2},
+			want: apiscenario.LockReason{
+				Type:          apiscenario.LockReasonTypeLevel,
+				RequiredLevel: &requiredLv5,
+				CurrentLevel:  &currentLv2,
+			},
 		},
 		{
-			name:         "faction は required に faction id を入れる",
-			in:           domain.LockReason{Type: domain.LockReasonFaction, RequiredFaction: "SHE"},
-			wantType:     "faction",
-			wantRequired: "SHE",
-			wantCurrent:  nil,
+			name: "faction は required_faction のみ埋める",
+			in:   domain.LockReason{Type: domain.LockReasonFaction, RequiredFaction: "SHE"},
+			want: apiscenario.LockReason{
+				Type:            apiscenario.LockReasonTypeFaction,
+				RequiredFaction: &factionSHE,
+			},
 		},
 		{
-			name:         "episode は required に episode id を入れる",
-			in:           domain.LockReason{Type: domain.LockReasonEpisode, RequiredEpisode: "she_ep1"},
-			wantType:     "episode",
-			wantRequired: "she_ep1",
-			wantCurrent:  nil,
+			name: "episode は required_episode のみ埋める",
+			in:   domain.LockReason{Type: domain.LockReasonEpisode, RequiredEpisode: "she_ep1"},
+			want: apiscenario.LockReason{
+				Type:            apiscenario.LockReasonTypeEpisode,
+				RequiredEpisode: &episodeSheEp1,
+			},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := presenter.ToLockReason(tc.in)
-			assert.Equal(t, tc.wantType, got.Type)
-			assert.Equal(t, tc.wantRequired, got.Required)
-			assert.Equal(t, tc.wantCurrent, got.Current)
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }
 
 func TestBuildEpisodeWithStatus(t *testing.T) {
 	faction := "SHE"
+	thumbnail := "thumbnails/she_ep1.png"
 	ep := &domain.Episode{
 		EpisodeID:        "she_ep1",
 		Faction:          &faction,
@@ -61,6 +68,7 @@ func TestBuildEpisodeWithStatus(t *testing.T) {
 		TitleEn:          "SHE Chapter 1",
 		RequiredLevel:    2,
 		RequiredFactions: []string{"SHE"},
+		ThumbnailPath:    &thumbnail,
 	}
 
 	tests := []struct {
@@ -92,10 +100,11 @@ func TestBuildEpisodeWithStatus(t *testing.T) {
 				OwnedFactions:     map[string]bool{"SHE": true},
 				CompletedEpisodes: map[string]bool{"she_ep1": true},
 			},
-			lang:          "en",
-			wantUnlocked:  true,
-			wantCompleted: true,
-			wantTitle:     "SHE Chapter 1",
+			lang:           "en",
+			wantUnlocked:   true,
+			wantCompleted:  true,
+			wantTitle:      "SHE Chapter 1",
+			wantReasonsLen: 0,
 		},
 		{
 			name: "条件未達は IsUnlocked=false で LockReasons が入る",
@@ -120,6 +129,8 @@ func TestBuildEpisodeWithStatus(t *testing.T) {
 			assert.Equal(t, tc.wantUnlocked, got.IsUnlocked)
 			assert.Equal(t, tc.wantCompleted, got.IsCompleted)
 			require.Len(t, got.LockReasons, tc.wantReasonsLen)
+			require.NotNil(t, got.ThumbnailURL)
+			assert.Equal(t, thumbnail, *got.ThumbnailURL)
 		})
 	}
 }
