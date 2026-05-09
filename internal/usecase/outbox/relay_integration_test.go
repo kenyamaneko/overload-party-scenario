@@ -60,16 +60,20 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// setupRelay は emulator に topic を 1 本作り、Publisher と OutboxRepository を組み上げて Relay を返す。
+// setupRelay は emulator に scenario の全 topic を作り、Publisher と OutboxRepository を組み上げて Relay を返す。
+// 物理 topic 名は infra (Terraform) が SSoT のため、本テストではリテラルで宣言する。
+// 戻り値の topic は player_onboarded 用 (EventTypePlayerOnboarded を扱う test ケースが受信側で参照する)。
 func setupRelay(t *testing.T) (*outbox.Relay, *pubsubtest.Subscription, string) {
 	t.Helper()
 	sharedPg.Truncate(t)
 
-	topic := sharedEmulator.CreateTopic(t, apiscenario.TopicPlayerOnboarded)
-	sub := sharedEmulator.Subscribe(t, topic)
+	onboardingNameSetTopic := sharedEmulator.CreateTopic(t, "onboarding-name-set")
+	onboardingFactionSetTopic := sharedEmulator.CreateTopic(t, "onboarding-faction-set")
+	playerOnboardedTopic := sharedEmulator.CreateTopic(t, "player-onboarded")
+	sub := sharedEmulator.Subscribe(t, playerOnboardedTopic)
 
 	ctx := context.Background()
-	pub, err := scenariopubsub.New(ctx, sharedEmulator.ProjectID(), topic)
+	pub, err := scenariopubsub.New(ctx, sharedEmulator.ProjectID(), onboardingNameSetTopic, onboardingFactionSetTopic, playerOnboardedTopic)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pub.Close() })
 
@@ -80,7 +84,7 @@ func setupRelay(t *testing.T) (*outbox.Relay, *pubsubtest.Subscription, string) 
 		VisibilityTimeout: 30 * time.Second,
 	})
 	require.NoError(t, err)
-	return relay, sub, topic
+	return relay, sub, playerOnboardedTopic
 }
 
 // insertOutboxRow は scenario.outbox_events に 1 行 INSERT して event_id を返す。
