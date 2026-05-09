@@ -1,0 +1,140 @@
+asyncapi: 3.0.0
+info:
+  title: overload-party-scenario events
+  version: 0.1.0
+  description: |
+    Scenario service が発行する Pub/Sub イベントの契約。
+    本ファイルが SSoT。`packages/api-scenario` の event 型と event_type 定数は asyncapi-codegen が本ファイルから生成する。
+    Topic 名 (物理 channel) は overload-party-infra (Terraform) が SSoT であり、本仕様には書かない。
+    アプリは ConfigMap 由来の env var (ONBOARDING_NAME_SET_TOPIC / ONBOARDING_FACTION_SET_TOPIC / PLAYER_ONBOARDED_TOPIC) で物理 topic を解決する。
+
+channels:
+  OnboardingNameSet:
+    address: onboarding-name-set
+    description: |
+      オンボード内 name 入力ステップ完了時に scenario が発行する論理チャネル。
+      物理 topic 名は env ONBOARDING_NAME_SET_TOPIC に置き換える運用。
+    messages:
+      OnboardingNameSetEvent:
+        $ref: "#/components/messages/OnboardingNameSetEvent"
+
+  OnboardingFactionSet:
+    address: onboarding-faction-set
+    description: |
+      オンボード内 faction 選択ステップ完了時に scenario が発行する論理チャネル。
+      物理 topic 名は env ONBOARDING_FACTION_SET_TOPIC に置き換える運用。
+    messages:
+      OnboardingFactionSetEvent:
+        $ref: "#/components/messages/OnboardingFactionSetEvent"
+
+  PlayerOnboarded:
+    address: player-onboarded
+    description: |
+      オンボーディングシナリオ読了時に scenario が発行する論理チャネル (player ごと一度)。
+      物理 topic 名は env PLAYER_ONBOARDED_TOPIC に置き換える運用。
+    messages:
+      PlayerOnboardedEvent:
+        $ref: "#/components/messages/PlayerOnboardedEvent"
+
+operations:
+  publishOnboardingNameSet:
+    action: send
+    channel:
+      $ref: "#/channels/OnboardingNameSet"
+    summary: name 入力ステップ完了を通知。subscriber は account (players.name + onboarding_status='name_set' を 1 tx で更新)。
+
+  publishOnboardingFactionSet:
+    action: send
+    channel:
+      $ref: "#/channels/OnboardingFactionSet"
+    summary: faction 選択ステップ完了を通知。subscriber は account (players.selected_faction + player_factions INSERT + onboarding_status='faction_set' を 1 tx で更新)。
+
+  publishPlayerOnboarded:
+    action: send
+    channel:
+      $ref: "#/channels/PlayerOnboarded"
+    summary: オンボーディング読了を通知。subscriber は account (onboarding_status='completed') / card (initial pack 配布) / gateway (WS 通知)。
+
+components:
+  messages:
+    OnboardingNameSetEvent:
+      name: OnboardingNameSetEvent
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/OnboardingNameSetEvent"
+
+    OnboardingFactionSetEvent:
+      name: OnboardingFactionSetEvent
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/OnboardingFactionSetEvent"
+
+    PlayerOnboardedEvent:
+      name: PlayerOnboardedEvent
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/PlayerOnboardedEvent"
+
+  schemas:
+    OnboardingNameSetEvent:
+      type: object
+      description: |
+        プレイヤーがオンボード内 name 入力ステップを完了した業務事実を表す scenario 発行イベント。
+        Name は account の validate REST endpoint で事前検証済み (subscriber は再検証しない)。
+        subscriber は EventID で冪等性を担保する (at-least-once)。
+      required: [event_type, event_id, timestamp, player_id, name]
+      properties:
+        event_type:
+          type: string
+          const: onboarding_name_set
+        event_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        player_id:
+          type: string
+        name:
+          type: string
+
+    OnboardingFactionSetEvent:
+      type: object
+      description: |
+        プレイヤーがオンボード内 faction 選択ステップを完了した業務事実を表す scenario 発行イベント。
+        InitialFactionID は SelectableFactions (overload-party-common 由来) で事前検証済み。
+        subscriber は EventID で冪等性を担保する (at-least-once)。
+      required: [event_type, event_id, timestamp, player_id, initial_faction_id]
+      properties:
+        event_type:
+          type: string
+          const: onboarding_faction_set
+        event_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        player_id:
+          type: string
+        initial_faction_id:
+          type: string
+
+    PlayerOnboardedEvent:
+      type: object
+      description: |
+        プレイヤーがオンボーディングシナリオを読了した業務事実 (player ごとに一度) を表す scenario 発行イベント。
+        scenario.player_onboarding INSERT と同一 tx で outbox に積まれる。
+        subscriber は EventID で冪等性を担保する (at-least-once)。
+      required: [event_type, event_id, timestamp, player_id, initial_faction_id]
+      properties:
+        event_type:
+          type: string
+          const: player_onboarded
+        event_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        player_id:
+          type: string
+        initial_faction_id:
+          type: string

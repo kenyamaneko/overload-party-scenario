@@ -1,4 +1,4 @@
-.PHONY: build test test-integration vet fmt run tidy db-up db-down db-reset help
+.PHONY: build test test-integration vet fmt run tidy db-up db-down db-reset generate-types help
 
 APP := overload-party-scenario
 
@@ -20,6 +20,9 @@ tidy: ## Tidy dependencies
 fmt: ## Format code
 	gofmt -s -w .
 
+generate-types: ## Re-generate packages/api-scenario/{openapi,asyncapi}_gen.go from data/{openapi,asyncapi}.yaml (requires oapi-codegen and asyncapi-codegen on PATH)
+	scripts/generate_types.sh
+
 db-up: ## Start local Postgres (docker compose)
 	docker compose up -d postgres
 
@@ -35,6 +38,9 @@ run: db-up ## Run scenario server locally against compose Postgres (local env è¾
 	DATABASE_CONN="host=localhost port=5432 dbname=scenario user=scenario password=scenario sslmode=disable" \
 	GOOGLE_CLOUD_PROJECT=scenario-local \
 	PUBSUB_PROJECT_ID=scenario-local \
+	ONBOARDING_NAME_SET_TOPIC=onboarding-name-set \
+	ONBOARDING_FACTION_SET_TOPIC=onboarding-faction-set \
+	PLAYER_ONBOARDED_TOPIC=player-onboarded \
 	FIRESTORE_PROJECT_ID=scenario-local \
 	STORY_BUCKET=local:./testdata/stories \
 	ACCOUNT_BASE_URL=http://localhost:9001 \

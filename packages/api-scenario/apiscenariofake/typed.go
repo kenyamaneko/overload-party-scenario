@@ -9,58 +9,130 @@ import (
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
-// PublishPlayerOnboarded は scenario publisher の role を演じて
-// TopicPlayerOnboarded へ PlayerOnboardedEvent を 1 件発行する。
-// EventID / Timestamp が未設定なら UUIDv4 / 現在時刻を自動付与し、EventType は
-// 常に EventTypePlayerOnboarded に固定する — テスト側で手書きする必要があるのは
-// PlayerID / InitialFactionID など検証対象のフィールドのみ。
+// PublishOnboardingNameSet は OnboardingNameSet 論理チャネルへ
+// OnboardingNameSetEvent を 1 件発行する。EventID / Timestamp 未設定なら
+// UUIDv4 / 現在時刻を補完、EventType は常に上書きする。
+func PublishOnboardingNameSet(ctx context.Context, p *Publisher, ev apiscenario.OnboardingNameSetEvent) error {
+	ev = fillOnboardingNameSetDefaults(ev)
+	data, err := json.Marshal(ev)
+	if err != nil {
+		return fmt.Errorf("marshal OnboardingNameSetEvent: %w", err)
+	}
+	return p.Publish(ctx, "onboarding-name-set", data)
+}
+
+// PublishOnboardingFactionSet は OnboardingFactionSet 論理チャネルへ
+// OnboardingFactionSetEvent を 1 件発行する。
+func PublishOnboardingFactionSet(ctx context.Context, p *Publisher, ev apiscenario.OnboardingFactionSetEvent) error {
+	ev = fillOnboardingFactionSetDefaults(ev)
+	data, err := json.Marshal(ev)
+	if err != nil {
+		return fmt.Errorf("marshal OnboardingFactionSetEvent: %w", err)
+	}
+	return p.Publish(ctx, "onboarding-faction-set", data)
+}
+
+// PublishPlayerOnboarded は PlayerOnboarded 論理チャネルへ
+// PlayerOnboardedEvent を 1 件発行する。
 func PublishPlayerOnboarded(ctx context.Context, p *Publisher, ev apiscenario.PlayerOnboardedEvent) error {
 	ev = fillPlayerOnboardedDefaults(ev)
 	data, err := json.Marshal(ev)
 	if err != nil {
 		return fmt.Errorf("marshal PlayerOnboardedEvent: %w", err)
 	}
-	return p.Publish(ctx, apiscenario.TopicPlayerOnboarded, data)
+	return p.Publish(ctx, "player-onboarded", data)
 }
 
-// PlayerOnboardedExpecter は TopicPlayerOnboarded に subscribe 済みの待受器。
-// ExpectPlayerOnboarded で subscribe を確定 → publish → Wait で型付き payload
-// を受け取る順序を API レベルで強制することで、Broker が新規 subscriber に過去
-// メッセージを配信しない制約 (実 Pub/Sub の subscription 新規作成挙動に揃える
-// 意図) を破らない構造にしている。
+// OnboardingNameSetExpecter は OnboardingNameSet に subscribe 済みの待受器。
+// publish より前に subscribe を確定する必要があるため (Broker は過去メッセージを配信しない)、
+// API は ExpectOnboardingNameSet → publish → Wait の順序を強制する形に分割している。
+type OnboardingNameSetExpecter struct {
+	ch <-chan []byte
+}
+
+// ExpectOnboardingNameSet は即時 subscribe して Expecter を返す (publish より前に呼ぶこと)。
+func ExpectOnboardingNameSet(s *Subscriber) *OnboardingNameSetExpecter {
+	return &OnboardingNameSetExpecter{ch: s.Messages("onboarding-name-set")}
+}
+
+// Wait は subscribe 後に publish された最初の event を timeout 付きで取り出す。
+func (e *OnboardingNameSetExpecter) Wait(timeout time.Duration) (apiscenario.OnboardingNameSetEvent, error) {
+	return waitTypedFromChan[apiscenario.OnboardingNameSetEvent](e.ch, "onboarding-name-set", timeout)
+}
+
+// OnboardingFactionSetExpecter は OnboardingFactionSet 版の Expecter。
+type OnboardingFactionSetExpecter struct {
+	ch <-chan []byte
+}
+
+// ExpectOnboardingFactionSet は OnboardingFactionSet に即時 subscribe し Expecter を返す。
+func ExpectOnboardingFactionSet(s *Subscriber) *OnboardingFactionSetExpecter {
+	return &OnboardingFactionSetExpecter{ch: s.Messages("onboarding-faction-set")}
+}
+
+// Wait は publish された最初の OnboardingFactionSetEvent を timeout 付きで取り出す。
+func (e *OnboardingFactionSetExpecter) Wait(timeout time.Duration) (apiscenario.OnboardingFactionSetEvent, error) {
+	return waitTypedFromChan[apiscenario.OnboardingFactionSetEvent](e.ch, "onboarding-faction-set", timeout)
+}
+
+// PlayerOnboardedExpecter は PlayerOnboarded 版の Expecter。
 type PlayerOnboardedExpecter struct {
 	ch <-chan []byte
 }
 
-// ExpectPlayerOnboarded は TopicPlayerOnboarded に即時 subscribe し、
-// Wait 可能な Expecter を返す。publish より前に呼び出す必要がある。
+// ExpectPlayerOnboarded は PlayerOnboarded に即時 subscribe し Expecter を返す。
 func ExpectPlayerOnboarded(s *Subscriber) *PlayerOnboardedExpecter {
-	return &PlayerOnboardedExpecter{ch: s.Messages(apiscenario.TopicPlayerOnboarded)}
+	return &PlayerOnboardedExpecter{ch: s.Messages("player-onboarded")}
 }
 
-// Wait は Expecter が subscribe 開始した以降に publish された最初の
-// PlayerOnboardedEvent を timeout 付きで取り出す。timeout 超過や
-// payload デコード失敗は error で返し、zero 値 + error の契約とする。
+// Wait は publish された最初の PlayerOnboardedEvent を timeout 付きで取り出す。
 func (e *PlayerOnboardedExpecter) Wait(timeout time.Duration) (apiscenario.PlayerOnboardedEvent, error) {
-	var zero apiscenario.PlayerOnboardedEvent
+	return waitTypedFromChan[apiscenario.PlayerOnboardedEvent](e.ch, "player-onboarded", timeout)
+}
+
+// waitTypedFromChan は payload bytes を timeout 付きで受信し型 T にデコードする。
+func waitTypedFromChan[T any](ch <-chan []byte, topic string, timeout time.Duration) (T, error) {
+	var zero T
 	select {
-	case data, ok := <-e.ch:
+	case data, ok := <-ch:
 		if !ok {
-			return zero, fmt.Errorf("channel closed for topic %q before receiving message", apiscenario.TopicPlayerOnboarded)
+			return zero, fmt.Errorf("channel closed for topic %q before receiving message", topic)
 		}
-		var v apiscenario.PlayerOnboardedEvent
+		var v T
 		if err := json.Unmarshal(data, &v); err != nil {
-			return zero, fmt.Errorf("unmarshal %q payload: %w", apiscenario.TopicPlayerOnboarded, err)
+			return zero, fmt.Errorf("unmarshal %q payload: %w", topic, err)
 		}
 		return v, nil
 	case <-time.After(timeout):
-		return zero, fmt.Errorf("timeout waiting for %q after %s", apiscenario.TopicPlayerOnboarded, timeout)
+		return zero, fmt.Errorf("timeout waiting for %q after %s", topic, timeout)
 	}
 }
 
-// fillPlayerOnboardedDefaults は PlayerOnboardedEvent の定型フィールドを補完する。
-// EventType は契約固定のため既存値に関わらず上書きし、EventID / Timestamp は
-// caller が事前に意図的にセットした値があればそれを尊重する。
+// fillOnboardingNameSetDefaults は EventType を上書きし、EventID / Timestamp 未設定なら補完する。
+func fillOnboardingNameSetDefaults(ev apiscenario.OnboardingNameSetEvent) apiscenario.OnboardingNameSetEvent {
+	ev.EventType = apiscenario.EventTypeOnboardingNameSet
+	if ev.EventID == "" {
+		ev.EventID = newEventID()
+	}
+	if ev.Timestamp.IsZero() {
+		ev.Timestamp = time.Now().UTC()
+	}
+	return ev
+}
+
+// fillOnboardingFactionSetDefaults は OnboardingFactionSetEvent 版。
+func fillOnboardingFactionSetDefaults(ev apiscenario.OnboardingFactionSetEvent) apiscenario.OnboardingFactionSetEvent {
+	ev.EventType = apiscenario.EventTypeOnboardingFactionSet
+	if ev.EventID == "" {
+		ev.EventID = newEventID()
+	}
+	if ev.Timestamp.IsZero() {
+		ev.Timestamp = time.Now().UTC()
+	}
+	return ev
+}
+
+// fillPlayerOnboardedDefaults は PlayerOnboardedEvent 版。
 func fillPlayerOnboardedDefaults(ev apiscenario.PlayerOnboardedEvent) apiscenario.PlayerOnboardedEvent {
 	ev.EventType = apiscenario.EventTypePlayerOnboarded
 	if ev.EventID == "" {

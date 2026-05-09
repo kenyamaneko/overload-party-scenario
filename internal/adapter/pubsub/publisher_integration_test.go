@@ -39,19 +39,60 @@ func TestMain(m *testing.M) {
 }
 
 // setupPublisher は事前作成した topic に紐付く Publisher を emulator 向けに構築する。
-func setupPublisher(t *testing.T) (*Publisher, string) {
+// 物理 topic 名は infra (Terraform) が SSoT であり、test は production と同じ env 由来で解決する。
+func setupPublisher(t *testing.T) (*Publisher, publisherTopics) {
 	t.Helper()
-	topic := sharedEmulator.CreateTopic(t, apiscenario.TopicPlayerOnboarded)
+	envTopics := loadTopicsFromEnv(t)
+	topics := publisherTopics{
+		onboardingNameSet:    sharedEmulator.CreateTopic(t, envTopics.onboardingNameSet),
+		onboardingFactionSet: sharedEmulator.CreateTopic(t, envTopics.onboardingFactionSet),
+		playerOnboarded:      sharedEmulator.CreateTopic(t, envTopics.playerOnboarded),
+	}
 
 	ctx := context.Background()
-	pub, err := New(ctx, sharedEmulator.ProjectID(), topic)
+	pub, err := New(ctx, sharedEmulator.ProjectID(), topics.onboardingNameSet, topics.onboardingFactionSet, topics.playerOnboarded)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pub.Close() })
 
-	return pub, topic
+	return pub, topics
 }
 
-// buildPlayerOnboardedOutbox は usecase 層と同じ shape の OutboxEvent を組み立てる。
+func buildOnboardingNameSetOutbox(t *testing.T, playerID, name string) port.OutboxEvent {
+	t.Helper()
+	id := uuid.New()
+	payload, err := json.Marshal(apiscenario.OnboardingNameSetEvent{
+		EventType: apiscenario.EventTypeOnboardingNameSet,
+		EventID:   id.String(),
+		Timestamp: time.Now().UTC(),
+		PlayerID:  playerID,
+		Name:      name,
+	})
+	require.NoError(t, err)
+	return port.OutboxEvent{
+		EventID:   id,
+		EventType: apiscenario.EventTypeOnboardingNameSet,
+		Payload:   payload,
+	}
+}
+
+func buildOnboardingFactionSetOutbox(t *testing.T, playerID, initialFactionID string) port.OutboxEvent {
+	t.Helper()
+	id := uuid.New()
+	payload, err := json.Marshal(apiscenario.OnboardingFactionSetEvent{
+		EventType:        apiscenario.EventTypeOnboardingFactionSet,
+		EventID:          id.String(),
+		Timestamp:        time.Now().UTC(),
+		PlayerID:         playerID,
+		InitialFactionID: initialFactionID,
+	})
+	require.NoError(t, err)
+	return port.OutboxEvent{
+		EventID:   id,
+		EventType: apiscenario.EventTypeOnboardingFactionSet,
+		Payload:   payload,
+	}
+}
+
 func buildPlayerOnboardedOutbox(t *testing.T, playerID, initialFactionID string) port.OutboxEvent {
 	t.Helper()
 	id := uuid.New()
@@ -70,14 +111,57 @@ func buildPlayerOnboardedOutbox(t *testing.T, playerID, initialFactionID string)
 	}
 }
 
-// player-onboarded payload を Publisher 経由で送信し、subscriber まで bytes が
+// onboarding-name-set payload を Publisher 経由で送信し、subscriber まで bytes が
 // そのまま届くことを固定する (outbox worker 送出経路の近似)。
-func TestIntegration_PublishPlayerOnboarded(t *testing.T) {
-	pub, topic := setupPublisher(t)
-	sub := sharedEmulator.Subscribe(t, topic)
+func TestIntegration_PublishOnboardingNameSet(t *testing.T) {
+	pub, topics := setupPublisher(t)
+	sub := sharedEmulator.Subscribe(t, topics.onboardingNameSet)
 
 	ctx := context.Background()
-	ev := buildPlayerOnboardedOutbox(t, "player-123", "Tenki")
+	ev := buildOnboardingNameSetOutbox(t, "player-123", "Kenya")
+	require.NoError(t, pub.Publish(ctx, ev.EventType, ev.Payload))
+
+	msg, err := sub.WaitForMessage(ctx, 5*time.Second)
+	require.NoError(t, err)
+
+	var decoded apiscenario.OnboardingNameSetEvent
+	require.NoError(t, json.Unmarshal(msg.Data, &decoded))
+
+	assert.Equal(t, apiscenario.EventTypeOnboardingNameSet, decoded.EventType)
+	assert.Equal(t, ev.EventID.String(), decoded.EventID, "payload の event_id は outbox 行の PK と一致する")
+	assert.WithinDuration(t, time.Now(), decoded.Timestamp, 5*time.Second)
+	assert.Equal(t, "player-123", decoded.PlayerID)
+	assert.Equal(t, "Kenya", decoded.Name)
+}
+
+// onboarding-faction-set payload の送信 shape を固定。
+func TestIntegration_PublishOnboardingFactionSet(t *testing.T) {
+	pub, topics := setupPublisher(t)
+	sub := sharedEmulator.Subscribe(t, topics.onboardingFactionSet)
+
+	ctx := context.Background()
+	ev := buildOnboardingFactionSetOutbox(t, "player-456", "SHE")
+	require.NoError(t, pub.Publish(ctx, ev.EventType, ev.Payload))
+
+	msg, err := sub.WaitForMessage(ctx, 5*time.Second)
+	require.NoError(t, err)
+
+	var decoded apiscenario.OnboardingFactionSetEvent
+	require.NoError(t, json.Unmarshal(msg.Data, &decoded))
+
+	assert.Equal(t, apiscenario.EventTypeOnboardingFactionSet, decoded.EventType)
+	assert.Equal(t, ev.EventID.String(), decoded.EventID)
+	assert.Equal(t, "player-456", decoded.PlayerID)
+	assert.Equal(t, "SHE", decoded.InitialFactionID)
+}
+
+// player-onboarded payload の送信 shape を固定。
+func TestIntegration_PublishPlayerOnboarded(t *testing.T) {
+	pub, topics := setupPublisher(t)
+	sub := sharedEmulator.Subscribe(t, topics.playerOnboarded)
+
+	ctx := context.Background()
+	ev := buildPlayerOnboardedOutbox(t, "player-789", "Tenki")
 	require.NoError(t, pub.Publish(ctx, ev.EventType, ev.Payload))
 
 	msg, err := sub.WaitForMessage(ctx, 5*time.Second)
@@ -87,9 +171,9 @@ func TestIntegration_PublishPlayerOnboarded(t *testing.T) {
 	require.NoError(t, json.Unmarshal(msg.Data, &decoded))
 
 	assert.Equal(t, apiscenario.EventTypePlayerOnboarded, decoded.EventType)
-	assert.Equal(t, ev.EventID.String(), decoded.EventID, "payload の event_id は outbox 行の PK と一致する")
+	assert.Equal(t, ev.EventID.String(), decoded.EventID)
 	assert.WithinDuration(t, time.Now(), decoded.Timestamp, 5*time.Second)
-	assert.Equal(t, "player-123", decoded.PlayerID)
+	assert.Equal(t, "player-789", decoded.PlayerID)
 	assert.Equal(t, "Tenki", decoded.InitialFactionID)
 }
 
@@ -106,8 +190,8 @@ func TestIntegration_PublishUnknownEventType(t *testing.T) {
 
 // publish が呼ばれなければ subscriber は timeout する (正例テストの偽陽性除け)。
 func TestIntegration_NoPublish_SubscriberTimesOut(t *testing.T) {
-	_, topic := setupPublisher(t)
-	sub := sharedEmulator.Subscribe(t, topic)
+	_, topics := setupPublisher(t)
+	sub := sharedEmulator.Subscribe(t, topics.playerOnboarded)
 
 	_, err := sub.WaitForMessage(context.Background(), 500*time.Millisecond)
 	assert.ErrorIs(t, err, pubsubtest.ErrTimeout)

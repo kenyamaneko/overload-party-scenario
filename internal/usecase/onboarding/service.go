@@ -2,7 +2,6 @@ package onboarding
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -11,9 +10,9 @@ import (
 	"github.com/google/uuid"
 	gamedesign "github.com/kenyamaneko/overload-party-common/packages/game-design-constants"
 
+	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 	"github.com/kenyamaneko/overload-party-scenario/internal/presenter"
-	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
 // Service はオンボーディングのユースケースを束ねる。
@@ -126,7 +125,7 @@ func validateFaction(factionID string) error {
 }
 
 // buildOnboardingNameSetEvent は onboarding-name-set の outbox 行を構築する。
-// presenter で wire 表現を組み立て、ここで marshal + outbox 行への wrap を担う。
+// domain event を組み立て、presenter が wire serialize して event_type と payload を返す。
 func buildOnboardingNameSetEvent(playerID, name string) (port.OutboxEvent, error) {
 	if playerID == "" {
 		return port.OutboxEvent{}, errors.New("onboarding: playerID is empty")
@@ -135,14 +134,19 @@ func buildOnboardingNameSetEvent(playerID, name string) (port.OutboxEvent, error
 		return port.OutboxEvent{}, errors.New("onboarding: name is empty")
 	}
 	eventID := uuid.New()
-	ev := presenter.ToOnboardingNameSetEvent(eventID.String(), playerID, name, time.Now().UTC())
-	payload, err := json.Marshal(ev)
+	ev := domain.OnboardingNameSetEvent{
+		EventID:   eventID.String(),
+		Timestamp: time.Now().UTC(),
+		PlayerID:  playerID,
+		Name:      name,
+	}
+	eventType, payload, err := presenter.ToOnboardingNameSetWire(ev)
 	if err != nil {
-		return port.OutboxEvent{}, fmt.Errorf("marshal onboarding-name-set: %w", err)
+		return port.OutboxEvent{}, fmt.Errorf("present onboarding-name-set: %w", err)
 	}
 	return port.OutboxEvent{
 		EventID:   eventID,
-		EventType: apiscenario.EventTypeOnboardingNameSet,
+		EventType: eventType,
 		Payload:   payload,
 	}, nil
 }
@@ -156,14 +160,19 @@ func buildOnboardingFactionSetEvent(playerID, initialFactionID string) (port.Out
 		return port.OutboxEvent{}, errors.New("onboarding: initialFactionID is empty")
 	}
 	eventID := uuid.New()
-	ev := presenter.ToOnboardingFactionSetEvent(eventID.String(), playerID, initialFactionID, time.Now().UTC())
-	payload, err := json.Marshal(ev)
+	ev := domain.OnboardingFactionSetEvent{
+		EventID:          eventID.String(),
+		Timestamp:        time.Now().UTC(),
+		PlayerID:         playerID,
+		InitialFactionID: initialFactionID,
+	}
+	eventType, payload, err := presenter.ToOnboardingFactionSetWire(ev)
 	if err != nil {
-		return port.OutboxEvent{}, fmt.Errorf("marshal onboarding-faction-set: %w", err)
+		return port.OutboxEvent{}, fmt.Errorf("present onboarding-faction-set: %w", err)
 	}
 	return port.OutboxEvent{
 		EventID:   eventID,
-		EventType: apiscenario.EventTypeOnboardingFactionSet,
+		EventType: eventType,
 		Payload:   payload,
 	}, nil
 }
@@ -177,14 +186,19 @@ func buildPlayerOnboardedEvent(playerID, initialFactionID string) (port.OutboxEv
 		return port.OutboxEvent{}, errors.New("onboarding: initialFactionID is empty")
 	}
 	eventID := uuid.New()
-	ev := presenter.ToPlayerOnboardedEvent(eventID.String(), playerID, initialFactionID, time.Now().UTC())
-	payload, err := json.Marshal(ev)
+	ev := domain.PlayerOnboardedEvent{
+		EventID:          eventID.String(),
+		Timestamp:        time.Now().UTC(),
+		PlayerID:         playerID,
+		InitialFactionID: initialFactionID,
+	}
+	eventType, payload, err := presenter.ToPlayerOnboardedWire(ev)
 	if err != nil {
-		return port.OutboxEvent{}, fmt.Errorf("marshal player-onboarded: %w", err)
+		return port.OutboxEvent{}, fmt.Errorf("present player-onboarded: %w", err)
 	}
 	return port.OutboxEvent{
 		EventID:   eventID,
-		EventType: apiscenario.EventTypePlayerOnboarded,
+		EventType: eventType,
 		Payload:   payload,
 	}, nil
 }

@@ -1,42 +1,58 @@
 package presenter
 
 import (
-	"time"
+	"encoding/json"
+	"fmt"
 
+	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
-// ToOnboardingNameSetEvent は与えられた eventID / playerID / name / timestamp から
-// wire の OnboardingNameSetEvent を組み立てます。
-// uuid 採番や時刻採取などの副作用は呼び出し側 (usecase) が担います。
-func ToOnboardingNameSetEvent(eventID, playerID, name string, ts time.Time) apiscenario.OnboardingNameSetEvent {
-	return apiscenario.OnboardingNameSetEvent{
+// ToOnboardingNameSetWire は domain event を wire payload に詰め替えて event_type と marshal 済み bytes を返す。
+// usecase は戻り値の eventType と payload をそのまま port.OutboxEvent に格納できる (apiscenario の import 不要)。
+func ToOnboardingNameSetWire(ev domain.OnboardingNameSetEvent) (eventType string, payload []byte, err error) {
+	wire := apiscenario.OnboardingNameSetEvent{
 		EventType: apiscenario.EventTypeOnboardingNameSet,
-		EventID:   eventID,
-		Timestamp: ts,
-		PlayerID:  playerID,
-		Name:      name,
+		EventID:   ev.EventID,
+		Timestamp: ev.Timestamp,
+		PlayerID:  ev.PlayerID,
+		Name:      ev.Name,
 	}
+	payload, err = json.Marshal(wire)
+	if err != nil {
+		return "", nil, fmt.Errorf("marshal OnboardingNameSetEvent: %w", err)
+	}
+	return apiscenario.EventTypeOnboardingNameSet, payload, nil
 }
 
-// ToOnboardingFactionSetEvent は wire の OnboardingFactionSetEvent を組み立てます。
-func ToOnboardingFactionSetEvent(eventID, playerID, initialFactionID string, ts time.Time) apiscenario.OnboardingFactionSetEvent {
-	return apiscenario.OnboardingFactionSetEvent{
+// ToOnboardingFactionSetWire は ToOnboardingNameSetWire の OnboardingFactionSetEvent 版。
+func ToOnboardingFactionSetWire(ev domain.OnboardingFactionSetEvent) (eventType string, payload []byte, err error) {
+	wire := apiscenario.OnboardingFactionSetEvent{
 		EventType:        apiscenario.EventTypeOnboardingFactionSet,
-		EventID:          eventID,
-		Timestamp:        ts,
-		PlayerID:         playerID,
-		InitialFactionID: initialFactionID,
+		EventID:          ev.EventID,
+		Timestamp:        ev.Timestamp,
+		PlayerID:         ev.PlayerID,
+		InitialFactionID: ev.InitialFactionID,
 	}
+	payload, err = json.Marshal(wire)
+	if err != nil {
+		return "", nil, fmt.Errorf("marshal OnboardingFactionSetEvent: %w", err)
+	}
+	return apiscenario.EventTypeOnboardingFactionSet, payload, nil
 }
 
-// ToPlayerOnboardedEvent は wire の PlayerOnboardedEvent を組み立てます。
-func ToPlayerOnboardedEvent(eventID, playerID, initialFactionID string, ts time.Time) apiscenario.PlayerOnboardedEvent {
-	return apiscenario.PlayerOnboardedEvent{
+// ToPlayerOnboardedWire は ToOnboardingNameSetWire の PlayerOnboardedEvent 版。
+func ToPlayerOnboardedWire(ev domain.PlayerOnboardedEvent) (eventType string, payload []byte, err error) {
+	wire := apiscenario.PlayerOnboardedEvent{
 		EventType:        apiscenario.EventTypePlayerOnboarded,
-		EventID:          eventID,
-		Timestamp:        ts,
-		PlayerID:         playerID,
-		InitialFactionID: initialFactionID,
+		EventID:          ev.EventID,
+		Timestamp:        ev.Timestamp,
+		PlayerID:         ev.PlayerID,
+		InitialFactionID: ev.InitialFactionID,
 	}
+	payload, err = json.Marshal(wire)
+	if err != nil {
+		return "", nil, fmt.Errorf("marshal PlayerOnboardedEvent: %w", err)
+	}
+	return apiscenario.EventTypePlayerOnboarded, payload, nil
 }

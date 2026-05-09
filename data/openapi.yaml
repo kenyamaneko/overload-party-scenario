@@ -1,0 +1,343 @@
+openapi: 3.0.3
+info:
+  title: overload-party-scenario
+  version: 0.1.0
+  description: |
+    Scenario service の REST 契約 (gateway → scenario の internal API)。
+    本ファイルが SSoT。`packages/api-scenario` の Go 型は oapi-codegen が本ファイルから生成する。
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: サービス死活監視 (ClusterIP 内部のみ)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /internal/v1/players/{playerId}/scenarios:
+    get:
+      operationId: listEpisodes
+      summary: プレイヤーに表示するエピソード一覧 (ロック状態・進捗付き)
+      parameters:
+        - $ref: "#/components/parameters/PlayerIdPath"
+        - $ref: "#/components/parameters/LangQuery"
+      responses:
+        "200":
+          description: エピソード一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EpisodesListResponse"
+
+  /internal/v1/players/{playerId}/scenarios/{episodeId}/script:
+    get:
+      operationId: getEpisodeScript
+      summary: エピソードのスクリプト本文を取得 (GCS からロード)
+      parameters:
+        - $ref: "#/components/parameters/PlayerIdPath"
+        - $ref: "#/components/parameters/EpisodeIdPath"
+        - $ref: "#/components/parameters/LangQuery"
+      responses:
+        "200":
+          description: スクリプト本文
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScenarioScriptResponse"
+        "403":
+          description: エピソードがロック中
+        "404":
+          description: エピソードが存在しない / スクリプトが見つからない
+        "500":
+          description: GCS 等インフラ障害
+
+  /internal/v1/players/{playerId}/scenarios/{episodeId}/complete:
+    post:
+      operationId: completeEpisode
+      summary: エピソードをクリア済みとしてマーク
+      parameters:
+        - $ref: "#/components/parameters/PlayerIdPath"
+        - $ref: "#/components/parameters/EpisodeIdPath"
+      responses:
+        "200":
+          description: 完了
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScenarioCompleteResponse"
+        "403":
+          description: エピソードがロック中
+        "404":
+          description: エピソードが存在しない
+
+  /internal/v1/players/{playerId}/onboarding/script:
+    get:
+      operationId: getOnboardingScript
+      summary: オンボーディングシナリオ本文を取得 (GCS からロード)
+      parameters:
+        - $ref: "#/components/parameters/PlayerIdPath"
+        - $ref: "#/components/parameters/LangQuery"
+      responses:
+        "200":
+          description: スクリプト本文
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingScriptResponse"
+        "404":
+          description: 要求言語のスクリプトが存在しない
+        "409":
+          description: 既にオンボーディング完了済み
+        "500":
+          description: GCS 等インフラ障害
+
+  /internal/v1/players/{playerId}/onboarding/name:
+    put:
+      operationId: updateOnboardingName
+      summary: オンボード内 name 入力ステップ。account に validate を依頼し、成功時に onboarding-name-set を outbox publish
+      parameters:
+        - $ref: "#/components/parameters/PlayerIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingNameRequest"
+      responses:
+        "204":
+          description: name 受領
+        "400":
+          description: name バリデーションに違反 (空 / 全空白 / 制御文字 / 上限超)
+        "404":
+          description: プレイヤーが account に存在しない (Register 未実施)
+        "500":
+          description: account 連携 / outbox 書き込みの障害
+
+  /internal/v1/players/{playerId}/onboarding/faction:
+    post:
+      operationId: selectOnboardingFaction
+      summary: オンボード内 faction 選択ステップ。SelectableFactions で validate し、成功時に onboarding-faction-set を outbox publish
+      parameters:
+        - $ref: "#/components/parameters/PlayerIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingFactionRequest"
+      responses:
+        "204":
+          description: faction 受領
+        "400":
+          description: initial_faction_id が SelectableFactions に含まれない
+        "500":
+          description: outbox 書き込みの障害
+
+  /internal/v1/players/{playerId}/onboarding/complete:
+    post:
+      operationId: completeOnboarding
+      summary: scenario 読了時に呼ばれ、scenario.player_onboarding INSERT + player-onboarded outbox publish を 1 tx で実行
+      parameters:
+        - $ref: "#/components/parameters/PlayerIdPath"
+      responses:
+        "200":
+          description: 完了
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingCompleteResponse"
+        "409":
+          description: 既にオンボーディング完了済み / faction 選択ステップを経ていない
+        "500":
+          description: DB / outbox 書き込み失敗
+
+components:
+  parameters:
+    PlayerIdPath:
+      name: playerId
+      in: path
+      required: true
+      schema:
+        type: string
+    EpisodeIdPath:
+      name: episodeId
+      in: path
+      required: true
+      schema:
+        type: string
+    LangQuery:
+      name: lang
+      in: query
+      required: false
+      description: スクリプト言語 (ja / en)。未指定時は ja として扱う。
+      schema:
+        type: string
+        default: ja
+
+  schemas:
+    # ─── Health ────────────────────────────────────────────────────────
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+
+    # ─── Story (episode list / script / complete) ─────────────────────
+    EpisodesListResponse:
+      type: object
+      required: [episodes]
+      properties:
+        episodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/EpisodeWithStatus"
+
+    EpisodeWithStatus:
+      type: object
+      description: |
+        プレイヤー視点のエピソード 1 件 (ロック状態・進捗付き)。
+        domain.Episode + UnlockContext から presenter が組み立てる wire 表現。
+      required:
+        - episode_id
+        - faction
+        - episode_number
+        - title
+        - thumbnail_url
+        - is_unlocked
+        - is_completed
+        - lock_reasons
+      properties:
+        episode_id:
+          type: string
+          x-go-name: EpisodeID
+        faction:
+          type: string
+          nullable: true
+          description: episode が紐付くファクション (null=共通エピソード)。
+        episode_number:
+          type: integer
+          format: int64
+        title:
+          type: string
+          description: 要求言語に応じたタイトル。
+        thumbnail_url:
+          type: string
+          nullable: true
+          x-go-name: ThumbnailURL
+        is_unlocked:
+          type: boolean
+        is_completed:
+          type: boolean
+        lock_reasons:
+          type: array
+          items:
+            $ref: "#/components/schemas/LockReason"
+          description: アンロック未充足の理由一覧。空配列ならアンロック済み。
+
+    LockReason:
+      type: object
+      description: |
+        エピソードがロックされている個別理由。type ごとに有効なフィールドが決まる:
+        - type=level    → required_level (整数), current_level (整数)
+        - type=faction  → required_faction (faction id)
+        - type=episode  → required_episode (前提エピソード id)
+      required: [type]
+      properties:
+        type:
+          $ref: "#/components/schemas/LockReasonType"
+        required_level:
+          type: integer
+          format: int64
+          description: type=level のとき要求レベル。
+        current_level:
+          type: integer
+          format: int64
+          description: type=level のときプレイヤーの現レベル。
+        required_faction:
+          type: string
+          description: type=faction のとき要求 faction id。
+        required_episode:
+          type: string
+          description: type=episode のとき要求前提エピソード id。
+
+    LockReasonType:
+      type: string
+      description: ロック理由の種別 discriminator。
+      enum:
+        - level
+        - faction
+        - episode
+
+    ScenarioScriptResponse:
+      type: object
+      required: [episode_id, script]
+      properties:
+        episode_id:
+          type: string
+          x-go-name: EpisodeID
+        script:
+          type: string
+          description: GCS から読み込んだスクリプト本文 (.ks)。
+
+    ScenarioCompleteResponse:
+      type: object
+      required: [message, episode_id]
+      properties:
+        message:
+          type: string
+          example: episode completed
+        episode_id:
+          type: string
+          x-go-name: EpisodeID
+
+    # ─── Onboarding ────────────────────────────────────────────────────
+    OnboardingScriptResponse:
+      type: object
+      required: [script]
+      properties:
+        script:
+          type: string
+          description: オンボーディング用スクリプト本文。
+
+    OnboardingCompleteResponse:
+      type: object
+      description: |
+        POST /internal/v1/players/{playerId}/onboarding/complete の戻り値。
+        complete request body は空 (initial faction は事前の
+        POST /onboarding/faction ステップで確定済み)。
+      required: [message, player_id]
+      properties:
+        message:
+          type: string
+          example: onboarding completed
+        player_id:
+          type: string
+          x-go-name: PlayerID
+
+    OnboardingNameRequest:
+      type: object
+      description: |
+        オンボード内 name 入力ステップの body。scenario が account に validate を委譲し、
+        成功時に onboarding-name-set を outbox publish する。
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    OnboardingFactionRequest:
+      type: object
+      description: |
+        オンボード内 faction 選択ステップの body。scenario が SelectableFactions で validate し、
+        成功時に onboarding-faction-set を outbox publish する。
+      required: [initial_faction_id]
+      properties:
+        initial_faction_id:
+          type: string
+          x-go-name: InitialFactionID
