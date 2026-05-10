@@ -4,6 +4,16 @@ name: CI
 on:
   pull_request:
     branches: [main, develop, "release/**"]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.vscode/**'
+      - '.gitignore'
+      - 'LICENSE'
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -12,6 +22,7 @@ jobs:
   check-source-branch:
     if: github.base_ref == 'main'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,6 +31,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,6 +61,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -87,6 +100,7 @@ jobs:
   # 既存の高速フィードバックを壊さない。
   test-integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -125,6 +139,7 @@ jobs:
 
   image-scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -149,6 +164,7 @@ jobs:
 
   codegen-sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -182,6 +198,7 @@ jobs:
 
   spec-diff:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v4
