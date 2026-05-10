@@ -77,7 +77,7 @@ type LockReason struct {
 // LockReasonType ロック理由の種別 discriminator。
 type LockReasonType string
 
-// OnboardingCompleteResponse POST /internal/v1/players/{playerId}/onboarding/complete の戻り値。
+// OnboardingCompleteResponse POST /api/v1/scenarios/onboarding/complete の戻り値。
 // complete request body は空 (initial faction は事前の
 // POST /onboarding/faction ステップで確定済み)。
 type OnboardingCompleteResponse struct {
@@ -122,9 +122,6 @@ type EpisodeIdPath = string
 
 // LangQuery defines model for LangQuery.
 type LangQuery = string
-
-// PlayerIdPath defines model for PlayerIdPath.
-type PlayerIdPath = string
 
 // GetOnboardingScriptParams defines parameters for GetOnboardingScript.
 type GetOnboardingScriptParams struct {

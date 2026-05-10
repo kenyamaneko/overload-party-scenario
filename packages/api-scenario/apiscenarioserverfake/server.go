@@ -27,19 +27,19 @@ type Server struct {
 	mu  sync.Mutex
 	srv *httptest.Server
 
-	// ListEpisodesFn は GET /internal/v1/players/{playerID}/scenarios の応答を
-	// 決定する callback。返り値 (status, body) がそのまま HTTP response になる。
-	// body が nil の場合 body 無し、それ以外は json.Marshal された bytes を返す。
+	// ListEpisodesFn は GET /api/v1/scenarios/episodes の応答を決定する callback。
+	// 返り値 (status, body) がそのまま HTTP response になる。body が nil の場合 body 無し、
+	// それ以外は json.Marshal された bytes を返す。
 	// nil (未設定) の場合は既定値 200 + {"episodes": []} を返す。
-	ListEpisodesFn func(playerID, lang string) (int, any)
+	ListEpisodesFn func(lang string) (int, any)
 
-	// GetScriptFn は GET /internal/v1/players/{playerID}/scenarios/{episodeID}/script の応答を決定する。
+	// GetScriptFn は GET /api/v1/scenarios/episodes/{episodeID}/script の応答を決定する。
 	// nil の場合は既定値 200 + {"episode_id": episodeID, "script": ""} を返す。
-	GetScriptFn func(playerID, episodeID, lang string) (int, any)
+	GetScriptFn func(episodeID, lang string) (int, any)
 
-	// CompleteEpisodeFn は POST /internal/v1/players/{playerID}/scenarios/{episodeID}/complete の応答を決定する。
+	// CompleteEpisodeFn は POST /api/v1/scenarios/episodes/{episodeID}/complete の応答を決定する。
 	// nil の場合は既定値 204 No Content を返す。
-	CompleteEpisodeFn func(playerID, episodeID string) (int, any)
+	CompleteEpisodeFn func(episodeID string) (int, any)
 }
 
 // ListEpisodesResponse は ListEpisodes endpoint の JSON envelope。
@@ -61,9 +61,9 @@ type ScriptResponse struct {
 func NewServer() *Server {
 	s := &Server{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /internal/v1/players/{playerID}/scenarios", s.handleListEpisodes)
-	mux.HandleFunc("GET /internal/v1/players/{playerID}/scenarios/{episodeID}/script", s.handleGetScript)
-	mux.HandleFunc("POST /internal/v1/players/{playerID}/scenarios/{episodeID}/complete", s.handleCompleteEpisode)
+	mux.HandleFunc("GET /api/v1/scenarios/episodes", s.handleListEpisodes)
+	mux.HandleFunc("GET /api/v1/scenarios/episodes/{episodeID}/script", s.handleGetScript)
+	mux.HandleFunc("POST /api/v1/scenarios/episodes/{episodeID}/complete", s.handleCompleteEpisode)
 	s.srv = httptest.NewServer(mux)
 	return s
 }
@@ -79,14 +79,13 @@ func (s *Server) handleListEpisodes(w http.ResponseWriter, r *http.Request) {
 	fn := s.ListEpisodesFn
 	s.mu.Unlock()
 
-	playerID := r.PathValue("playerID")
 	lang := r.URL.Query().Get("lang")
 
 	if fn == nil {
 		writeJSON(w, http.StatusOK, ListEpisodesResponse{Episodes: []apiscenario.EpisodeWithStatus{}})
 		return
 	}
-	status, body := fn(playerID, lang)
+	status, body := fn(lang)
 	writeJSON(w, status, body)
 }
 
@@ -95,7 +94,6 @@ func (s *Server) handleGetScript(w http.ResponseWriter, r *http.Request) {
 	fn := s.GetScriptFn
 	s.mu.Unlock()
 
-	playerID := r.PathValue("playerID")
 	episodeID := r.PathValue("episodeID")
 	lang := r.URL.Query().Get("lang")
 
@@ -103,7 +101,7 @@ func (s *Server) handleGetScript(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, ScriptResponse{EpisodeID: episodeID, Script: ""})
 		return
 	}
-	status, body := fn(playerID, episodeID, lang)
+	status, body := fn(episodeID, lang)
 	writeJSON(w, status, body)
 }
 
@@ -112,14 +110,13 @@ func (s *Server) handleCompleteEpisode(w http.ResponseWriter, r *http.Request) {
 	fn := s.CompleteEpisodeFn
 	s.mu.Unlock()
 
-	playerID := r.PathValue("playerID")
 	episodeID := r.PathValue("episodeID")
 
 	if fn == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	status, body := fn(playerID, episodeID)
+	status, body := fn(episodeID)
 	writeJSON(w, status, body)
 }
 

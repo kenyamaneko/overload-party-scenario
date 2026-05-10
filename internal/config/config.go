@@ -34,6 +34,9 @@ type Config struct {
 	// AccountBaseURL はオンボーディング内 name 入力ステップと完了 publish 用に account の internal REST を叩く際のベース URL。
 	AccountBaseURL string
 
+	// InternalAuthSecret は gateway → scenario の HS256 JWT (X-Internal-Auth) を検証する共有秘密鍵。
+	InternalAuthSecret string
+
 	// Outbox worker 設定 (scenario.outbox_events を消費する常駐 worker のチューニング値)。
 	OutboxPollInterval      time.Duration
 	OutboxBatchSize         int
@@ -54,6 +57,7 @@ func FromEnv() (*Config, error) {
 		PlayerOnboardedTopic:      os.Getenv("PLAYER_ONBOARDED_TOPIC"),
 		FirestoreProjectID:        os.Getenv("FIRESTORE_PROJECT_ID"),
 		AccountBaseURL:            os.Getenv("ACCOUNT_BASE_URL"),
+		InternalAuthSecret:        os.Getenv("INTERNAL_AUTH_SECRET"),
 	}
 
 	rawPort := os.Getenv("PORT")
@@ -95,6 +99,9 @@ func FromEnv() (*Config, error) {
 	}
 	if cfg.AccountBaseURL == "" {
 		return nil, fmt.Errorf("config: ACCOUNT_BASE_URL is required (onboarding name relay and resume judgement)")
+	}
+	if cfg.InternalAuthSecret == "" {
+		return nil, fmt.Errorf("config: INTERNAL_AUTH_SECRET is required (gateway → scenario JWT 検証鍵)")
 	}
 
 	rawPoll := os.Getenv("OUTBOX_POLL_INTERVAL")

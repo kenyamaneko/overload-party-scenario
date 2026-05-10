@@ -17,6 +17,7 @@ import (
 
 	adaptergcs "github.com/kenyamaneko/overload-party-scenario/internal/adapter/gcs"
 	adapterhttp "github.com/kenyamaneko/overload-party-scenario/internal/adapter/http"
+	"github.com/kenyamaneko/overload-party-scenario/internal/adapter/internalauth"
 	adapterlocal "github.com/kenyamaneko/overload-party-scenario/internal/adapter/local"
 	scenariopubsub "github.com/kenyamaneko/overload-party-scenario/internal/adapter/pubsub"
 	"github.com/kenyamaneko/overload-party-scenario/internal/config"
@@ -152,9 +153,13 @@ func run() error {
 		return fmt.Errorf("outbox ticker: %w", err)
 	}
 
+	authVerifier := internalauth.NewVerifier(
+		internalauth.StaticHS256Resolver([]byte(cfg.InternalAuthSecret), internalauth.DefaultKeyID),
+	)
+
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           router.New(storyH, onboardingH),
+		Handler:           router.New(storyH, onboardingH, authVerifier),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
