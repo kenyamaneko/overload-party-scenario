@@ -3,21 +3,12 @@ name: CI
 # PR の品質ゲート。ブランチ保護の required status check として使う。
 on:
   pull_request:
-    branches: [main, develop, "release/**"]
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  check-source-branch:
-    if: github.base_ref == 'main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Validate source branch
-        run: .github/scripts/ci/check-source-branch.sh "${{ github.head_ref }}"
-
   lint:
     runs-on: ubuntu-latest
     steps:
