@@ -1,12 +1,20 @@
 name: Publish
 
-# api-scenario Go モジュールを手動でタグ付け・公開する。
+# api-scenario (Go module) と api-scenario-npm (Cloudsmith npm) を手動でタグ付け・公開する。
 # バージョンを上げるタイミングは人が判断して workflow_dispatch で実行する。
 # タグの手動打ちは禁止 — このワークフローがモジュールタグの唯一の発行元。
 
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: "Package to publish"
+        required: true
+        default: "api-scenario"
+        type: choice
+        options:
+          - api-scenario
+          - api-scenario-npm
       bump:
         description: "Version bump level"
         required: true
@@ -25,9 +33,11 @@ concurrency:
 permissions:
   # タグを push するために write 権限が必要
   contents: write
+  id-token: write
 
 jobs:
-  publish-package:
+  publish-api-scenario:
+    if: inputs.target == 'api-scenario'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -52,8 +62,48 @@ jobs:
       - name: Determine next tag
         id: tag
         env:
+          PREFIX: packages/api-scenario/v
           BUMP: ${{ inputs.bump }}
         run: .github/scripts/publish/next-tag.sh
+
+      - name: Tag and push
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: .github/scripts/publish/tag-and-push.sh
+
+  publish-api-scenario-npm:
+    if: inputs.target == 'api-scenario-npm'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Determine next tag
+        id: tag
+        env:
+          PREFIX: packages/api-scenario-npm/v
+          BUMP: ${{ inputs.bump }}
+        run: .github/scripts/publish/next-tag.sh
+
+      - name: Build & version npm package
+        working-directory: packages/api-scenario-npm
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: ../../.github/scripts/publish/build-npm.sh
+
+      - name: Publish to Cloudsmith
+        uses: kenyamaneko/overload-party-common/.github/actions/publish-to-cloudsmith@main
+        with:
+          format: npm
+          package-path: packages/api-scenario-npm
 
       - name: Tag and push
         env:

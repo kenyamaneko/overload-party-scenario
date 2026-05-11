@@ -22,11 +22,7 @@ func NewStoryHandler(svc *story.Service) *StoryHandler {
 
 // ListEpisodes はプレイヤー向けエピソード一覧をアンロック状態付きで返す。
 func (h *StoryHandler) ListEpisodes(c *gin.Context) {
-	playerID := c.Param("playerId")
-	if playerID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "playerId is required"})
-		return
-	}
+	playerID := c.GetString(PlayerIDContextKey)
 	lang := c.DefaultQuery("lang", "ja")
 
 	episodes, err := h.svc.ListEpisodes(c.Request.Context(), playerID, lang)
@@ -40,7 +36,7 @@ func (h *StoryHandler) ListEpisodes(c *gin.Context) {
 
 // GetScript は指定エピソードのスクリプトを返す。
 func (h *StoryHandler) GetScript(c *gin.Context) {
-	playerID := c.Param("playerId")
+	playerID := c.GetString(PlayerIDContextKey)
 	episodeID := c.Param("episodeId")
 	lang := c.DefaultQuery("lang", "ja")
 
@@ -55,7 +51,7 @@ func (h *StoryHandler) GetScript(c *gin.Context) {
 
 // CompleteEpisode はエピソードの完了を記録する。
 func (h *StoryHandler) CompleteEpisode(c *gin.Context) {
-	playerID := c.Param("playerId")
+	playerID := c.GetString(PlayerIDContextKey)
 	episodeID := c.Param("episodeId")
 
 	if err := h.svc.CompleteEpisode(c.Request.Context(), playerID, episodeID); err != nil {

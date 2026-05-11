@@ -25,21 +25,21 @@ func TestServer_DefaultResponses(t *testing.T) {
 		{
 			name:       "ListEpisodes 既定は空配列",
 			method:     http.MethodGet,
-			path:       "/internal/v1/players/p-1/scenarios",
+			path:       "/api/v1/scenarios/episodes",
 			wantStatus: http.StatusOK,
 			wantBody:   `{"episodes":[]}` + "\n",
 		},
 		{
 			name:       "GetScript 既定は空スクリプト",
 			method:     http.MethodGet,
-			path:       "/internal/v1/players/p-1/scenarios/ep-1/script",
+			path:       "/api/v1/scenarios/episodes/ep-1/script",
 			wantStatus: http.StatusOK,
 			wantBody:   `{"episode_id":"ep-1","script":""}` + "\n",
 		},
 		{
 			name:       "CompleteEpisode 既定は 204 No Content",
 			method:     http.MethodPost,
-			path:       "/internal/v1/players/p-1/scenarios/ep-1/complete",
+			path:       "/api/v1/scenarios/episodes/ep-1/complete",
 			wantStatus: http.StatusNoContent,
 			wantBody:   "",
 		},
@@ -63,15 +63,14 @@ func TestServer_DefaultResponses(t *testing.T) {
 }
 
 // Fn callback が path variable と query を受け取って応答を制御できる。
-// consumer テストが「どの player で呼ばれたか」を検証したり、ケース毎に
+// consumer テストが「どの language で呼ばれたか」を検証したり、ケース毎に
 // 異なる応答 (成功 / 失敗) を返すための API。
-func TestServer_ListEpisodesFn_ReceivesPathAndQuery(t *testing.T) {
+func TestServer_ListEpisodesFn_ReceivesQuery(t *testing.T) {
 	srv := apiscenarioserverfake.NewServer()
 	defer srv.Close()
 
-	var gotPlayerID, gotLang string
-	srv.ListEpisodesFn = func(playerID, lang string) (int, any) {
-		gotPlayerID = playerID
+	var gotLang string
+	srv.ListEpisodesFn = func(lang string) (int, any) {
 		gotLang = lang
 		return http.StatusOK, apiscenarioserverfake.ListEpisodesResponse{
 			Episodes: []apiscenario.EpisodeWithStatus{
@@ -80,12 +79,11 @@ func TestServer_ListEpisodesFn_ReceivesPathAndQuery(t *testing.T) {
 		}
 	}
 
-	resp, err := http.Get(srv.URL() + "/internal/v1/players/p-1/scenarios?lang=ja")
+	resp, err := http.Get(srv.URL() + "/api/v1/scenarios/episodes?lang=ja")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, "p-1", gotPlayerID)
 	assert.Equal(t, "ja", gotLang)
 
 	var decoded apiscenarioserverfake.ListEpisodesResponse
@@ -100,11 +98,11 @@ func TestServer_GetScriptFn_CanReturnError(t *testing.T) {
 	srv := apiscenarioserverfake.NewServer()
 	defer srv.Close()
 
-	srv.GetScriptFn = func(_, _, _ string) (int, any) {
+	srv.GetScriptFn = func(_, _ string) (int, any) {
 		return http.StatusForbidden, nil
 	}
 
-	resp, err := http.Get(srv.URL() + "/internal/v1/players/p-1/scenarios/ep-locked/script")
+	resp, err := http.Get(srv.URL() + "/api/v1/scenarios/episodes/ep-locked/script")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -118,20 +116,18 @@ func TestServer_CompleteEpisodeFn_ReceivesPath(t *testing.T) {
 	srv := apiscenarioserverfake.NewServer()
 	defer srv.Close()
 
-	var gotPlayerID, gotEpisodeID string
-	srv.CompleteEpisodeFn = func(playerID, episodeID string) (int, any) {
-		gotPlayerID = playerID
+	var gotEpisodeID string
+	srv.CompleteEpisodeFn = func(episodeID string) (int, any) {
 		gotEpisodeID = episodeID
 		return http.StatusNoContent, nil
 	}
 
 	req, _ := http.NewRequest(http.MethodPost,
-		srv.URL()+"/internal/v1/players/p-9/scenarios/ep-9/complete", nil)
+		srv.URL()+"/api/v1/scenarios/episodes/ep-9/complete", nil)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
-	assert.Equal(t, "p-9", gotPlayerID)
 	assert.Equal(t, "ep-9", gotEpisodeID)
 }

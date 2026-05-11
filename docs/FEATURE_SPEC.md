@@ -278,10 +278,12 @@ scenario 側で account の業務カラムを直接書き換えない。
 
 ### 10.1 ユースケース
 
-1. **GET `/internal/v1/players/:playerId/onboarding/script?lang=ja|en`**: 本文取得
-2. **PUT `/internal/v1/players/:playerId/onboarding/name`**: 表示名を受け取り、account に validate REST を依頼。成功時に `onboarding-name-set` event を outbox publish。account の 400 (`ErrInvalidName` 相当) はそのまま中継する
-3. **POST `/internal/v1/players/:playerId/onboarding/faction`**: `initial_faction_id` を受け取り、`SelectableFactions` で scenario 側 validate。成功時に `onboarding-faction-set` event を outbox publish
-4. **POST `/internal/v1/players/:playerId/onboarding/complete`**: scenario 読了時に呼ばれる。account の `GetPlayer` で `selected_faction` を取得して `player-onboarded` payload を組み立て、`scenario.player_onboarding` INSERT + `player-onboarded` publish を atomic に実行
+player_id は `X-Internal-Auth` (HS256 JWT) の `sub` クレームから解決する ([ADR-037](../../overload-party-common/docs/adr/037-internal-auth-hmac-signed-jwt.md))。
+
+1. **GET `/api/v1/scenarios/onboarding/script?lang=ja|en`**: 本文取得
+2. **PUT `/api/v1/scenarios/onboarding/name`**: 表示名を受け取り、account に validate REST を依頼。成功時に `onboarding-name-set` event を outbox publish。account の 400 (`ErrInvalidName` 相当) はそのまま中継する
+3. **POST `/api/v1/scenarios/onboarding/faction`**: `initial_faction_id` を受け取り、`SelectableFactions` で scenario 側 validate。成功時に `onboarding-faction-set` event を outbox publish
+4. **POST `/api/v1/scenarios/onboarding/complete`**: scenario 読了時に呼ばれる。account の `GetPlayer` で `selected_faction` を取得して `player-onboarded` payload を組み立て、`scenario.player_onboarding` INSERT + `player-onboarded` publish を atomic に実行
 
 オンボード進行状態取得 (`onboarding_status`) は account の `GET /internal/v1/players/:playerId` 経由で
 クライアントが直接取得する。scenario 側に進行状態取得用エンドポイントは持たない。

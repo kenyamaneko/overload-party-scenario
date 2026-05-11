@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 	"github.com/kenyamaneko/overload-party-scenario/internal/usecase/onboarding"
+	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
 // OnboardingHandler はオンボーディング (初回プロローグ) の REST ハンドラを提供する。
@@ -23,11 +23,7 @@ func NewOnboardingHandler(svc *onboarding.Service) *OnboardingHandler {
 
 // GetScript はオンボーディングシナリオ本文を返す。
 func (h *OnboardingHandler) GetScript(c *gin.Context) {
-	playerID := c.Param("playerId")
-	if playerID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "playerId is required"})
-		return
-	}
+	playerID := c.GetString(PlayerIDContextKey)
 	lang := c.DefaultQuery("lang", "ja")
 
 	body, err := h.svc.GetScript(c.Request.Context(), playerID, lang)
@@ -42,11 +38,7 @@ func (h *OnboardingHandler) GetScript(c *gin.Context) {
 
 // UpdateName はオンボード内 name 入力ステップを処理する。
 func (h *OnboardingHandler) UpdateName(c *gin.Context) {
-	playerID := c.Param("playerId")
-	if playerID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "playerId is required"})
-		return
-	}
+	playerID := c.GetString(PlayerIDContextKey)
 
 	var req apiscenario.OnboardingNameRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -70,11 +62,7 @@ func (h *OnboardingHandler) UpdateName(c *gin.Context) {
 
 // SelectFaction はオンボード内 faction 選択ステップを処理する。
 func (h *OnboardingHandler) SelectFaction(c *gin.Context) {
-	playerID := c.Param("playerId")
-	if playerID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "playerId is required"})
-		return
-	}
+	playerID := c.GetString(PlayerIDContextKey)
 
 	var req apiscenario.OnboardingFactionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -98,11 +86,7 @@ func (h *OnboardingHandler) SelectFaction(c *gin.Context) {
 
 // Complete はオンボーディング完了を記録し、player-onboarded を outbox に atomic に積む。
 func (h *OnboardingHandler) Complete(c *gin.Context) {
-	playerID := c.Param("playerId")
-	if playerID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "playerId is required"})
-		return
-	}
+	playerID := c.GetString(PlayerIDContextKey)
 
 	if err := h.svc.Complete(c.Request.Context(), playerID); err != nil {
 		if isOnboardingRejected(err) {
