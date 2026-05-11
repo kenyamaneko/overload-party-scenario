@@ -6,6 +6,9 @@ info:
     Scenario service の REST 契約 (gateway → scenario の internal API)。
     本ファイルが SSoT。`packages/api-scenario` の Go 型は oapi-codegen が本ファイルから生成する。
 
+    エンドポイント分類:
+    - `/api/v1/scenarios/...`: gateway 経由の player-scoped 操作。`X-Internal-Auth` (HMAC JWT) で認証し、player_id は sub クレームから解決する
+
 paths:
   /health:
     get:
@@ -19,12 +22,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
 
-  /internal/v1/players/{playerId}/scenarios:
+  /api/v1/scenarios/episodes:
     get:
       operationId: listEpisodes
       summary: プレイヤーに表示するエピソード一覧 (ロック状態・進捗付き)
+      security:
+        - InternalAuth: []
       parameters:
-        - $ref: "#/components/parameters/PlayerIdPath"
         - $ref: "#/components/parameters/LangQuery"
       responses:
         "200":
@@ -33,13 +37,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EpisodesListResponse"
+        "401":
+          description: 認証失敗
 
-  /internal/v1/players/{playerId}/scenarios/{episodeId}/script:
+  /api/v1/scenarios/episodes/{episodeId}/script:
     get:
       operationId: getEpisodeScript
       summary: エピソードのスクリプト本文を取得 (GCS からロード)
+      security:
+        - InternalAuth: []
       parameters:
-        - $ref: "#/components/parameters/PlayerIdPath"
         - $ref: "#/components/parameters/EpisodeIdPath"
         - $ref: "#/components/parameters/LangQuery"
       responses:
@@ -49,6 +56,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScenarioScriptResponse"
+        "401":
+          description: 認証失敗
         "403":
           description: エピソードがロック中
         "404":
@@ -56,12 +65,13 @@ paths:
         "500":
           description: GCS 等インフラ障害
 
-  /internal/v1/players/{playerId}/scenarios/{episodeId}/complete:
+  /api/v1/scenarios/episodes/{episodeId}/complete:
     post:
       operationId: completeEpisode
       summary: エピソードをクリア済みとしてマーク
+      security:
+        - InternalAuth: []
       parameters:
-        - $ref: "#/components/parameters/PlayerIdPath"
         - $ref: "#/components/parameters/EpisodeIdPath"
       responses:
         "200":
@@ -70,17 +80,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScenarioCompleteResponse"
+        "401":
+          description: 認証失敗
         "403":
           description: エピソードがロック中
         "404":
           description: エピソードが存在しない
 
-  /internal/v1/players/{playerId}/onboarding/script:
+  /api/v1/scenarios/onboarding/script:
     get:
       operationId: getOnboardingScript
       summary: オンボーディングシナリオ本文を取得 (GCS からロード)
+      security:
+        - InternalAuth: []
       parameters:
-        - $ref: "#/components/parameters/PlayerIdPath"
         - $ref: "#/components/parameters/LangQuery"
       responses:
         "200":
@@ -89,6 +102,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OnboardingScriptResponse"
+        "401":
+          description: 認証失敗
         "404":
           description: 要求言語のスクリプトが存在しない
         "409":
@@ -96,12 +111,12 @@ paths:
         "500":
           description: GCS 等インフラ障害
 
-  /internal/v1/players/{playerId}/onboarding/name:
+  /api/v1/scenarios/onboarding/name:
     put:
       operationId: updateOnboardingName
       summary: オンボード内 name 入力ステップ。account に validate を依頼し、成功時に onboarding-name-set を outbox publish
-      parameters:
-        - $ref: "#/components/parameters/PlayerIdPath"
+      security:
+        - InternalAuth: []
       requestBody:
         required: true
         content:
@@ -113,17 +128,19 @@ paths:
           description: name 受領
         "400":
           description: name バリデーションに違反 (空 / 全空白 / 制御文字 / 上限超)
+        "401":
+          description: 認証失敗
         "404":
           description: プレイヤーが account に存在しない (Register 未実施)
         "500":
           description: account 連携 / outbox 書き込みの障害
 
-  /internal/v1/players/{playerId}/onboarding/faction:
+  /api/v1/scenarios/onboarding/faction:
     post:
       operationId: selectOnboardingFaction
       summary: オンボード内 faction 選択ステップ。SelectableFactions で validate し、成功時に onboarding-faction-set を outbox publish
-      parameters:
-        - $ref: "#/components/parameters/PlayerIdPath"
+      security:
+        - InternalAuth: []
       requestBody:
         required: true
         content:
@@ -135,15 +152,17 @@ paths:
           description: faction 受領
         "400":
           description: initial_faction_id が SelectableFactions に含まれない
+        "401":
+          description: 認証失敗
         "500":
           description: outbox 書き込みの障害
 
-  /internal/v1/players/{playerId}/onboarding/complete:
+  /api/v1/scenarios/onboarding/complete:
     post:
       operationId: completeOnboarding
       summary: scenario 読了時に呼ばれ、scenario.player_onboarding INSERT + player-onboarded outbox publish を 1 tx で実行
-      parameters:
-        - $ref: "#/components/parameters/PlayerIdPath"
+      security:
+        - InternalAuth: []
       responses:
         "200":
           description: 完了
@@ -151,19 +170,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OnboardingCompleteResponse"
+        "401":
+          description: 認証失敗
         "409":
           description: 既にオンボーディング完了済み / faction 選択ステップを経ていない
         "500":
           description: DB / outbox 書き込み失敗
 
 components:
+  securitySchemes:
+    InternalAuth:
+      type: apiKey
+      in: header
+      name: X-Internal-Auth
+      description: gateway が発行する HS256 JWT。sub クレームに player_id を含む。
+
   parameters:
-    PlayerIdPath:
-      name: playerId
-      in: path
-      required: true
-      schema:
-        type: string
     EpisodeIdPath:
       name: episodeId
       in: path
@@ -309,7 +331,7 @@ components:
     OnboardingCompleteResponse:
       type: object
       description: |
-        POST /internal/v1/players/{playerId}/onboarding/complete の戻り値。
+        POST /api/v1/scenarios/onboarding/complete の戻り値。
         complete request body は空 (initial faction は事前の
         POST /onboarding/faction ステップで確定済み)。
       required: [message, player_id]

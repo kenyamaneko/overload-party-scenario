@@ -1,0 +1,5 @@
+node_modules/
+dist/
+package-lock.json
+# openapi.gen.ts は build 時に scripts/generate_types.sh または .github/scripts/publish/build-npm.sh で生成する
+src/openapi.gen.ts
