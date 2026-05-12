@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -50,7 +50,7 @@ jobs:
           GOPRIVATE: github.com/kenyamaneko/overload-party-common
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -89,7 +89,7 @@ jobs:
   # 起動) を要する `//go:build integration` テストの実行ジョブ。test ジョブとは独立に走らせ、
   # 既存の高速フィードバックを壊さない。
   test-integration:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -128,7 +128,7 @@ jobs:
           FIRESTORE_PROJECT_ID: overload-party-test
 
   image-scan:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -153,7 +153,7 @@ jobs:
           severity: "CRITICAL,HIGH"
 
   codegen-sync:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 10
     steps:
       - name: Checkout
