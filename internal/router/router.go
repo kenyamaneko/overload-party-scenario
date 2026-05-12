@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	internalauth "github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go"
 	"github.com/kenyamaneko/overload-party-scenario/internal/handler/rest"
-	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 )
 
 // New は scenario の HTTP ルーターを構築する。
@@ -15,7 +15,7 @@ import (
 func New(
 	storyH *rest.StoryHandler,
 	onboardingH *rest.OnboardingHandler,
-	authVerifier port.InternalAuthVerifier,
+	authVerifier internalauth.Verifier,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -25,7 +25,7 @@ func New(
 	})
 
 	api := r.Group("/api/v1/scenarios")
-	api.Use(rest.VerifyInternalAuth(authVerifier))
+	api.Use(internalauth.VerifyInternalAuth(authVerifier))
 	{
 		api.GET("/episodes", storyH.ListEpisodes)
 		api.GET("/episodes/:episodeId/script", storyH.GetScript)
