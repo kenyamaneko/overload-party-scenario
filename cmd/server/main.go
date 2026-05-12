@@ -15,9 +15,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 
+	internalauth "github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go"
 	adaptergcs "github.com/kenyamaneko/overload-party-scenario/internal/adapter/gcs"
 	adapterhttp "github.com/kenyamaneko/overload-party-scenario/internal/adapter/http"
-	"github.com/kenyamaneko/overload-party-scenario/internal/adapter/internalauth"
 	adapterlocal "github.com/kenyamaneko/overload-party-scenario/internal/adapter/local"
 	scenariopubsub "github.com/kenyamaneko/overload-party-scenario/internal/adapter/pubsub"
 	"github.com/kenyamaneko/overload-party-scenario/internal/config"
