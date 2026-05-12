@@ -53,7 +53,7 @@ func (s *Service) GetScript(ctx context.Context, playerID, lang string) (string,
 
 // UpdateName はオンボード内 name 入力ステップを処理する。
 func (s *Service) UpdateName(ctx context.Context, playerID, name string) error {
-	if err := s.nameValidator.ValidateOnboardingName(ctx, playerID, name); err != nil {
+	if err := s.nameValidator.ValidateOnboardingName(ctx, name); err != nil {
 		if errors.Is(err, port.ErrInvalidName) {
 			return ErrInvalidName
 		}
@@ -91,18 +91,18 @@ func (s *Service) SelectFaction(ctx context.Context, playerID, initialFactionID 
 
 // Complete はオンボーディング完了を記録し、player-onboarded event を outbox に同一 tx で積む。
 func (s *Service) Complete(ctx context.Context, playerID string) error {
-	player, err := s.playerReader.GetOnboardingPlayer(ctx, playerID)
+	player, err := s.playerReader.GetOnboardingPlayer(ctx)
 	if err != nil {
 		if errors.Is(err, port.ErrPlayerNotFound) {
 			return ErrPlayerNotFound
 		}
 		return fmt.Errorf("get onboarding player: %w", err)
 	}
-	if player.SelectedFaction == nil || *player.SelectedFaction == "" {
+	if player.InitialFaction == nil || *player.InitialFaction == "" {
 		return ErrFactionNotSelected
 	}
 
-	ev, err := buildPlayerOnboardedEvent(playerID, *player.SelectedFaction)
+	ev, err := buildPlayerOnboardedEvent(playerID, *player.InitialFaction)
 	if err != nil {
 		return fmt.Errorf("build player-onboarded: %w", err)
 	}

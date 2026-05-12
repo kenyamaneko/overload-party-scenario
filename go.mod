@@ -10,7 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.0
 	github.com/kenyamaneko/overload-party-common/packages/game-design-constants v0.1.0
-	github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go v0.1.0
+	github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go v0.1.1
 	github.com/kenyamaneko/overload-party-scenario/packages/api-scenario v0.0.0
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0

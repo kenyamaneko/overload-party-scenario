@@ -69,12 +69,11 @@ type fakeNameValidator struct {
 }
 
 type nameValidateCall struct {
-	playerID string
-	name     string
+	name string
 }
 
-func (v *fakeNameValidator) ValidateOnboardingName(_ context.Context, playerID, name string) error {
-	v.calls = append(v.calls, nameValidateCall{playerID: playerID, name: name})
+func (v *fakeNameValidator) ValidateOnboardingName(_ context.Context, name string) error {
+	v.calls = append(v.calls, nameValidateCall{name: name})
 	return v.err
 }
 
@@ -84,15 +83,11 @@ type fakePlayerReader struct {
 	err    error
 }
 
-func (r *fakePlayerReader) GetOnboardingPlayer(_ context.Context, playerID string) (port.AccountPlayer, error) {
+func (r *fakePlayerReader) GetOnboardingPlayer(_ context.Context) (port.AccountPlayer, error) {
 	if r.err != nil {
 		return port.AccountPlayer{}, r.err
 	}
-	p := r.player
-	if p.PlayerID == "" {
-		p.PlayerID = playerID
-	}
-	return p, nil
+	return r.player, nil
 }
 
 func strPtr(s string) *string { return &s }
@@ -166,7 +161,6 @@ func TestUpdateName(t *testing.T) {
 			verify: func(t *testing.T, err error, v *fakeNameValidator, repo *fakeOnboardingRepo) {
 				require.NoError(t, err)
 				require.Len(t, v.calls, 1)
-				assert.Equal(t, "p1", v.calls[0].playerID)
 				assert.Equal(t, "Kenya", v.calls[0].name)
 				require.Len(t, repo.publishCalls, 1)
 				require.Len(t, repo.publishCalls[0].events, 1)
@@ -315,7 +309,7 @@ func TestComplete(t *testing.T) {
 	}{
 		{
 			name:   "正常系は player-onboarded イベント 1 本を outbox へ渡す",
-			reader: &fakePlayerReader{player: port.AccountPlayer{SelectedFaction: strPtr("SHE")}},
+			reader: &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("SHE")}},
 			repo:   &fakeOnboardingRepo{},
 			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
 				require.NoError(t, err)
@@ -333,8 +327,8 @@ func TestComplete(t *testing.T) {
 			},
 		},
 		{
-			name:   "selected_faction が nil なら ErrFactionNotSelected (フロー違反)",
-			reader: &fakePlayerReader{player: port.AccountPlayer{SelectedFaction: nil}},
+			name:   "initial_faction が nil なら ErrFactionNotSelected (フロー違反)",
+			reader: &fakePlayerReader{player: port.AccountPlayer{InitialFaction: nil}},
 			repo:   &fakeOnboardingRepo{},
 			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
 				require.Error(t, err)
@@ -343,8 +337,8 @@ func TestComplete(t *testing.T) {
 			},
 		},
 		{
-			name:   "selected_faction が空文字でも ErrFactionNotSelected",
-			reader: &fakePlayerReader{player: port.AccountPlayer{SelectedFaction: strPtr("")}},
+			name:   "initial_faction が空文字でも ErrFactionNotSelected",
+			reader: &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("")}},
 			repo:   &fakeOnboardingRepo{},
 			verify: func(t *testing.T, err error, repo *fakeOnboardingRepo) {
 				require.Error(t, err)
@@ -363,7 +357,7 @@ func TestComplete(t *testing.T) {
 		},
 		{
 			name:   "二度目の完了は ErrAlreadyOnboarded に翻訳する",
-			reader: &fakePlayerReader{player: port.AccountPlayer{SelectedFaction: strPtr("SHE")}},
+			reader: &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("SHE")}},
 			repo:   &fakeOnboardingRepo{markCompleteErr: port.ErrAlreadyOnboarded},
 			verify: func(t *testing.T, err error, _ *fakeOnboardingRepo) {
 				require.Error(t, err)
@@ -372,7 +366,7 @@ func TestComplete(t *testing.T) {
 		},
 		{
 			name:   "repo の未分類エラーは wrap して伝播する",
-			reader: &fakePlayerReader{player: port.AccountPlayer{SelectedFaction: strPtr("SHE")}},
+			reader: &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("SHE")}},
 			repo:   &fakeOnboardingRepo{markCompleteErr: repoErr},
 			verify: func(t *testing.T, err error, _ *fakeOnboardingRepo) {
 				require.Error(t, err)

@@ -5,13 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	nethttp "net/http"
-	"net/url"
 	"time"
 
+	internalauth "github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go"
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 )
 
@@ -37,11 +36,9 @@ type validateNameRequest struct {
 }
 
 // ValidateOnboardingName は account へ表示名のバリデーションを同期で問い合わせる。
-func (c *AccountClient) ValidateOnboardingName(ctx context.Context, playerID, name string) error {
-	if playerID == "" {
-		return errors.New("accountclient: playerID is empty")
-	}
-	path := "/internal/v1/players/" + url.PathEscape(playerID) + "/onboarding/name/validate"
+// player_id は ctx に乗った X-Internal-Auth JWT の sub から account 側で解決する。
+func (c *AccountClient) ValidateOnboardingName(ctx context.Context, name string) error {
+	const path = "/api/v1/account/me/onboarding/name/validate"
 	body, err := json.Marshal(validateNameRequest{Name: name})
 	if err != nil {
 		return fmt.Errorf("accountclient: marshal: %w", err)
@@ -51,6 +48,7 @@ func (c *AccountClient) ValidateOnboardingName(ctx context.Context, playerID, na
 		return fmt.Errorf("accountclient: new request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	internalauth.InjectHeader(ctx, req.Header)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -71,22 +69,21 @@ func (c *AccountClient) ValidateOnboardingName(ctx context.Context, playerID, na
 	return fmt.Errorf("accountclient: POST %s: status %d: %s", path, resp.StatusCode, string(raw))
 }
 
-// playerResponse は account の GET /internal/v1/players/:playerId レスポンスを、scenario が使う最小フィールドだけ写したもの。
+// playerResponse は account の GET /api/v1/account/me レスポンスを、scenario が使う最小フィールドだけ写したもの。
 type playerResponse struct {
-	PlayerID        string  `json:"player_id"`
-	SelectedFaction *string `json:"selected_faction,omitempty"`
+	PlayerID       string  `json:"player_id"`
+	InitialFaction *string `json:"initial_faction,omitempty"`
 }
 
-// GetOnboardingPlayer は account の players レコードから selected_faction を取得する。
-func (c *AccountClient) GetOnboardingPlayer(ctx context.Context, playerID string) (port.AccountPlayer, error) {
-	if playerID == "" {
-		return port.AccountPlayer{}, errors.New("accountclient: playerID is empty")
-	}
-	path := "/internal/v1/players/" + url.PathEscape(playerID)
+// GetOnboardingPlayer は account の players レコードから initial_faction を取得する。
+// player_id は ctx に乗った X-Internal-Auth JWT の sub から account 側で解決する。
+func (c *AccountClient) GetOnboardingPlayer(ctx context.Context) (port.AccountPlayer, error) {
+	const path = "/api/v1/account/me"
 	req, err := nethttp.NewRequestWithContext(ctx, nethttp.MethodGet, c.baseURL+path, nil)
 	if err != nil {
 		return port.AccountPlayer{}, fmt.Errorf("accountclient: new request: %w", err)
 	}
+	internalauth.InjectHeader(ctx, req.Header)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -101,8 +98,8 @@ func (c *AccountClient) GetOnboardingPlayer(ctx context.Context, playerID string
 			return port.AccountPlayer{}, fmt.Errorf("accountclient: decode: %w", err)
 		}
 		return port.AccountPlayer{
-			PlayerID:        out.PlayerID,
-			SelectedFaction: out.SelectedFaction,
+			PlayerID:       out.PlayerID,
+			InitialFaction: out.InitialFaction,
 		}, nil
 	case nethttp.StatusNotFound:
 		return port.AccountPlayer{}, port.ErrPlayerNotFound
@@ -110,3 +107,4 @@ func (c *AccountClient) GetOnboardingPlayer(ctx context.Context, playerID string
 	raw, _ := io.ReadAll(resp.Body)
 	return port.AccountPlayer{}, fmt.Errorf("accountclient: GET %s: status %d: %s", path, resp.StatusCode, string(raw))
 }
+
