@@ -93,7 +93,7 @@ func run() error {
 	}
 	defer pool.Close()
 
-	fsClient, err := firestore.NewClient(ctx, cfg.FirestoreProjectID)
+	fsClient, err := firestore.NewClient(ctx, cfg.GoogleCloudProjectID)
 	if err != nil {
 		return fmt.Errorf("firestore new client: %w", err)
 	}
@@ -103,7 +103,7 @@ func run() error {
 
 	pubPublisher, err := scenariopubsub.New(
 		ctx,
-		cfg.PubsubProjectID,
+		cfg.GoogleCloudProjectID,
 		cfg.OnboardingNameSetTopic,
 		cfg.OnboardingFactionSetTopic,
 		cfg.PlayerOnboardedTopic,
@@ -165,7 +165,7 @@ func run() error {
 
 	slog.Info("listening",
 		"addr", srv.Addr,
-		"pubsub_project", cfg.PubsubProjectID,
+		"google_cloud_project", cfg.GoogleCloudProjectID,
 		"onboarding_name_set_topic", cfg.OnboardingNameSetTopic,
 		"onboarding_faction_set_topic", cfg.OnboardingFactionSetTopic,
 		"player_onboarded_topic", cfg.PlayerOnboardedTopic,
