@@ -83,7 +83,7 @@ jobs:
         env:
           GOPRIVATE: github.com/kenyamaneko/overload-party-common
           FIRESTORE_EMULATOR_HOST: localhost:9041
-          FIRESTORE_PROJECT_ID: overload-party-test
+          GOOGLE_CLOUD_PROJECT_ID: overload-party-test
 
   # Pub/Sub emulator (testcontainers 経由で gcr.io/google.com/cloudsdktool/cloud-sdk:emulators を
   # 起動) を要する `//go:build integration` テストの実行ジョブ。test ジョブとは独立に走らせ、
@@ -125,7 +125,7 @@ jobs:
         env:
           GOPRIVATE: github.com/kenyamaneko/overload-party-common
           FIRESTORE_EMULATOR_HOST: localhost:9041
-          FIRESTORE_PROJECT_ID: overload-party-test
+          GOOGLE_CLOUD_PROJECT_ID: overload-party-test
 
   image-scan:
     runs-on: ubicloud-standard-2

@@ -219,8 +219,7 @@ scenario は「静かに no-op で起動する」「nil publisher がログだ�
 - `DATABASE_CONN` 必須（libpq キーワード形式）
 - `STORY_BUCKET` 必須
 - `STORY_BUCKET=local:<path>` のとき `<path>` 非空
-- `PUBSUB_PROJECT_ID` 必須
-- `FIRESTORE_PROJECT_ID` 必須（現在 runtime からは未参照だが、起動時にプロジェクト ID の典型的タイポを検出する目的で必須化）
+- `GOOGLE_CLOUD_PROJECT_ID` 必須（Pub/Sub publish 先 + Firestore game_config 読み取り先で共通利用）
 - `ACCOUNT_BASE_URL` 必須（onboarding 限定の account 直叩き先 = name validate と Complete 時の faction 取得。未設定だと name 入力ステップと完了 publish がサイレントに 5xx 化するため起動時に拒否。[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md) / [ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md)）
 
 ### outbox worker 構築時のゼロ値拒否と unknown topic 明示エラー
@@ -255,9 +254,8 @@ GCS adapter は interface レベルで mock される（現状 `adapter/gcs` の
 環境変数の一覧と必須条件は [internal/config/config.go](../internal/config/config.go) が SSoT。運用上の注意点:
 
 - **`STORY_BUCKET`**: 本番は GCS バケット名を直接設定。dev / ローカルは `local:<path>` で FS 切替。誤って本番に `local:` を設定すると起動拒否になる（正常）
-- **`PUBSUB_PROJECT_ID`** / **`PLAYER_ONBOARDED_TOPIC`**: 本番環境と一致する Google Cloud project を指定。topic は Terraform (`modules/pubsub`) で事前作成されている前提。未作成トピック・未登録 topic 名への publish は outbox worker の `RecordFailure` 経路に載るため `failure_count` アラートで検出できる
+- **`GOOGLE_CLOUD_PROJECT_ID`** / **`PLAYER_ONBOARDED_TOPIC`**: 本番環境と一致する Google Cloud project を指定（Pub/Sub publish 先と Firestore `game_config` 読み取り先の双方で利用）。topic は Terraform (`modules/pubsub`) で事前作成されている前提。未作成トピック・未登録 topic 名への publish は outbox worker の `RecordFailure` 経路に載るため `failure_count` アラートで検出できる。ローカル / CI では `FIRESTORE_EMULATOR_HOST` / `PUBSUB_EMULATOR_HOST` で emulator 接続に差し替え可能
 - **`OUTBOX_POLL_INTERVAL` / `OUTBOX_BATCH_SIZE` / `OUTBOX_FAILURE_THRESHOLD` / `OUTBOX_VISIBILITY_TIMEOUT`**: outbox worker の挙動を env 経由で調整する。負荷試験やインシデント時にデプロイなしで可変。shop と同じ名前・意味で揃えている
-- **`FIRESTORE_PROJECT_ID`**: `game_config` の読み取り先。ローカル / CI では `FIRESTORE_EMULATOR_HOST` で emulator 接続に差し替え可能
 
 ### Pub/Sub トピックと subscriber
 

@@ -256,7 +256,7 @@ scenario は「サイレント no-op で起動する」「設定欠損の publis
 
 | 対象 | 保証 |
 |---|---|
-| `DATABASE_CONN` / `STORY_BUCKET` / `PUBSUB_PROJECT_ID` / `FIRESTORE_PROJECT_ID` / `ACCOUNT_BASE_URL` 未設定 | 起動拒否（`config.FromEnv` が error を返す） |
+| `DATABASE_CONN` / `STORY_BUCKET` / `GOOGLE_CLOUD_PROJECT_ID` / `ACCOUNT_BASE_URL` 未設定 | 起動拒否（`config.FromEnv` が error を返す） |
 | `STORY_BUCKET=local:` (パスなし) | 起動拒否 |
 | outbox worker の `BatchSize` / `FailureThreshold` / `VisibilityTimeout` が 0 | 起動拒否（設定欠損で publish が縮退することを防ぐ） |
 | 未登録 topic への publish | `adapter/pubsub.Publisher` が明示的にエラー（outbox の `RecordFailure` 経路に載る） |

@@ -18,8 +18,8 @@ type Config struct {
 	// StoryBucket は GCS バケット名 (本番)、または "local:" プレフィクス付きローカルパス (開発)。
 	StoryBucket string
 
-	// PubsubProjectID は scenario が publish する Pub/Sub topic のホスト Google Cloud project。
-	PubsubProjectID string
+	// GoogleCloudProjectID は scenario が利用する Google Cloud project (Pub/Sub publish 先 + Firestore game_config 読み取り先)。
+	GoogleCloudProjectID string
 
 	// OnboardingNameSetTopic は scenario が publish する name 入力ステップ完了イベントの topic 名。
 	OnboardingNameSetTopic string
@@ -27,9 +27,6 @@ type Config struct {
 	OnboardingFactionSetTopic string
 	// PlayerOnboardedTopic は scenario が publish する読了イベントの topic 名。
 	PlayerOnboardedTopic string
-
-	// FirestoreProjectID は game_config の読み取り先プロジェクト ID。
-	FirestoreProjectID string
 
 	// AccountBaseURL はオンボーディング内 name 入力ステップと完了 publish 用に account の internal REST を叩く際のベース URL。
 	AccountBaseURL string
@@ -51,11 +48,10 @@ func FromEnv() (*Config, error) {
 		Env:                       os.Getenv("ENV"),
 		DatabaseConn:              os.Getenv("DATABASE_CONN"),
 		StoryBucket:               os.Getenv("STORY_BUCKET"),
-		PubsubProjectID:           os.Getenv("PUBSUB_PROJECT_ID"),
+		GoogleCloudProjectID:      os.Getenv("GOOGLE_CLOUD_PROJECT_ID"),
 		OnboardingNameSetTopic:    os.Getenv("ONBOARDING_NAME_SET_TOPIC"),
 		OnboardingFactionSetTopic: os.Getenv("ONBOARDING_FACTION_SET_TOPIC"),
 		PlayerOnboardedTopic:      os.Getenv("PLAYER_ONBOARDED_TOPIC"),
-		FirestoreProjectID:        os.Getenv("FIRESTORE_PROJECT_ID"),
 		AccountBaseURL:            os.Getenv("ACCOUNT_BASE_URL"),
 		InternalAuthSecret:        os.Getenv("INTERNAL_AUTH_SECRET"),
 	}
@@ -82,8 +78,8 @@ func FromEnv() (*Config, error) {
 	if cfg.IsLocalStory() && cfg.StoryLocalPath() == "" {
 		return nil, fmt.Errorf("config: STORY_BUCKET=%q: local path must not be empty after %q", cfg.StoryBucket, localStoryPrefix)
 	}
-	if cfg.PubsubProjectID == "" {
-		return nil, fmt.Errorf("config: PUBSUB_PROJECT_ID is required (scenario publishes onboarding events to Pub/Sub)")
+	if cfg.GoogleCloudProjectID == "" {
+		return nil, fmt.Errorf("config: GOOGLE_CLOUD_PROJECT_ID is required (scenario は Pub/Sub publish + Firestore game_config で必要)")
 	}
 	if cfg.OnboardingNameSetTopic == "" {
 		return nil, fmt.Errorf("config: ONBOARDING_NAME_SET_TOPIC is required")
@@ -93,9 +89,6 @@ func FromEnv() (*Config, error) {
 	}
 	if cfg.PlayerOnboardedTopic == "" {
 		return nil, fmt.Errorf("config: PLAYER_ONBOARDED_TOPIC is required")
-	}
-	if cfg.FirestoreProjectID == "" {
-		return nil, fmt.Errorf("config: FIRESTORE_PROJECT_ID is required (game_config)")
 	}
 	if cfg.AccountBaseURL == "" {
 		return nil, fmt.Errorf("config: ACCOUNT_BASE_URL is required (onboarding name relay and resume judgement)")
