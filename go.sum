@@ -178,6 +178,8 @@ github.com/jackc/puddle/v2 v2.2.2/go.mod h1:vriiEXHvEE654aYKXXjOvZM39qJ0q+azkZFr
 github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
 github.com/json-iterator/go v1.1.12/go.mod h1:e30LSqwooZae/UwlEbR2852Gd8hjQvJoHmT4TnhNGBo=
 github.com/juju/gnuflag v0.0.0-20171113085948-2ce1bb71843d/go.mod h1:2PavIy+JPciBPrBUjwbNvtwB6RQlve+hkpll6QSNmOE=
+github.com/kenyamaneko/overload-party-account/packages/api-account v0.2.0 h1:giUtWvlETCCytWcIE1IK+xYiPuJ7/5niHbipwZ25PLg=
+github.com/kenyamaneko/overload-party-account/packages/api-account v0.2.0/go.mod h1:Q4gp7reYrriSOUqO9nD4Oa/3zNlS2bHgAj48x0TiLYc=
 github.com/kenyamaneko/overload-party-common/packages/game-design-constants v0.1.0 h1:1+9zGE1CWh+XkiQ0FYnNBIOXHyS9N+OjzVVvWIJRaXo=
 github.com/kenyamaneko/overload-party-common/packages/game-design-constants v0.1.0/go.mod h1:4z5Ry1Y8LZQM4OKqLivo/OhVefKloLZP2vUDQ1Yo0UI=
 github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go v0.1.1 h1:RPLE4DWngqPklIzl/27//QLkhqHKRo/BH+hCYKJcZ34=

@@ -2,109 +2,62 @@
 package http
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	nethttp "net/http"
-	"time"
 
+	apiaccount "github.com/kenyamaneko/overload-party-account/packages/api-account"
+	"github.com/kenyamaneko/overload-party-account/packages/api-account/apiaccountclient"
 	internalauth "github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go"
+
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 )
 
-// defaultTimeout は account への 1 リクエスト全体のタイムアウト。
-const defaultTimeout = 5 * time.Second
-
 // AccountClient は scenario onboarding が account に対して同期書込・読み取りを行う唯一の経路。
 type AccountClient struct {
-	baseURL string
-	http    *nethttp.Client
+	api *apiaccountclient.Client
 }
 
 // NewAccountClient は AccountClient を生成する。
 func NewAccountClient(baseURL string) *AccountClient {
-	return &AccountClient{
-		baseURL: baseURL,
-		http:    &nethttp.Client{Timeout: defaultTimeout},
+	api, err := apiaccountclient.New(baseURL,
+		apiaccountclient.WithRequestEditorFn(func(ctx context.Context, req *nethttp.Request) error {
+			internalauth.InjectHeader(ctx, req.Header)
+			return nil
+		}),
+	)
+	if err != nil {
+		panic(fmt.Sprintf("accountclient: %v", err))
 	}
-}
-
-type validateNameRequest struct {
-	Name string `json:"name"`
+	return &AccountClient{api: api}
 }
 
 // ValidateOnboardingName は account へ表示名のバリデーションを同期で問い合わせる。
-// player_id は ctx に乗った X-Internal-Auth JWT の sub から account 側で解決する。
 func (c *AccountClient) ValidateOnboardingName(ctx context.Context, name string) error {
-	const path = "/api/v1/account/me/onboarding/name/validate"
-	body, err := json.Marshal(validateNameRequest{Name: name})
-	if err != nil {
-		return fmt.Errorf("accountclient: marshal: %w", err)
-	}
-	req, err := nethttp.NewRequestWithContext(ctx, nethttp.MethodPost, c.baseURL+path, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("accountclient: new request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	internalauth.InjectHeader(ctx, req.Header)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return fmt.Errorf("accountclient: do: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	switch resp.StatusCode {
-	case nethttp.StatusOK, nethttp.StatusNoContent:
+	err := c.api.ValidateNameForOnboarding(ctx, apiaccount.ValidateNameForOnboardingRequest{Name: name})
+	switch {
+	case err == nil:
 		return nil
-	case nethttp.StatusBadRequest:
-		raw, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("%w: %s", port.ErrInvalidName, string(raw))
-	case nethttp.StatusNotFound:
+	case errors.Is(err, apiaccountclient.ErrBadRequest):
+		return fmt.Errorf("%w: %v", port.ErrInvalidName, err)
+	case errors.Is(err, apiaccountclient.ErrNotFound):
 		return port.ErrPlayerNotFound
 	}
-	raw, _ := io.ReadAll(resp.Body)
-	return fmt.Errorf("accountclient: POST %s: status %d: %s", path, resp.StatusCode, string(raw))
-}
-
-// playerResponse は account の GET /api/v1/account/me レスポンスを、scenario が使う最小フィールドだけ写したもの。
-type playerResponse struct {
-	PlayerID       string  `json:"player_id"`
-	InitialFaction *string `json:"initial_faction,omitempty"`
+	return err
 }
 
 // GetOnboardingPlayer は account の players レコードから initial_faction を取得する。
-// player_id は ctx に乗った X-Internal-Auth JWT の sub から account 側で解決する。
 func (c *AccountClient) GetOnboardingPlayer(ctx context.Context) (port.AccountPlayer, error) {
-	const path = "/api/v1/account/me"
-	req, err := nethttp.NewRequestWithContext(ctx, nethttp.MethodGet, c.baseURL+path, nil)
-	if err != nil {
-		return port.AccountPlayer{}, fmt.Errorf("accountclient: new request: %w", err)
-	}
-	internalauth.InjectHeader(ctx, req.Header)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return port.AccountPlayer{}, fmt.Errorf("accountclient: do: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	switch resp.StatusCode {
-	case nethttp.StatusOK:
-		var out playerResponse
-		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-			return port.AccountPlayer{}, fmt.Errorf("accountclient: decode: %w", err)
-		}
-		return port.AccountPlayer{
-			PlayerID:       out.PlayerID,
-			InitialFaction: out.InitialFaction,
-		}, nil
-	case nethttp.StatusNotFound:
+	resp, err := c.api.GetPlayer(ctx)
+	if errors.Is(err, apiaccountclient.ErrNotFound) {
 		return port.AccountPlayer{}, port.ErrPlayerNotFound
 	}
-	raw, _ := io.ReadAll(resp.Body)
-	return port.AccountPlayer{}, fmt.Errorf("accountclient: GET %s: status %d: %s", path, resp.StatusCode, string(raw))
+	if err != nil {
+		return port.AccountPlayer{}, err
+	}
+	return port.AccountPlayer{
+		PlayerID:       resp.PlayerID,
+		InitialFaction: resp.InitialFaction,
+	}, nil
 }
-
