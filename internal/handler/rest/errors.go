@@ -10,8 +10,8 @@ import (
 	"github.com/kenyamaneko/overload-party-scenario/internal/usecase/story"
 )
 
-// errorStatus はドメインエラーを HTTP ステータスに分類する。
-func errorStatus(err error) int {
+// resolveErrorStatus はドメインエラーを HTTP ステータスに分類する。
+func resolveErrorStatus(err error) int {
 	switch {
 	case isNotFound(err):
 		return http.StatusNotFound
@@ -25,7 +25,7 @@ func errorStatus(err error) int {
 }
 
 func respondError(c *gin.Context, err error) {
-	c.JSON(errorStatus(err), gin.H{"error": err.Error()})
+	c.JSON(resolveErrorStatus(err), gin.H{"error": err.Error()})
 }
 
 // isNotFound はエピソードまたはスクリプトファイルが見つからないエラーか判定する。

@@ -86,7 +86,7 @@ func (c *Client) GetHealth(ctx context.Context) (*apiscenario.HealthResponse, er
 	if resp.JSON200 != nil {
 		return resp.JSON200, nil
 	}
-	return nil, statusError("GetHealth", resp.StatusCode())
+	return nil, resolveStatusError("GetHealth", resp.StatusCode())
 }
 
 // ListEpisodes は指定言語で公開エピソード一覧を返す。
@@ -98,7 +98,7 @@ func (c *Client) ListEpisodes(ctx context.Context, lang string) (*apiscenario.Ep
 	if resp.JSON200 != nil {
 		return resp.JSON200, nil
 	}
-	return nil, statusError("ListEpisodes", resp.StatusCode())
+	return nil, resolveStatusError("ListEpisodes", resp.StatusCode())
 }
 
 // GetEpisodeScript は指定エピソードのスクリプトを返す。
@@ -110,7 +110,7 @@ func (c *Client) GetEpisodeScript(ctx context.Context, episodeID string, lang st
 	if resp.JSON200 != nil {
 		return resp.JSON200, nil
 	}
-	return nil, statusError("GetEpisodeScript", resp.StatusCode())
+	return nil, resolveStatusError("GetEpisodeScript", resp.StatusCode())
 }
 
 // CompleteEpisode はエピソード完了を記録する。
@@ -122,7 +122,7 @@ func (c *Client) CompleteEpisode(ctx context.Context, episodeID string) (*apisce
 	if resp.JSON200 != nil {
 		return resp.JSON200, nil
 	}
-	return nil, statusError("CompleteEpisode", resp.StatusCode())
+	return nil, resolveStatusError("CompleteEpisode", resp.StatusCode())
 }
 
 // GetOnboardingScript はオンボーディングスクリプトを返す。
@@ -134,7 +134,7 @@ func (c *Client) GetOnboardingScript(ctx context.Context, lang string) (*apiscen
 	if resp.JSON200 != nil {
 		return resp.JSON200, nil
 	}
-	return nil, statusError("GetOnboardingScript", resp.StatusCode())
+	return nil, resolveStatusError("GetOnboardingScript", resp.StatusCode())
 }
 
 // UpdateOnboardingName はオンボーディング表示名を更新する。spec は 204 を返すため戻り値は error のみ。
@@ -146,7 +146,7 @@ func (c *Client) UpdateOnboardingName(ctx context.Context, req apiscenario.Onboa
 	if resp.StatusCode() == http.StatusNoContent {
 		return nil
 	}
-	return statusError("UpdateOnboardingName", resp.StatusCode())
+	return resolveStatusError("UpdateOnboardingName", resp.StatusCode())
 }
 
 // SelectOnboardingFaction はオンボーディングで初期 faction を選択する。spec は 204 を返すため戻り値は error のみ。
@@ -158,7 +158,7 @@ func (c *Client) SelectOnboardingFaction(ctx context.Context, req apiscenario.On
 	if resp.StatusCode() == http.StatusNoContent {
 		return nil
 	}
-	return statusError("SelectOnboardingFaction", resp.StatusCode())
+	return resolveStatusError("SelectOnboardingFaction", resp.StatusCode())
 }
 
 // CompleteOnboarding はオンボーディング完了を記録する。
@@ -170,11 +170,11 @@ func (c *Client) CompleteOnboarding(ctx context.Context) (*apiscenario.Onboardin
 	if resp.JSON200 != nil {
 		return resp.JSON200, nil
 	}
-	return nil, statusError("CompleteOnboarding", resp.StatusCode())
+	return nil, resolveStatusError("CompleteOnboarding", resp.StatusCode())
 }
 
-// statusError は HTTP status code を sentinel error (errors.Is 分岐可能) に変換する。
-func statusError(op string, code int) error {
+// resolveStatusError は HTTP status code を sentinel error (errors.Is 分岐可能) に変換する。
+func resolveStatusError(op string, code int) error {
 	var sentinel error
 	switch {
 	case code == http.StatusUnauthorized:

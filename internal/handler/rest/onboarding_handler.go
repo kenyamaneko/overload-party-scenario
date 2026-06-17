@@ -107,11 +107,11 @@ func (h *OnboardingHandler) Complete(c *gin.Context) {
 
 // respondOnboardingError は onboarding usecase の sentinel を HTTP status にマップする。
 func respondOnboardingError(c *gin.Context, err error) {
-	c.JSON(onboardingErrorStatus(err), gin.H{"error": err.Error()})
+	c.JSON(resolveOnboardingErrorStatus(err), gin.H{"error": err.Error()})
 }
 
-// onboardingErrorStatus は onboarding 特有のエラーを HTTP status に翻訳する。
-func onboardingErrorStatus(err error) int {
+// resolveOnboardingErrorStatus は onboarding 特有のエラーを HTTP status に翻訳する。
+func resolveOnboardingErrorStatus(err error) int {
 	switch {
 	case errors.Is(err, onboarding.ErrScriptNotFound),
 		errors.Is(err, onboarding.ErrPlayerNotFound):
