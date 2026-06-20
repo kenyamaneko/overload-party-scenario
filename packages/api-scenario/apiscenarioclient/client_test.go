@@ -18,7 +18,7 @@ import (
 //
 // GetHealth は 4xx/5xx 宣言が無いため省略。GetOnboardingScript /
 // UpdateOnboardingName / SelectOnboardingFaction / CompleteOnboarding は
-// apiscenarioserverfake に handler が無く、statusError logic は他 endpoint で
+// apiscenarioserverfake に handler が無く、resolveStatusError logic は他 endpoint で
 // 十分カバーされるため省略。
 
 func TestClient_ListEpisodes_StatusMapping(t *testing.T) {

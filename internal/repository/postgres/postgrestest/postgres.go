@@ -70,7 +70,7 @@ func Start(ctx context.Context, opts ...Option) (*Postgres, error) {
 		return nil, errors.New("postgrestest: at least one WithSchema is required")
 	}
 
-	root, err := repoRoot()
+	root, err := findRepoRoot()
 	if err != nil {
 		return nil, err
 	}
@@ -194,8 +194,8 @@ func RunMain(m *testing.M, out **Postgres, opts ...Option) int {
 	return m.Run()
 }
 
-// repoRoot は本ファイルの位置から go.mod を持つディレクトリを探索して返す。
-func repoRoot() (string, error) {
+// findRepoRoot は本ファイルの位置から go.mod を持つディレクトリを探索して返す。
+func findRepoRoot() (string, error) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		return "", errors.New("runtime.Caller failed")

@@ -142,12 +142,12 @@ func (e *Emulator) CreateTopic(t *testing.T, prefix string) string {
 type SubscribeOption func(*subscribeOpts)
 
 type subscribeOpts struct {
-	manualAck bool
+	isManualAck bool
 }
 
 // WithManualAck は受信メッセージを自動 ack せず、テスト側で Message.Ack() を呼ぶまで保留する。
 func WithManualAck() SubscribeOption {
-	return func(o *subscribeOpts) { o.manualAck = true }
+	return func(o *subscribeOpts) { o.isManualAck = true }
 }
 
 // Subscribe は指定 topic に subscription を作成して受信ループを起動する。
@@ -181,7 +181,7 @@ func (e *Emulator) Subscribe(t *testing.T, topicID string, opts ...SubscribeOpti
 				Data:       m.Data,
 				Attributes: m.Attributes,
 			}
-			if o.manualAck {
+			if o.isManualAck {
 				msg.Ack = m.Ack
 			} else {
 				m.Ack()
