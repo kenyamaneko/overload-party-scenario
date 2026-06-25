@@ -115,14 +115,15 @@ func (r *StoryRepository) GetCompletedEpisodeIDs(ctx context.Context, playerID s
 	return ids, nil
 }
 
-// GetUnlockContext は players, player_factions, player_story_progress を結合して返す。
+// GetUnlockContext は episode アンロック判定に必要なプレイヤーコンテキストを返す。
 func (r *StoryRepository) GetUnlockContext(ctx context.Context, playerID string) (*domain.UnlockContext, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT
-		   p.level,
+		   pp.level,
 		   COALESCE(ARRAY(SELECT faction FROM player_factions WHERE player_id = $1), '{}'),
 		   COALESCE(ARRAY(SELECT episode_id FROM player_story_progress WHERE player_id = $1), '{}')
 		 FROM players p
+		 JOIN player_progression pp ON pp.player_id = p.player_id
 		 WHERE p.player_id = $1`,
 		playerID)
 
