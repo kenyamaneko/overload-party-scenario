@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 	"github.com/kenyamaneko/overload-party-scenario/internal/repository/postgres"
 )
@@ -122,44 +123,41 @@ func TestFindEpisodeByID(t *testing.T) {
 	seedRequiredFaction(t, "ep_found", "SHE")
 
 	tests := []struct {
-		name        string
-		episodeID   string
-		wantErrIs   error
-		wantTitleJa string
-		wantLevel   int64
-		wantFaction []string
+		name      string
+		episodeID string
+		verify    func(t *testing.T, got *domain.Episode, err error)
 	}{
 		{
-			name:        "存在する ID は取得成功",
-			episodeID:   "ep_found",
-			wantTitleJa: "見つかる",
-			wantLevel:   5,
-			wantFaction: []string{"SHE"},
+			name:      "存在する ID は取得成功",
+			episodeID: "ep_found",
+			verify: func(t *testing.T, got *domain.Episode, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, got)
+				assert.Equal(t, "見つかる", got.TitleJa)
+				assert.Equal(t, int64(5), got.RequiredLevel)
+				assert.Equal(t, []string{"SHE"}, got.RequiredFactions)
+			},
 		},
 		{
 			name:      "存在しない ID は ErrNotFound",
 			episodeID: "missing",
-			wantErrIs: port.ErrNotFound,
+			verify: func(t *testing.T, _ *domain.Episode, err error) {
+				assert.ErrorIs(t, err, port.ErrNotFound)
+			},
 		},
 		{
 			name:      "空文字 ID も ErrNotFound",
 			episodeID: "",
-			wantErrIs: port.ErrNotFound,
+			verify: func(t *testing.T, _ *domain.Episode, err error) {
+				assert.ErrorIs(t, err, port.ErrNotFound)
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := repo.FindEpisodeByID(ctx, tt.episodeID)
-			if tt.wantErrIs != nil {
-				assert.ErrorIs(t, err, tt.wantErrIs)
-				return
-			}
-			require.NoError(t, err)
-			require.NotNil(t, got)
-			assert.Equal(t, tt.wantTitleJa, got.TitleJa)
-			assert.Equal(t, tt.wantLevel, got.RequiredLevel)
-			assert.Equal(t, tt.wantFaction, got.RequiredFactions)
+			tt.verify(t, got, err)
 		})
 	}
 }
@@ -230,13 +228,10 @@ func TestGetUnlockContext(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name               string
-		setup              func(t *testing.T)
-		playerID           string
-		wantErr            bool
-		wantLevel          int64
-		wantFactions       map[string]bool
-		wantCompletedCount int
+		name     string
+		setup    func(t *testing.T)
+		playerID string
+		verify   func(t *testing.T, got *domain.UnlockContext, err error)
 	}{
 		{
 			name: "player + factions + progress を集約して返す",
@@ -247,20 +242,28 @@ func TestGetUnlockContext(t *testing.T) {
 				seedEpisode(t, "ep1", nil, 1, "JA", "EN", 1, nil, "s/ep1/{lang}.json", 1, true)
 				seedProgress(t, testPlayer1, "ep1")
 			},
-			playerID:           testPlayer1,
-			wantLevel:          12,
-			wantFactions:       map[string]bool{"SHE": true, "Tenki": true},
-			wantCompletedCount: 1,
+			playerID: testPlayer1,
+			verify: func(t *testing.T, got *domain.UnlockContext, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, got)
+				assert.Equal(t, int64(12), got.PlayerLevel)
+				assert.Equal(t, map[string]bool{"SHE": true, "Tenki": true}, got.OwnedFactions)
+				assert.Len(t, got.CompletedEpisodes, 1)
+			},
 		},
 		{
 			name: "faction / progress が無くても level は返る",
 			setup: func(t *testing.T) {
 				seedPlayer(t, testPlayer1, 3)
 			},
-			playerID:           testPlayer1,
-			wantLevel:          3,
-			wantFactions:       map[string]bool{},
-			wantCompletedCount: 0,
+			playerID: testPlayer1,
+			verify: func(t *testing.T, got *domain.UnlockContext, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, got)
+				assert.Equal(t, int64(3), got.PlayerLevel)
+				assert.Equal(t, map[string]bool{}, got.OwnedFactions)
+				assert.Empty(t, got.CompletedEpisodes)
+			},
 		},
 		{
 			name: "存在しないプレイヤーはエラー",
@@ -268,7 +271,9 @@ func TestGetUnlockContext(t *testing.T) {
 				seedPlayer(t, testPlayer2, 1)
 			},
 			playerID: testPlayer1,
-			wantErr:  true,
+			verify: func(t *testing.T, _ *domain.UnlockContext, err error) {
+				assert.Error(t, err)
+			},
 		},
 	}
 
@@ -278,15 +283,7 @@ func TestGetUnlockContext(t *testing.T) {
 			tt.setup(t)
 
 			got, err := repo.GetUnlockContext(ctx, tt.playerID)
-			if tt.wantErr {
-				assert.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			require.NotNil(t, got)
-			assert.Equal(t, tt.wantLevel, got.PlayerLevel)
-			assert.Equal(t, tt.wantFactions, got.OwnedFactions)
-			assert.Len(t, got.CompletedEpisodes, tt.wantCompletedCount)
+			tt.verify(t, got, err)
 		})
 	}
 }
