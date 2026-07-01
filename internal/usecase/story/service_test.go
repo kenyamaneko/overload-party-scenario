@@ -171,7 +171,7 @@ func TestCompleteEpisode(t *testing.T) {
 		name      string
 		setup     func(env *testEnv)
 		episodeID string
-		wantErr   error
+		verify    func(t *testing.T, err error)
 	}{
 		{
 			name: "アンロック済みエピソードを完了できる",
@@ -180,6 +180,9 @@ func TestCompleteEpisode(t *testing.T) {
 				env.storyRepo.GrantFaction("p1", "SHE")
 			},
 			episodeID: "she_ep1",
+			verify: func(t *testing.T, err error) {
+				require.NoError(t, err)
+			},
 		},
 		{
 			name: "存在しないエピソードは ErrEpisodeNotFound",
@@ -187,7 +190,9 @@ func TestCompleteEpisode(t *testing.T) {
 				env.storyRepo.SetPlayerLevel("p1", 5)
 			},
 			episodeID: "nonexistent",
-			wantErr:   ErrEpisodeNotFound,
+			verify: func(t *testing.T, err error) {
+				assert.ErrorIs(t, err, ErrEpisodeNotFound)
+			},
 		},
 		{
 			name: "ロック中のエピソードは ErrEpisodeLocked",
@@ -195,7 +200,9 @@ func TestCompleteEpisode(t *testing.T) {
 				env.storyRepo.SetPlayerLevel("p1", 1)
 			},
 			episodeID: "she_ep1",
-			wantErr:   ErrEpisodeLocked,
+			verify: func(t *testing.T, err error) {
+				assert.ErrorIs(t, err, ErrEpisodeLocked)
+			},
 		},
 		{
 			name: "非アクティブエピソードは ErrEpisodeNotFound",
@@ -203,7 +210,9 @@ func TestCompleteEpisode(t *testing.T) {
 				env.storyRepo.SetPlayerLevel("p1", 99)
 			},
 			episodeID: "inactive_ep",
-			wantErr:   ErrEpisodeNotFound,
+			verify: func(t *testing.T, err error) {
+				assert.ErrorIs(t, err, ErrEpisodeNotFound)
+			},
 		},
 	}
 
@@ -214,11 +223,7 @@ func TestCompleteEpisode(t *testing.T) {
 			tc.setup(env)
 
 			err := env.svc.CompleteEpisode(context.Background(), "p1", tc.episodeID)
-			if tc.wantErr != nil {
-				assert.ErrorIs(t, err, tc.wantErr)
-				return
-			}
-			require.NoError(t, err)
+			tc.verify(t, err)
 		})
 	}
 }
@@ -232,14 +237,9 @@ func TestCompleteEpisode_Idempotent(t *testing.T) {
 	require.NoError(t, env.svc.CompleteEpisode(context.Background(), "p1", "she_ep1"))
 	require.NoError(t, env.svc.CompleteEpisode(context.Background(), "p1", "she_ep1"))
 
-	ids, _ := env.storyRepo.GetCompletedEpisodeIDs(context.Background(), "p1")
-	count := 0
-	for _, id := range ids {
-		if id == "she_ep1" {
-			count++
-		}
-	}
-	assert.Equal(t, 1, count)
+	ids, err := env.storyRepo.GetCompletedEpisodeIDs(context.Background(), "p1")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"she_ep1"}, ids)
 }
 
 func TestGetScript(t *testing.T) {
@@ -286,11 +286,7 @@ func TestGetScript(t *testing.T) {
 			tc.setup(env)
 
 			_, err := env.svc.GetScript(context.Background(), "p1", tc.episodeID, tc.lang)
-			if tc.wantErr != nil {
-				assert.ErrorIs(t, err, tc.wantErr)
-				return
-			}
-			require.NoError(t, err)
+			assert.ErrorIs(t, err, tc.wantErr)
 		})
 	}
 }
