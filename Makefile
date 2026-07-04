@@ -1,4 +1,4 @@
-.PHONY: build test test-integration vet fmt run tidy db-up db-down db-reset generate-types help
+.PHONY: build test test-integration vet fmt run tidy down generate-types help
 
 APP := overload-party-scenario
 
@@ -23,29 +23,12 @@ fmt: ## Format code
 generate-types: ## Re-generate packages/api-scenario/{openapi,asyncapi}_gen.go from data/{openapi,asyncapi}.yaml (requires oapi-codegen and asyncapi-codegen on PATH)
 	scripts/generate_types.sh
 
-db-up: ## Start local Postgres (docker compose)
-	docker compose up -d postgres
+down: ## Stop the local stack and remove volumes
+	HOST_GOMODCACHE=$$(go env GOMODCACHE) docker compose down -v
 
-db-down: ## Stop local Postgres
-	docker compose down
-
-db-reset: ## Drop volume and recreate DB
-	docker compose down -v
-	docker compose up -d postgres
-
-run: db-up ## Run scenario server locally against compose Postgres (local env 込み)
-	PORT=9007 \
-	DATABASE_CONN="host=localhost port=5432 dbname=scenario user=scenario password=scenario sslmode=disable" \
-	GOOGLE_CLOUD_PROJECT=scenario-local \
-	GOOGLE_CLOUD_PROJECT_ID=scenario-local \
-	ONBOARDING_NAME_SET_TOPIC=onboarding-name-set \
-	ONBOARDING_FACTION_SET_TOPIC=onboarding-faction-set \
-	PLAYER_ONBOARDED_TOPIC=player-onboarded \
-	STORY_BUCKET=local:./testdata/stories \
-	ACCOUNT_BASE_URL=http://localhost:9001 \
-	PUBSUB_EMULATOR_HOST=localhost:8085 \
-	FIRESTORE_EMULATOR_HOST=localhost:9041 \
-	go run ./cmd/server
+run: ## Run the full local stack (app + infra) in compose; edit source and restart `scenario` to reload
+	GOWORK=off GOPRIVATE=github.com/kenyamaneko/* go mod download
+	HOST_GOMODCACHE=$$(go env GOMODCACHE) docker compose up
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
