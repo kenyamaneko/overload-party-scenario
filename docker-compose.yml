@@ -1,6 +1,11 @@
-# ローカル動作確認用の PostgreSQL。
-# テストでは Testcontainers が別途コンテナを起動するため、
-# 本 compose はあくまで `make run` (cmd/server) のローカル動作確認用。
+# scenario のローカル開発スタック。構成と使い方は README「ローカル開発」を参照。
+name: overload-party-scenario
+
+# publish する topic 名は scenario 本体と pubsub-init の双方が参照するため、ここで一度だけ定義する。
+x-onboarding-name-set-topic: &onboarding_name_set_topic onboarding-name-set
+x-onboarding-faction-set-topic: &onboarding_faction_set_topic onboarding-faction-set
+x-player-onboarded-topic: &player_onboarded_topic player-onboarded
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,8 +13,6 @@ services:
       POSTGRES_USER: scenario
       POSTGRES_PASSWORD: scenario
       POSTGRES_DB: scenario
-    ports:
-      - "5432:5432"
     volumes:
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - scenario_pgdata:/var/lib/postgresql/data
@@ -19,5 +22,91 @@ services:
       timeout: 2s
       retries: 15
 
+  # scenario は起動時に Firestore クライアントの到達性を検証するため emulator を用意する。game_config は runtime 未参照なので seed は不要。
+  firestore-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: >
+      gcloud beta emulators firestore start
+      --project=overload-party-local
+      --host-port=0.0.0.0:8080
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080 || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: >
+      gcloud beta emulators pubsub start
+      --project=overload-party-local
+      --host-port=0.0.0.0:8085
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8085 || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # scenario は outbox で topic へ publish する。publish 先が無いと送信が失敗するため起動前に用意する。
+  pubsub-init:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy
+    environment:
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: overload-party-local
+      ONBOARDING_NAME_SET_TOPIC: *onboarding_name_set_topic
+      ONBOARDING_FACTION_SET_TOPIC: *onboarding_faction_set_topic
+      PLAYER_ONBOARDED_TOPIC: *player_onboarded_topic
+    volumes:
+      - ./docker/pubsub/init-topics.sh:/init-topics.sh:ro
+    entrypoint: ["/bin/bash", "/init-topics.sh"]
+    restart: "no"
+
+  scenario:
+    image: golang:1.25-alpine
+    working_dir: /src
+    command: go run ./cmd/server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      firestore-emulator:
+        condition: service_healthy
+      pubsub-init:
+        condition: service_completed_successfully
+    environment:
+      CGO_ENABLED: "0"
+      # module cache を host から ro マウントするため、コンテナ内 fetch を禁止し cache 欠落を即エラーにする。解決は host 側 (make run の go mod download) が担う。
+      GOPROXY: "off"
+      GOPRIVATE: github.com/kenyamaneko/*
+      # bind-mount が持ち込む host の go.work は sibling をローカル overlay するが、コンテナに sibling は無い。無効化し go.mod の公開版で解決させる。
+      GOWORK: "off"
+      ENV: local
+      PORT: "9007"
+      DATABASE_CONN: host=postgres port=5432 dbname=scenario user=scenario password=scenario sslmode=disable
+      GOOGLE_CLOUD_PROJECT: overload-party-local
+      GOOGLE_CLOUD_PROJECT_ID: overload-party-local
+      INTERNAL_AUTH_SECRET: dev-secret-not-for-prod
+      ONBOARDING_NAME_SET_TOPIC: *onboarding_name_set_topic
+      ONBOARDING_FACTION_SET_TOPIC: *onboarding_faction_set_topic
+      PLAYER_ONBOARDED_TOPIC: *player_onboarded_topic
+      STORY_BUCKET: local:./testdata/stories
+      # account の internal REST。onboarding フローでのみ遅延利用するため、単体起動時は未到達でも起動は成立する。
+      ACCOUNT_BASE_URL: http://account:9005
+      OUTBOX_POLL_INTERVAL: 1s
+      OUTBOX_BATCH_SIZE: "100"
+      OUTBOX_FAILURE_THRESHOLD: "5"
+      OUTBOX_VISIBILITY_TIMEOUT: 30s
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
+    volumes:
+      - ./:/src
+      - ${HOST_GOMODCACHE:?make run 経由で起動すること (go env GOMODCACHE を渡す必要がある)}:/go/pkg/mod:ro
+      - scenario_gobuild:/root/.cache/go-build
+    ports:
+      - "9007:9007"
+
 volumes:
   scenario_pgdata:
+  scenario_gobuild:
