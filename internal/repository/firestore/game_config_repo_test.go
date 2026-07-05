@@ -17,8 +17,8 @@ import (
 	scenariofirestore "github.com/kenyamaneko/overload-party-scenario/internal/repository/firestore"
 )
 
-// TestGameConfigRepository は emulator を前提とする integration test (FIRESTORE_EMULATOR_HOST 未設定時はスキップ)。
 func TestGameConfigRepository(t *testing.T) {
+	// emulator を前提とする integration test。FIRESTORE_EMULATOR_HOST が未設定ならスキップする。
 	host := os.Getenv("FIRESTORE_EMULATOR_HOST")
 	if host == "" {
 		t.Skip("FIRESTORE_EMULATOR_HOST not set; skipping Firestore integration test")
@@ -38,16 +38,18 @@ func TestGameConfigRepository(t *testing.T) {
 
 	repo := scenariofirestore.NewGameConfigRepository(client)
 
-	t.Run("Get existing key", func(t *testing.T) {
-		got, err := repo.GetInt64(ctx, "exp_win")
-		require.NoError(t, err)
-		assert.Equal(t, int64(40), got)
-	})
+	t.Run("game_config の取得", func(t *testing.T) {
+		t.Run("存在するキー exp_win のとき、値 40 を返す", func(t *testing.T) {
+			got, err := repo.GetInt64(ctx, "exp_win")
+			require.NoError(t, err)
+			assert.Equal(t, int64(40), got)
+		})
 
-	t.Run("Missing key returns ErrNotFound", func(t *testing.T) {
-		_, err := repo.GetInt64(ctx, "does_not_exist")
-		require.Error(t, err)
-		assert.True(t, errors.Is(err, port.ErrNotFound), "expected ErrNotFound, got: %v", err)
+		t.Run("存在しないキーのとき、ErrNotFound になる", func(t *testing.T) {
+			_, err := repo.GetInt64(ctx, "does_not_exist")
+			require.Error(t, err)
+			assert.True(t, errors.Is(err, port.ErrNotFound), "expected ErrNotFound, got: %v", err)
+		})
 	})
 }
 

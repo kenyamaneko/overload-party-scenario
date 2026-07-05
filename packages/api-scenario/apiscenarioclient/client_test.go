@@ -12,139 +12,131 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 以下の TestClient_<Endpoint>_StatusMapping 群は、SDK の固有責務である
-// 「OpenAPI spec で宣言された 4xx/5xx status を sentinel error に変換する」契約を
-// endpoint ごとに検証する。
-//
-// GetHealth は 4xx/5xx 宣言が無いため省略。GetOnboardingScript /
-// UpdateOnboardingName / SelectOnboardingFaction / CompleteOnboarding は
-// apiscenarioserverfake に handler が無く、resolveStatusError logic は他 endpoint で
-// 十分カバーされるため省略。
+// StatusMapping 群は、SDK の固有責務である「OpenAPI spec で宣言された 4xx/5xx status を
+// sentinel error に変換する」契約を endpoint ごとに検証する。GetHealth は 4xx/5xx 宣言が
+// 無いため省略。GetOnboardingScript / UpdateOnboardingName / SelectOnboardingFaction /
+// CompleteOnboarding は apiscenarioserverfake に handler が無く、status 変換 logic は他
+// endpoint で十分カバーされるため省略。
 
 func TestClient_ListEpisodes_StatusMapping(t *testing.T) {
-	cases := []struct {
-		name       string
-		status     int
-		wantTarget error
-	}{
-		{
-			name:       "401 を受けたとき ErrUnauthorized",
-			status:     http.StatusUnauthorized,
-			wantTarget: apiscenarioclient.ErrUnauthorized,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	t.Run("ListEpisodes のステータスマッピング", func(t *testing.T) {
+		t.Run("401 を受けたとき、ErrUnauthorized になる", func(t *testing.T) {
 			srv := apiscenarioserverfake.NewServer()
 			defer srv.Close()
-			srv.ListEpisodesFn = func(_ string) (int, any) { return tc.status, nil }
+			srv.ListEpisodesFn = func(_ string) (int, any) { return http.StatusUnauthorized, nil }
 
 			c := newTestClient(t, srv.URL())
 			_, err := c.ListEpisodes(context.Background(), "ja")
-			assertSentinel(t, err, tc.wantTarget)
+			assertSentinel(t, err, apiscenarioclient.ErrUnauthorized)
 		})
-	}
+	})
 }
 
 func TestClient_GetEpisodeScript_StatusMapping(t *testing.T) {
-	cases := []struct {
-		name       string
-		status     int
-		wantTarget error
-	}{
-		{
-			name:       "401 を受けたとき ErrUnauthorized",
-			status:     http.StatusUnauthorized,
-			wantTarget: apiscenarioclient.ErrUnauthorized,
-		},
-		{
-			name:       "403 を受けたとき ErrForbidden",
-			status:     http.StatusForbidden,
-			wantTarget: apiscenarioclient.ErrForbidden,
-		},
-		{
-			name:       "404 を受けたとき ErrNotFound",
-			status:     http.StatusNotFound,
-			wantTarget: apiscenarioclient.ErrNotFound,
-		},
-		{
-			name:       "500 を受けたとき ErrInternalServer",
-			status:     http.StatusInternalServerError,
-			wantTarget: apiscenarioclient.ErrInternalServer,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			srv := apiscenarioserverfake.NewServer()
-			defer srv.Close()
-			srv.GetScriptFn = func(_, _ string) (int, any) { return tc.status, nil }
+	t.Run("GetEpisodeScript のステータスマッピング", func(t *testing.T) {
+		cases := []struct {
+			name       string
+			status     int
+			wantTarget error
+		}{
+			{
+				name:       "401 を受けたとき、ErrUnauthorized になる",
+				status:     http.StatusUnauthorized,
+				wantTarget: apiscenarioclient.ErrUnauthorized,
+			},
+			{
+				name:       "403 を受けたとき、ErrForbidden になる",
+				status:     http.StatusForbidden,
+				wantTarget: apiscenarioclient.ErrForbidden,
+			},
+			{
+				name:       "404 を受けたとき、ErrNotFound になる",
+				status:     http.StatusNotFound,
+				wantTarget: apiscenarioclient.ErrNotFound,
+			},
+			{
+				name:       "500 を受けたとき、ErrInternalServer になる",
+				status:     http.StatusInternalServerError,
+				wantTarget: apiscenarioclient.ErrInternalServer,
+			},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				srv := apiscenarioserverfake.NewServer()
+				defer srv.Close()
+				srv.GetScriptFn = func(_, _ string) (int, any) { return tc.status, nil }
 
-			c := newTestClient(t, srv.URL())
-			_, err := c.GetEpisodeScript(context.Background(), "ep1", "ja")
-			assertSentinel(t, err, tc.wantTarget)
-		})
-	}
+				c := newTestClient(t, srv.URL())
+				_, err := c.GetEpisodeScript(context.Background(), "ep1", "ja")
+				assertSentinel(t, err, tc.wantTarget)
+			})
+		}
+	})
 }
 
 func TestClient_CompleteEpisode_StatusMapping(t *testing.T) {
-	cases := []struct {
-		name       string
-		status     int
-		wantTarget error
-	}{
-		{
-			name:       "401 を受けたとき ErrUnauthorized",
-			status:     http.StatusUnauthorized,
-			wantTarget: apiscenarioclient.ErrUnauthorized,
-		},
-		{
-			name:       "403 を受けたとき ErrForbidden",
-			status:     http.StatusForbidden,
-			wantTarget: apiscenarioclient.ErrForbidden,
-		},
-		{
-			name:       "404 を受けたとき ErrNotFound",
-			status:     http.StatusNotFound,
-			wantTarget: apiscenarioclient.ErrNotFound,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			srv := apiscenarioserverfake.NewServer()
-			defer srv.Close()
-			srv.CompleteEpisodeFn = func(_ string) (int, any) { return tc.status, nil }
+	t.Run("CompleteEpisode のステータスマッピング", func(t *testing.T) {
+		cases := []struct {
+			name       string
+			status     int
+			wantTarget error
+		}{
+			{
+				name:       "401 を受けたとき、ErrUnauthorized になる",
+				status:     http.StatusUnauthorized,
+				wantTarget: apiscenarioclient.ErrUnauthorized,
+			},
+			{
+				name:       "403 を受けたとき、ErrForbidden になる",
+				status:     http.StatusForbidden,
+				wantTarget: apiscenarioclient.ErrForbidden,
+			},
+			{
+				name:       "404 を受けたとき、ErrNotFound になる",
+				status:     http.StatusNotFound,
+				wantTarget: apiscenarioclient.ErrNotFound,
+			},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				srv := apiscenarioserverfake.NewServer()
+				defer srv.Close()
+				srv.CompleteEpisodeFn = func(_ string) (int, any) { return tc.status, nil }
 
-			c := newTestClient(t, srv.URL())
-			_, err := c.CompleteEpisode(context.Background(), "ep1")
-			assertSentinel(t, err, tc.wantTarget)
-		})
-	}
+				c := newTestClient(t, srv.URL())
+				_, err := c.CompleteEpisode(context.Background(), "ep1")
+				assertSentinel(t, err, tc.wantTarget)
+			})
+		}
+	})
 }
 
-// TestClient_RequestEditor は Option pattern の契約 (WithRequestEditorFn で渡した
-// editor が全リクエストに適用される) を検証する。X-Internal-Auth header 注入の
-// 接続点として SDK が機能することを担保する。
 func TestClient_RequestEditor(t *testing.T) {
-	var gotHeader string
-	spy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotHeader = r.Header.Get("X-Internal-Auth")
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"episodes":[]}`))
-	}))
-	defer spy.Close()
+	t.Run("リクエストエディタの適用", func(t *testing.T) {
+		t.Run("WithRequestEditorFn で渡した editor が全リクエストに適用される", func(t *testing.T) {
+			// X-Internal-Auth header 注入の接続点として SDK が機能することを担保する。
+			var gotHeader string
+			spy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotHeader = r.Header.Get("X-Internal-Auth")
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"episodes":[]}`))
+			}))
+			defer spy.Close()
 
-	c, err := apiscenarioclient.New(spy.URL,
-		apiscenarioclient.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
-			req.Header.Set("X-Internal-Auth", "test-token")
-			return nil
-		}),
-	)
-	require.NoError(t, err)
+			c, err := apiscenarioclient.New(spy.URL,
+				apiscenarioclient.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+					req.Header.Set("X-Internal-Auth", "test-token")
+					return nil
+				}),
+			)
+			require.NoError(t, err)
 
-	_, err = c.ListEpisodes(context.Background(), "ja")
-	require.NoError(t, err)
-	assert.Equal(t, "test-token", gotHeader)
+			_, err = c.ListEpisodes(context.Background(), "ja")
+			require.NoError(t, err)
+			assert.Equal(t, "test-token", gotHeader)
+		})
+	})
 }
 
 func newTestClient(t *testing.T, baseURL string) *apiscenarioclient.Client {

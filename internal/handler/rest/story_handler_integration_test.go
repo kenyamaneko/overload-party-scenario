@@ -40,64 +40,65 @@ func writeScript(t *testing.T, scriptRoot, key, body string) {
 	require.NoError(t, os.WriteFile(full, []byte(body), 0o644))
 }
 
-// TestStoryGetScriptContract は GetScript がエピソードの実状況に応じた応答契約を実 PostgreSQL で検証する。
 func TestStoryGetScriptContract(t *testing.T) {
-	tests := []struct {
-		name       string
-		setup      func(t *testing.T, scriptRoot string)
-		episodeID  string
-		wantStatus int
-		wantBody   string
-	}{
-		{
-			name:       "未シードのエピソードを要求すると 404",
-			setup:      func(t *testing.T, _ string) { seedPlayer(t, contractPlayerID, 10) },
-			episodeID:  "missing-ep",
-			wantStatus: http.StatusNotFound,
-		},
-		{
-			name: "非アクティブなエピソードは 404",
-			setup: func(t *testing.T, _ string) {
-				seedPlayer(t, contractPlayerID, 10)
-				seedEpisode(t, "ep-inactive", 1, "ep-inactive/{lang}.txt", false)
+	t.Run("エピソードスクリプト取得の応答契約", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			setup      func(t *testing.T, scriptRoot string)
+			episodeID  string
+			wantStatus int
+			wantBody   string
+		}{
+			{
+				name:       "未シードのエピソードを要求するとき、404 になる",
+				setup:      func(t *testing.T, _ string) { seedPlayer(t, contractPlayerID, 10) },
+				episodeID:  "missing-ep",
+				wantStatus: http.StatusNotFound,
 			},
-			episodeID:  "ep-inactive",
-			wantStatus: http.StatusNotFound,
-		},
-		{
-			name: "required_level に満たないプレイヤーは 403",
-			setup: func(t *testing.T, _ string) {
-				seedPlayer(t, contractPlayerID, 4)
-				seedEpisode(t, "ep-locked", 5, "ep-locked/{lang}.txt", true)
+			{
+				name: "非アクティブなエピソードのとき、404 になる",
+				setup: func(t *testing.T, _ string) {
+					seedPlayer(t, contractPlayerID, 10)
+					seedEpisode(t, "ep-inactive", 1, "ep-inactive/{lang}.txt", false)
+				},
+				episodeID:  "ep-inactive",
+				wantStatus: http.StatusNotFound,
 			},
-			episodeID:  "ep-locked",
-			wantStatus: http.StatusForbidden,
-		},
-		{
-			name: "required_level == player level はアンロックされ 200 でスクリプトを返す",
-			setup: func(t *testing.T, scriptRoot string) {
-				seedPlayer(t, contractPlayerID, 5)
-				seedEpisode(t, "ep-boundary", 5, "ep-boundary/{lang}.txt", true)
-				writeScript(t, scriptRoot, "ep-boundary/ja.txt", "シナリオ本文")
+			{
+				name: "required_level に満たないプレイヤーのとき、403 になる",
+				setup: func(t *testing.T, _ string) {
+					seedPlayer(t, contractPlayerID, 4)
+					seedEpisode(t, "ep-locked", 5, "ep-locked/{lang}.txt", true)
+				},
+				episodeID:  "ep-locked",
+				wantStatus: http.StatusForbidden,
 			},
-			episodeID:  "ep-boundary",
-			wantStatus: http.StatusOK,
-			wantBody:   "シナリオ本文",
-		},
-	}
+			{
+				name: "required_level == player level のとき、アンロックされ 200 でスクリプトを返す",
+				setup: func(t *testing.T, scriptRoot string) {
+					seedPlayer(t, contractPlayerID, 5)
+					seedEpisode(t, "ep-boundary", 5, "ep-boundary/{lang}.txt", true)
+					writeScript(t, scriptRoot, "ep-boundary/ja.txt", "シナリオ本文")
+				},
+				episodeID:  "ep-boundary",
+				wantStatus: http.StatusOK,
+				wantBody:   "シナリオ本文",
+			},
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			sharedPg.Truncate(t)
-			scriptRoot := t.TempDir()
-			tt.setup(t, scriptRoot)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				sharedPg.Truncate(t)
+				scriptRoot := t.TempDir()
+				tt.setup(t, scriptRoot)
 
-			req := httptest.NewRequest(http.MethodGet, "/episodes/"+tt.episodeID+"/script?lang=ja", nil)
-			w := httptest.NewRecorder()
-			newStoryEngine(contractPlayerID, scriptRoot).ServeHTTP(w, req)
+				req := httptest.NewRequest(http.MethodGet, "/episodes/"+tt.episodeID+"/script?lang=ja", nil)
+				w := httptest.NewRecorder()
+				newStoryEngine(contractPlayerID, scriptRoot).ServeHTTP(w, req)
 
-			assert.Equal(t, tt.wantStatus, w.Code)
-			assert.Contains(t, w.Body.String(), tt.wantBody)
-		})
-	}
+				assert.Equal(t, tt.wantStatus, w.Code)
+				assert.Contains(t, w.Body.String(), tt.wantBody)
+			})
+		}
+	})
 }

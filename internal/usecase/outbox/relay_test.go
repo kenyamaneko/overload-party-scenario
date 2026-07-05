@@ -71,153 +71,157 @@ func (p *fakeRawPublisher) Publish(_ context.Context, eventType string, payload 
 }
 
 func TestNew(t *testing.T) {
-	tests := []struct {
-		name    string
-		store   port.OutboxStore
-		pub     port.RawEventPublisher
-		cfg     Config
-		wantSub string
-	}{
-		{
-			name:    "store が nil",
-			store:   nil,
-			pub:     &fakeRawPublisher{},
-			cfg:     Config{BatchSize: 1, FailureThreshold: 1, VisibilityTimeout: time.Second},
-			wantSub: "store is nil",
-		},
-		{
-			name:    "publisher が nil",
-			store:   &fakeOutboxStore{},
-			pub:     nil,
-			cfg:     Config{BatchSize: 1, FailureThreshold: 1, VisibilityTimeout: time.Second},
-			wantSub: "publisher is nil",
-		},
-		{
-			name:    "BatchSize が 0",
-			store:   &fakeOutboxStore{},
-			pub:     &fakeRawPublisher{},
-			cfg:     Config{BatchSize: 0, FailureThreshold: 1, VisibilityTimeout: time.Second},
-			wantSub: "BatchSize must be positive",
-		},
-		{
-			name:    "FailureThreshold が 0",
-			store:   &fakeOutboxStore{},
-			pub:     &fakeRawPublisher{},
-			cfg:     Config{BatchSize: 1, FailureThreshold: 0, VisibilityTimeout: time.Second},
-			wantSub: "FailureThreshold must be positive",
-		},
-		{
-			name:    "VisibilityTimeout が 0",
-			store:   &fakeOutboxStore{},
-			pub:     &fakeRawPublisher{},
-			cfg:     Config{BatchSize: 1, FailureThreshold: 1, VisibilityTimeout: 0},
-			wantSub: "VisibilityTimeout must be positive",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := New(tt.store, tt.pub, tt.cfg)
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.wantSub)
-		})
-	}
+	t.Run("Relay の生成検証", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			store   port.OutboxStore
+			pub     port.RawEventPublisher
+			cfg     Config
+			wantSub string
+		}{
+			{
+				name:    "store が nil のとき、store is nil エラーになる",
+				store:   nil,
+				pub:     &fakeRawPublisher{},
+				cfg:     Config{BatchSize: 1, FailureThreshold: 1, VisibilityTimeout: time.Second},
+				wantSub: "store is nil",
+			},
+			{
+				name:    "publisher が nil のとき、publisher is nil エラーになる",
+				store:   &fakeOutboxStore{},
+				pub:     nil,
+				cfg:     Config{BatchSize: 1, FailureThreshold: 1, VisibilityTimeout: time.Second},
+				wantSub: "publisher is nil",
+			},
+			{
+				name:    "BatchSize が 0 のとき、BatchSize must be positive エラーになる",
+				store:   &fakeOutboxStore{},
+				pub:     &fakeRawPublisher{},
+				cfg:     Config{BatchSize: 0, FailureThreshold: 1, VisibilityTimeout: time.Second},
+				wantSub: "BatchSize must be positive",
+			},
+			{
+				name:    "FailureThreshold が 0 のとき、FailureThreshold must be positive エラーになる",
+				store:   &fakeOutboxStore{},
+				pub:     &fakeRawPublisher{},
+				cfg:     Config{BatchSize: 1, FailureThreshold: 0, VisibilityTimeout: time.Second},
+				wantSub: "FailureThreshold must be positive",
+			},
+			{
+				name:    "VisibilityTimeout が 0 のとき、VisibilityTimeout must be positive エラーになる",
+				store:   &fakeOutboxStore{},
+				pub:     &fakeRawPublisher{},
+				cfg:     Config{BatchSize: 1, FailureThreshold: 1, VisibilityTimeout: 0},
+				wantSub: "VisibilityTimeout must be positive",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				_, err := New(tt.store, tt.pub, tt.cfg)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantSub)
+			})
+		}
+	})
 }
 
-func TestRunOnce_HappyPath(t *testing.T) {
-	okID := uuid.New()
-	ngID := uuid.New()
+func TestRunOnce(t *testing.T) {
+	t.Run("Relay.RunOnce", func(t *testing.T) {
+		okID := uuid.New()
+		ngID := uuid.New()
 
-	tests := []struct {
-		name             string
-		claimed          []port.ClaimedOutboxEvent
-		publishErrs      map[string]error // eventType → error
-		wantMarked       []uuid.UUID
-		wantFailed       []uuid.UUID
-		wantPublishCalls int
-	}{
-		{
-			name:    "claim 0 件なら publish も mark も呼ばれない",
-			claimed: nil,
-		},
-		{
-			name: "全件 publish 成功で全件 MarkPublished",
-			claimed: []port.ClaimedOutboxEvent{
-				{EventID: okID, EventType: apiscenario.EventTypePlayerOnboarded, Payload: []byte(`{}`), FailureCount: 0},
+		tests := []struct {
+			name             string
+			claimed          []port.ClaimedOutboxEvent
+			publishErrs      map[string]error // eventType → error
+			wantMarked       []uuid.UUID
+			wantFailed       []uuid.UUID
+			wantPublishCalls int
+		}{
+			{
+				name:    "claim が 0 件のとき、publish も mark も呼ばれない",
+				claimed: nil,
 			},
-			wantMarked:       []uuid.UUID{okID},
-			wantPublishCalls: 1,
-		},
-		{
-			name: "publish 失敗で RecordFailure を呼び、MarkPublished は呼ばない",
-			claimed: []port.ClaimedOutboxEvent{
-				{EventID: ngID, EventType: apiscenario.EventTypePlayerOnboarded, Payload: []byte(`{}`), FailureCount: 0},
+			{
+				name: "全件 publish 成功のとき、全件 MarkPublished する",
+				claimed: []port.ClaimedOutboxEvent{
+					{EventID: okID, EventType: apiscenario.EventTypePlayerOnboarded, Payload: []byte(`{}`), FailureCount: 0},
+				},
+				wantMarked:       []uuid.UUID{okID},
+				wantPublishCalls: 1,
 			},
-			publishErrs:      map[string]error{apiscenario.EventTypePlayerOnboarded: errors.New("pubsub down")},
-			wantFailed:       []uuid.UUID{ngID},
-			wantPublishCalls: 1,
-		},
-		{
-			name: "混在バッチ: 成功行と失敗行が独立に処理される",
-			claimed: []port.ClaimedOutboxEvent{
-				{EventID: okID, EventType: "ok-event-type", Payload: []byte(`{}`), FailureCount: 0},
-				{EventID: ngID, EventType: "ng-event-type", Payload: []byte(`{}`), FailureCount: 2},
+			{
+				name: "publish 失敗のとき、RecordFailure を呼び MarkPublished は呼ばない",
+				claimed: []port.ClaimedOutboxEvent{
+					{EventID: ngID, EventType: apiscenario.EventTypePlayerOnboarded, Payload: []byte(`{}`), FailureCount: 0},
+				},
+				publishErrs:      map[string]error{apiscenario.EventTypePlayerOnboarded: errors.New("pubsub down")},
+				wantFailed:       []uuid.UUID{ngID},
+				wantPublishCalls: 1,
 			},
-			publishErrs:      map[string]error{"ng-event-type": errors.New("nope")},
-			wantMarked:       []uuid.UUID{okID},
-			wantFailed:       []uuid.UUID{ngID},
-			wantPublishCalls: 2,
-		},
-	}
+			{
+				name: "成功行と失敗行が混在するとき、それぞれ独立に処理される",
+				claimed: []port.ClaimedOutboxEvent{
+					{EventID: okID, EventType: "ok-event-type", Payload: []byte(`{}`), FailureCount: 0},
+					{EventID: ngID, EventType: "ng-event-type", Payload: []byte(`{}`), FailureCount: 2},
+				},
+				publishErrs:      map[string]error{"ng-event-type": errors.New("nope")},
+				wantMarked:       []uuid.UUID{okID},
+				wantFailed:       []uuid.UUID{ngID},
+				wantPublishCalls: 2,
+			},
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			store := &fakeOutboxStore{claimed: tt.claimed}
-			pub := &fakeRawPublisher{errByEventType: tt.publishErrs}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				store := &fakeOutboxStore{claimed: tt.claimed}
+				pub := &fakeRawPublisher{errByEventType: tt.publishErrs}
+				s, err := New(store, pub, Config{
+					BatchSize: 10, FailureThreshold: 5, VisibilityTimeout: 30 * time.Second,
+				})
+				require.NoError(t, err)
+
+				require.NoError(t, s.RunOnce(context.Background()))
+
+				assert.Len(t, pub.calls, tt.wantPublishCalls)
+				assert.ElementsMatch(t, tt.wantMarked, store.markedPublished)
+
+				gotFailed := make([]uuid.UUID, 0, len(store.failures))
+				for _, f := range store.failures {
+					gotFailed = append(gotFailed, f.eventID)
+				}
+				assert.ElementsMatch(t, tt.wantFailed, gotFailed)
+			})
+		}
+
+		t.Run("claim がエラーのとき、publish/mark/fail を呼ばずエラーを surface する", func(t *testing.T) {
+			store := &fakeOutboxStore{claimErr: errors.New("db down")}
+			pub := &fakeRawPublisher{}
 			s, err := New(store, pub, Config{
 				BatchSize: 10, FailureThreshold: 5, VisibilityTimeout: 30 * time.Second,
 			})
 			require.NoError(t, err)
 
-			require.NoError(t, s.RunOnce(context.Background()))
-
-			assert.Len(t, pub.calls, tt.wantPublishCalls)
-			assert.ElementsMatch(t, tt.wantMarked, store.markedPublished)
-
-			gotFailed := make([]uuid.UUID, 0, len(store.failures))
-			for _, f := range store.failures {
-				gotFailed = append(gotFailed, f.eventID)
-			}
-			assert.ElementsMatch(t, tt.wantFailed, gotFailed)
+			err = s.RunOnce(context.Background())
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "db down")
+			assert.Empty(t, pub.calls)
+			assert.Empty(t, store.markedPublished)
+			assert.Empty(t, store.failures)
 		})
-	}
-}
 
-func TestRunOnce_ClaimErrorSurfaces(t *testing.T) {
-	store := &fakeOutboxStore{claimErr: errors.New("db down")}
-	pub := &fakeRawPublisher{}
-	s, err := New(store, pub, Config{
-		BatchSize: 10, FailureThreshold: 5, VisibilityTimeout: 30 * time.Second,
+		t.Run("Config の BatchSize / VisibilityTimeout / FailureThreshold を store に渡す", func(t *testing.T) {
+			store := &fakeOutboxStore{}
+			pub := &fakeRawPublisher{}
+			s, err := New(store, pub, Config{
+				BatchSize: 42, FailureThreshold: 5, VisibilityTimeout: 17 * time.Second,
+			})
+			require.NoError(t, err)
+
+			require.NoError(t, s.RunOnce(context.Background()))
+			assert.Equal(t, 42, store.lastLimit)
+			assert.Equal(t, 17*time.Second, store.lastVisibilityTO)
+			assert.Equal(t, 5, store.lastFailureThreshold)
+		})
 	})
-	require.NoError(t, err)
-
-	err = s.RunOnce(context.Background())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "db down")
-	assert.Empty(t, pub.calls)
-	assert.Empty(t, store.markedPublished)
-	assert.Empty(t, store.failures)
-}
-
-func TestRunOnce_PassesConfigToStore(t *testing.T) {
-	store := &fakeOutboxStore{}
-	pub := &fakeRawPublisher{}
-	s, err := New(store, pub, Config{
-		BatchSize: 42, FailureThreshold: 5, VisibilityTimeout: 17 * time.Second,
-	})
-	require.NoError(t, err)
-
-	require.NoError(t, s.RunOnce(context.Background()))
-	assert.Equal(t, 42, store.lastLimit)
-	assert.Equal(t, 17*time.Second, store.lastVisibilityTO)
-	assert.Equal(t, 5, store.lastFailureThreshold)
 }
