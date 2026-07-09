@@ -111,88 +111,88 @@ func buildPlayerOnboardedOutbox(t *testing.T, playerID, initialFactionID string)
 	}
 }
 
-// onboarding-name-set payload を Publisher 経由で送信し、subscriber まで bytes が
-// そのまま届くことを固定する (outbox worker 送出経路の近似)。
-func TestIntegration_PublishOnboardingNameSet(t *testing.T) {
-	pub, topics := setupPublisher(t)
-	sub := sharedEmulator.Subscribe(t, topics.onboardingNameSet)
+func TestPublishIntegration(t *testing.T) {
+	t.Run("Publisher の Pub/Sub 配信", func(t *testing.T) {
+		t.Run("onboarding-name-set を publish すると、subscriber に payload がそのまま届く", func(t *testing.T) {
+			// outbox worker 送出経路の近似。bytes がそのまま subscriber まで届くことを固定する。
+			pub, topics := setupPublisher(t)
+			sub := sharedEmulator.Subscribe(t, topics.onboardingNameSet)
 
-	ctx := context.Background()
-	ev := buildOnboardingNameSetOutbox(t, "player-123", "Kenya")
-	require.NoError(t, pub.Publish(ctx, ev.EventType, ev.Payload))
+			ctx := context.Background()
+			ev := buildOnboardingNameSetOutbox(t, "player-123", "Kenya")
+			require.NoError(t, pub.Publish(ctx, ev.EventType, ev.Payload))
 
-	msg, err := sub.WaitForMessage(ctx, 5*time.Second)
-	require.NoError(t, err)
+			msg, err := sub.WaitForMessage(ctx, 5*time.Second)
+			require.NoError(t, err)
 
-	var decoded apiscenario.OnboardingNameSetEvent
-	require.NoError(t, json.Unmarshal(msg.Data, &decoded))
+			var decoded apiscenario.OnboardingNameSetEvent
+			require.NoError(t, json.Unmarshal(msg.Data, &decoded))
 
-	assert.Equal(t, apiscenario.EventTypeOnboardingNameSet, decoded.EventType)
-	assert.Equal(t, ev.EventID.String(), decoded.EventID, "payload の event_id は outbox 行の PK と一致する")
-	assert.WithinDuration(t, time.Now(), decoded.Timestamp, 5*time.Second)
-	assert.Equal(t, "player-123", decoded.PlayerID)
-	assert.Equal(t, "Kenya", decoded.Name)
-}
+			assert.Equal(t, apiscenario.EventTypeOnboardingNameSet, decoded.EventType)
+			assert.Equal(t, ev.EventID.String(), decoded.EventID, "payload の event_id は outbox 行の PK と一致する")
+			assert.WithinDuration(t, time.Now(), decoded.Timestamp, 5*time.Second)
+			assert.Equal(t, "player-123", decoded.PlayerID)
+			assert.Equal(t, "Kenya", decoded.Name)
+		})
 
-// onboarding-faction-set payload の送信 shape を固定。
-func TestIntegration_PublishOnboardingFactionSet(t *testing.T) {
-	pub, topics := setupPublisher(t)
-	sub := sharedEmulator.Subscribe(t, topics.onboardingFactionSet)
+		t.Run("onboarding-faction-set を publish すると、送信 shape が保たれる", func(t *testing.T) {
+			pub, topics := setupPublisher(t)
+			sub := sharedEmulator.Subscribe(t, topics.onboardingFactionSet)
 
-	ctx := context.Background()
-	ev := buildOnboardingFactionSetOutbox(t, "player-456", "SHE")
-	require.NoError(t, pub.Publish(ctx, ev.EventType, ev.Payload))
+			ctx := context.Background()
+			ev := buildOnboardingFactionSetOutbox(t, "player-456", "SHE")
+			require.NoError(t, pub.Publish(ctx, ev.EventType, ev.Payload))
 
-	msg, err := sub.WaitForMessage(ctx, 5*time.Second)
-	require.NoError(t, err)
+			msg, err := sub.WaitForMessage(ctx, 5*time.Second)
+			require.NoError(t, err)
 
-	var decoded apiscenario.OnboardingFactionSetEvent
-	require.NoError(t, json.Unmarshal(msg.Data, &decoded))
+			var decoded apiscenario.OnboardingFactionSetEvent
+			require.NoError(t, json.Unmarshal(msg.Data, &decoded))
 
-	assert.Equal(t, apiscenario.EventTypeOnboardingFactionSet, decoded.EventType)
-	assert.Equal(t, ev.EventID.String(), decoded.EventID)
-	assert.Equal(t, "player-456", decoded.PlayerID)
-	assert.Equal(t, "SHE", decoded.InitialFactionID)
-}
+			assert.Equal(t, apiscenario.EventTypeOnboardingFactionSet, decoded.EventType)
+			assert.Equal(t, ev.EventID.String(), decoded.EventID)
+			assert.Equal(t, "player-456", decoded.PlayerID)
+			assert.Equal(t, "SHE", decoded.InitialFactionID)
+		})
 
-// player-onboarded payload の送信 shape を固定。
-func TestIntegration_PublishPlayerOnboarded(t *testing.T) {
-	pub, topics := setupPublisher(t)
-	sub := sharedEmulator.Subscribe(t, topics.playerOnboarded)
+		t.Run("player-onboarded を publish すると、送信 shape が保たれる", func(t *testing.T) {
+			pub, topics := setupPublisher(t)
+			sub := sharedEmulator.Subscribe(t, topics.playerOnboarded)
 
-	ctx := context.Background()
-	ev := buildPlayerOnboardedOutbox(t, "player-789", "Tenki")
-	require.NoError(t, pub.Publish(ctx, ev.EventType, ev.Payload))
+			ctx := context.Background()
+			ev := buildPlayerOnboardedOutbox(t, "player-789", "Tenki")
+			require.NoError(t, pub.Publish(ctx, ev.EventType, ev.Payload))
 
-	msg, err := sub.WaitForMessage(ctx, 5*time.Second)
-	require.NoError(t, err)
+			msg, err := sub.WaitForMessage(ctx, 5*time.Second)
+			require.NoError(t, err)
 
-	var decoded apiscenario.PlayerOnboardedEvent
-	require.NoError(t, json.Unmarshal(msg.Data, &decoded))
+			var decoded apiscenario.PlayerOnboardedEvent
+			require.NoError(t, json.Unmarshal(msg.Data, &decoded))
 
-	assert.Equal(t, apiscenario.EventTypePlayerOnboarded, decoded.EventType)
-	assert.Equal(t, ev.EventID.String(), decoded.EventID)
-	assert.WithinDuration(t, time.Now(), decoded.Timestamp, 5*time.Second)
-	assert.Equal(t, "player-789", decoded.PlayerID)
-	assert.Equal(t, "Tenki", decoded.InitialFactionID)
-}
+			assert.Equal(t, apiscenario.EventTypePlayerOnboarded, decoded.EventType)
+			assert.Equal(t, ev.EventID.String(), decoded.EventID)
+			assert.WithinDuration(t, time.Now(), decoded.Timestamp, 5*time.Second)
+			assert.Equal(t, "player-789", decoded.PlayerID)
+			assert.Equal(t, "Tenki", decoded.InitialFactionID)
+		})
 
-// 未登録 eventType への publish は Pub/Sub SDK 到達前に adapter 側で弾かれる
-// 契約を固定する (outbox 行の eventType 設定ミスを worker の failure_count に
-// 積ませるため)。
-func TestIntegration_PublishUnknownEventType(t *testing.T) {
-	pub, _ := setupPublisher(t)
+		t.Run("未登録の event type を publish すると、unknown event type エラーになる", func(t *testing.T) {
+			// outbox 行の eventType 設定ミスを worker の failure_count に積ませるため、
+			// 未登録 eventType は Pub/Sub SDK 到達前に adapter 側で弾く。
+			pub, _ := setupPublisher(t)
 
-	err := pub.Publish(context.Background(), "not-registered-event-type", []byte(`{}`))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown event type")
-}
+			err := pub.Publish(context.Background(), "not-registered-event-type", []byte(`{}`))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "unknown event type")
+		})
 
-// publish が呼ばれなければ subscriber は timeout する (正例テストの偽陽性除け)。
-func TestIntegration_NoPublish_SubscriberTimesOut(t *testing.T) {
-	_, topics := setupPublisher(t)
-	sub := sharedEmulator.Subscribe(t, topics.playerOnboarded)
+		t.Run("publish しなければ、subscriber は timeout する", func(t *testing.T) {
+			// 正例テストの偽陽性除け。
+			_, topics := setupPublisher(t)
+			sub := sharedEmulator.Subscribe(t, topics.playerOnboarded)
 
-	_, err := sub.WaitForMessage(context.Background(), 500*time.Millisecond)
-	assert.ErrorIs(t, err, pubsubtest.ErrTimeout)
+			_, err := sub.WaitForMessage(context.Background(), 500*time.Millisecond)
+			assert.ErrorIs(t, err, pubsubtest.ErrTimeout)
+		})
+	})
 }

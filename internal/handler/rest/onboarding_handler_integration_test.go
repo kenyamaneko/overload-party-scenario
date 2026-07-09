@@ -85,214 +85,218 @@ func countOutbox(t *testing.T) int {
 	return n
 }
 
-// TestOnboardingGetScriptContract は GetScript がスクリプトの実在に応じた status と本文を実 PostgreSQL 構成で返すことを検証する。
 func TestOnboardingGetScriptContract(t *testing.T) {
-	tests := []struct {
-		name       string
-		setup      func(t *testing.T, scriptRoot string)
-		wantStatus int
-		wantBody   string
-	}{
-		{
-			name:       "スクリプトが無ければ 404",
-			setup:      func(t *testing.T, _ string) {},
-			wantStatus: http.StatusNotFound,
-			wantBody:   "script not found",
-		},
-		{
-			name: "スクリプトが在れば 200 で本文を返す",
-			setup: func(t *testing.T, scriptRoot string) {
-				writeScript(t, scriptRoot, "scripts/onboarding/ja.ks", "プロローグ本文")
+	t.Run("オンボーディングスクリプト取得の応答契約", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			setup      func(t *testing.T, scriptRoot string)
+			wantStatus int
+			wantBody   string
+		}{
+			{
+				name:       "スクリプトが無いとき、404 になる",
+				setup:      func(t *testing.T, _ string) {},
+				wantStatus: http.StatusNotFound,
+				wantBody:   "script not found",
 			},
-			wantStatus: http.StatusOK,
-			wantBody:   "プロローグ本文",
-		},
-	}
+			{
+				name: "スクリプトが在るとき、200 で本文を返す",
+				setup: func(t *testing.T, scriptRoot string) {
+					writeScript(t, scriptRoot, "scripts/onboarding/ja.ks", "プロローグ本文")
+				},
+				wantStatus: http.StatusOK,
+				wantBody:   "プロローグ本文",
+			},
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			sharedPg.Truncate(t)
-			scriptRoot := t.TempDir()
-			tt.setup(t, scriptRoot)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				sharedPg.Truncate(t)
+				scriptRoot := t.TempDir()
+				tt.setup(t, scriptRoot)
 
-			req := httptest.NewRequest(http.MethodGet, "/onboarding/script?lang=ja", nil)
-			w := httptest.NewRecorder()
-			newOnboardingEngine(contractPlayerID, scriptRoot, stubNameValidator{}, stubPlayerReader{}).ServeHTTP(w, req)
+				req := httptest.NewRequest(http.MethodGet, "/onboarding/script?lang=ja", nil)
+				w := httptest.NewRecorder()
+				newOnboardingEngine(contractPlayerID, scriptRoot, stubNameValidator{}, stubPlayerReader{}).ServeHTTP(w, req)
 
-			assert.Equal(t, tt.wantStatus, w.Code)
-			assert.Contains(t, w.Body.String(), tt.wantBody)
-		})
-	}
+				assert.Equal(t, tt.wantStatus, w.Code)
+				assert.Contains(t, w.Body.String(), tt.wantBody)
+			})
+		}
+	})
 }
 
-// TestOnboardingUpdateNameContract は UpdateName が account バリデーション結果を status に翻訳し、成功時のみ outbox へ積むことを検証する。
 func TestOnboardingUpdateNameContract(t *testing.T) {
-	tests := []struct {
-		name       string
-		validator  stubNameValidator
-		body       string
-		wantStatus int
-		wantBody   string
-		wantOutbox int
-	}{
-		{
-			name:       "account が表示名を拒否すると 400",
-			validator:  stubNameValidator{err: port.ErrInvalidName},
-			body:       `{"name":"x"}`,
-			wantStatus: http.StatusBadRequest,
-			wantBody:   "invalid name",
-			wantOutbox: 0,
-		},
-		{
-			name:       "account に player が無ければ 404",
-			validator:  stubNameValidator{err: port.ErrPlayerNotFound},
-			body:       `{"name":"Kenya"}`,
-			wantStatus: http.StatusNotFound,
-			wantBody:   "player not found",
-			wantOutbox: 0,
-		},
-		{
-			name:       "JSON が壊れていれば 400",
-			validator:  stubNameValidator{},
-			body:       `{"name":`,
-			wantStatus: http.StatusBadRequest,
-			wantOutbox: 0,
-		},
-		{
-			name:       "正常系は 204 で onboarding-name-set を outbox へ積む",
-			validator:  stubNameValidator{},
-			body:       `{"name":"Kenya"}`,
-			wantStatus: http.StatusNoContent,
-			wantOutbox: 1,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			sharedPg.Truncate(t)
-
-			req := httptest.NewRequest(http.MethodPut, "/onboarding/name", strings.NewReader(tt.body))
-			w := httptest.NewRecorder()
-			newOnboardingEngine(contractPlayerID, t.TempDir(), tt.validator, stubPlayerReader{}).ServeHTTP(w, req)
-
-			assert.Equal(t, tt.wantStatus, w.Code)
-			assert.Contains(t, w.Body.String(), tt.wantBody)
-			assert.Equal(t, tt.wantOutbox, countOutbox(t))
-		})
-	}
-}
-
-// TestOnboardingSelectFactionContract は SelectFaction が faction 妥当性を status に翻訳し、成功時のみ outbox へ積むことを検証する。
-func TestOnboardingSelectFactionContract(t *testing.T) {
-	tests := []struct {
-		name       string
-		body       string
-		wantStatus int
-		wantBody   string
-		wantOutbox int
-	}{
-		{
-			name:       "SelectableFactions 外は 400",
-			body:       `{"initial_faction_id":"Neutral"}`,
-			wantStatus: http.StatusBadRequest,
-			wantBody:   "invalid initial faction",
-			wantOutbox: 0,
-		},
-		{
-			name:       "JSON が壊れていれば 400",
-			body:       `{"initial_faction_id":`,
-			wantStatus: http.StatusBadRequest,
-			wantOutbox: 0,
-		},
-		{
-			name:       "正常系は 204 で onboarding-faction-set を outbox へ積む",
-			body:       `{"initial_faction_id":"SHE"}`,
-			wantStatus: http.StatusNoContent,
-			wantOutbox: 1,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			sharedPg.Truncate(t)
-
-			req := httptest.NewRequest(http.MethodPost, "/onboarding/faction", strings.NewReader(tt.body))
-			w := httptest.NewRecorder()
-			newOnboardingEngine(contractPlayerID, t.TempDir(), stubNameValidator{}, stubPlayerReader{}).ServeHTTP(w, req)
-
-			assert.Equal(t, tt.wantStatus, w.Code)
-			assert.Contains(t, w.Body.String(), tt.wantBody)
-			assert.Equal(t, tt.wantOutbox, countOutbox(t))
-		})
-	}
-}
-
-// TestOnboardingCompleteContract は Complete がオンボード状態を status に翻訳し、成功時のみ player_onboarding を記録することを検証する。
-func TestOnboardingCompleteContract(t *testing.T) {
-	tests := []struct {
-		name          string
-		setup         func(t *testing.T)
-		reader        stubPlayerReader
-		wantStatus    int
-		wantBody      string
-		wantOnboarded int
-	}{
-		{
-			name:          "account に player が無ければ 404",
-			setup:         func(t *testing.T) {},
-			reader:        stubPlayerReader{err: port.ErrPlayerNotFound},
-			wantStatus:    http.StatusNotFound,
-			wantBody:      "player not found",
-			wantOnboarded: 0,
-		},
-		{
-			name:          "初期 faction 未選択は 409",
-			setup:         func(t *testing.T) {},
-			reader:        stubPlayerReader{player: port.AccountPlayer{InitialFaction: nil}},
-			wantStatus:    http.StatusConflict,
-			wantBody:      "initial faction not selected",
-			wantOnboarded: 0,
-		},
-		{
-			name: "二度目の完了は 409",
-			setup: func(t *testing.T) {
-				seedOnboardingComplete(t, contractPlayerID)
+	t.Run("表示名更新の応答契約", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			validator  stubNameValidator
+			body       string
+			wantStatus int
+			wantBody   string
+			wantOutbox int
+		}{
+			{
+				name:       "account が表示名を拒否するとき、400 になる",
+				validator:  stubNameValidator{err: port.ErrInvalidName},
+				body:       `{"name":"x"}`,
+				wantStatus: http.StatusBadRequest,
+				wantBody:   "invalid name",
+				wantOutbox: 0,
 			},
-			reader:        stubPlayerReader{player: port.AccountPlayer{InitialFaction: toStringPtr("SHE")}},
-			wantStatus:    http.StatusConflict,
-			wantBody:      "already completed",
-			wantOnboarded: 1,
-		},
-		{
-			name:          "account の予期せぬ障害は 500",
-			setup:         func(t *testing.T) {},
-			reader:        stubPlayerReader{err: errors.New("account unavailable")},
-			wantStatus:    http.StatusInternalServerError,
-			wantBody:      "account unavailable",
-			wantOnboarded: 0,
-		},
-		{
-			name:          "正常系は 200 で player_onboarding を記録する",
-			setup:         func(t *testing.T) {},
-			reader:        stubPlayerReader{player: port.AccountPlayer{InitialFaction: toStringPtr("SHE")}},
-			wantStatus:    http.StatusOK,
-			wantBody:      "onboarding completed",
-			wantOnboarded: 1,
-		},
-	}
+			{
+				name:       "account に player が無いとき、404 になる",
+				validator:  stubNameValidator{err: port.ErrPlayerNotFound},
+				body:       `{"name":"Kenya"}`,
+				wantStatus: http.StatusNotFound,
+				wantBody:   "player not found",
+				wantOutbox: 0,
+			},
+			{
+				name:       "JSON が壊れているとき、400 になる",
+				validator:  stubNameValidator{},
+				body:       `{"name":`,
+				wantStatus: http.StatusBadRequest,
+				wantOutbox: 0,
+			},
+			{
+				name:       "正常系のとき、204 で onboarding-name-set を outbox へ積む",
+				validator:  stubNameValidator{},
+				body:       `{"name":"Kenya"}`,
+				wantStatus: http.StatusNoContent,
+				wantOutbox: 1,
+			},
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			sharedPg.Truncate(t)
-			tt.setup(t)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				sharedPg.Truncate(t)
 
-			req := httptest.NewRequest(http.MethodPost, "/onboarding/complete", nil)
-			w := httptest.NewRecorder()
-			newOnboardingEngine(contractPlayerID, t.TempDir(), stubNameValidator{}, tt.reader).ServeHTTP(w, req)
+				req := httptest.NewRequest(http.MethodPut, "/onboarding/name", strings.NewReader(tt.body))
+				w := httptest.NewRecorder()
+				newOnboardingEngine(contractPlayerID, t.TempDir(), tt.validator, stubPlayerReader{}).ServeHTTP(w, req)
 
-			assert.Equal(t, tt.wantStatus, w.Code)
-			assert.Contains(t, w.Body.String(), tt.wantBody)
-			assert.Equal(t, tt.wantOnboarded, countOnboarding(t, contractPlayerID))
-		})
-	}
+				assert.Equal(t, tt.wantStatus, w.Code)
+				assert.Contains(t, w.Body.String(), tt.wantBody)
+				assert.Equal(t, tt.wantOutbox, countOutbox(t))
+			})
+		}
+	})
+}
+
+func TestOnboardingSelectFactionContract(t *testing.T) {
+	t.Run("初期 faction 選択の応答契約", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			body       string
+			wantStatus int
+			wantBody   string
+			wantOutbox int
+		}{
+			{
+				name:       "SelectableFactions 外のとき、400 になる",
+				body:       `{"initial_faction_id":"Neutral"}`,
+				wantStatus: http.StatusBadRequest,
+				wantBody:   "invalid initial faction",
+				wantOutbox: 0,
+			},
+			{
+				name:       "JSON が壊れているとき、400 になる",
+				body:       `{"initial_faction_id":`,
+				wantStatus: http.StatusBadRequest,
+				wantOutbox: 0,
+			},
+			{
+				name:       "正常系のとき、204 で onboarding-faction-set を outbox へ積む",
+				body:       `{"initial_faction_id":"SHE"}`,
+				wantStatus: http.StatusNoContent,
+				wantOutbox: 1,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				sharedPg.Truncate(t)
+
+				req := httptest.NewRequest(http.MethodPost, "/onboarding/faction", strings.NewReader(tt.body))
+				w := httptest.NewRecorder()
+				newOnboardingEngine(contractPlayerID, t.TempDir(), stubNameValidator{}, stubPlayerReader{}).ServeHTTP(w, req)
+
+				assert.Equal(t, tt.wantStatus, w.Code)
+				assert.Contains(t, w.Body.String(), tt.wantBody)
+				assert.Equal(t, tt.wantOutbox, countOutbox(t))
+			})
+		}
+	})
+}
+
+func TestOnboardingCompleteContract(t *testing.T) {
+	t.Run("オンボーディング完了の応答契約", func(t *testing.T) {
+		tests := []struct {
+			name          string
+			setup         func(t *testing.T)
+			reader        stubPlayerReader
+			wantStatus    int
+			wantBody      string
+			wantOnboarded int
+		}{
+			{
+				name:          "account に player が無いとき、404 になる",
+				setup:         func(t *testing.T) {},
+				reader:        stubPlayerReader{err: port.ErrPlayerNotFound},
+				wantStatus:    http.StatusNotFound,
+				wantBody:      "player not found",
+				wantOnboarded: 0,
+			},
+			{
+				name:          "初期 faction 未選択のとき、409 になる",
+				setup:         func(t *testing.T) {},
+				reader:        stubPlayerReader{player: port.AccountPlayer{InitialFaction: nil}},
+				wantStatus:    http.StatusConflict,
+				wantBody:      "initial faction not selected",
+				wantOnboarded: 0,
+			},
+			{
+				name: "二度目の完了のとき、409 になる",
+				setup: func(t *testing.T) {
+					seedOnboardingComplete(t, contractPlayerID)
+				},
+				reader:        stubPlayerReader{player: port.AccountPlayer{InitialFaction: toStringPtr("SHE")}},
+				wantStatus:    http.StatusConflict,
+				wantBody:      "already completed",
+				wantOnboarded: 1,
+			},
+			{
+				name:          "account の予期せぬ障害のとき、500 になる",
+				setup:         func(t *testing.T) {},
+				reader:        stubPlayerReader{err: errors.New("account unavailable")},
+				wantStatus:    http.StatusInternalServerError,
+				wantBody:      "account unavailable",
+				wantOnboarded: 0,
+			},
+			{
+				name:          "正常系のとき、200 で player_onboarding を記録する",
+				setup:         func(t *testing.T) {},
+				reader:        stubPlayerReader{player: port.AccountPlayer{InitialFaction: toStringPtr("SHE")}},
+				wantStatus:    http.StatusOK,
+				wantBody:      "onboarding completed",
+				wantOnboarded: 1,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				sharedPg.Truncate(t)
+				tt.setup(t)
+
+				req := httptest.NewRequest(http.MethodPost, "/onboarding/complete", nil)
+				w := httptest.NewRecorder()
+				newOnboardingEngine(contractPlayerID, t.TempDir(), stubNameValidator{}, tt.reader).ServeHTTP(w, req)
+
+				assert.Equal(t, tt.wantStatus, w.Code)
+				assert.Contains(t, w.Body.String(), tt.wantBody)
+				assert.Equal(t, tt.wantOnboarded, countOnboarding(t, contractPlayerID))
+			})
+		}
+	})
 }

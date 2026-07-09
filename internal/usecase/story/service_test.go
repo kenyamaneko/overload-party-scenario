@@ -80,231 +80,209 @@ func findReasonByType(reasons []apiscenario.LockReason, typ apiscenario.LockReas
 }
 
 func TestListEpisodes(t *testing.T) {
-	tests := []struct {
-		name   string
-		setup  func(env *testEnv)
-		lang   string
-		verify func(t *testing.T, eps []apiscenario.EpisodeWithStatus)
-	}{
-		{
-			name: "レベル未達のエピソードはロックされる",
-			setup: func(env *testEnv) {
-				env.storyRepo.SetPlayerLevel("p1", 5)
-				env.storyRepo.GrantFaction("p1", "SHE")
-			},
-			lang: "ja",
-			verify: func(t *testing.T, eps []apiscenario.EpisodeWithStatus) {
-				require.Len(t, eps, 2)
-				assert.True(t, eps[0].IsUnlocked)
-				assert.False(t, eps[1].IsUnlocked)
-				assert.NotNil(t, findReasonByType(eps[1].LockReasons, apiscenario.LockReasonTypeLevel))
-			},
-		},
-		{
-			name: "faction 未所有はロック理由 faction を返す",
-			setup: func(env *testEnv) {
-				env.storyRepo.SetPlayerLevel("p1", 10)
-			},
-			lang: "ja",
-			verify: func(t *testing.T, eps []apiscenario.EpisodeWithStatus) {
-				require.Len(t, eps, 2)
-				r := findReasonByType(eps[0].LockReasons, apiscenario.LockReasonTypeFaction)
-				require.NotNil(t, r)
-				require.NotNil(t, r.RequiredFaction)
-				assert.Equal(t, "SHE", *r.RequiredFaction)
-			},
-		},
-		{
-			name: "前提エピソード未完了はロック理由 episode を返す",
-			setup: func(env *testEnv) {
-				env.storyRepo.SetPlayerLevel("p1", 10)
-				env.storyRepo.GrantFaction("p1", "SHE")
-			},
-			lang: "ja",
-			verify: func(t *testing.T, eps []apiscenario.EpisodeWithStatus) {
-				require.Len(t, eps, 2)
-				assert.False(t, eps[1].IsUnlocked)
-				assert.NotNil(t, findReasonByType(eps[1].LockReasons, apiscenario.LockReasonTypeEpisode))
-			},
-		},
-		{
-			name: "lang=en は英語タイトルを返す",
-			setup: func(env *testEnv) {
-				env.storyRepo.SetPlayerLevel("p1", 10)
-				env.storyRepo.GrantFaction("p1", "SHE")
-			},
-			lang: "en",
-			verify: func(t *testing.T, eps []apiscenario.EpisodeWithStatus) {
-				assert.Equal(t, "SHE Chapter 1", eps[0].Title)
-			},
-		},
-		{
-			name: "完了済みエピソードは IsCompleted が true で後続をアンロックする",
-			setup: func(env *testEnv) {
-				env.storyRepo.SetPlayerLevel("p1", 10)
-				env.storyRepo.GrantFaction("p1", "SHE")
-				_ = env.storyRepo.MarkComplete(context.Background(), "p1", "she_ep1")
-			},
-			lang: "ja",
-			verify: func(t *testing.T, eps []apiscenario.EpisodeWithStatus) {
-				assert.True(t, eps[0].IsCompleted)
-				assert.True(t, eps[1].IsUnlocked)
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	t.Run("エピソード一覧の取得", func(t *testing.T) {
+		t.Run("レベル未達のとき、後続エピソードは level 理由でロックされる", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
-			tc.setup(env)
+			env.storyRepo.SetPlayerLevel("p1", 5)
+			env.storyRepo.GrantFaction("p1", "SHE")
 
-			eps, err := env.svc.ListEpisodes(context.Background(), "p1", tc.lang)
+			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
 			require.NoError(t, err)
-			tc.verify(t, eps)
+			require.Len(t, eps, 2)
+			assert.True(t, eps[0].IsUnlocked)
+			assert.False(t, eps[1].IsUnlocked)
+			assert.NotNil(t, findReasonByType(eps[1].LockReasons, apiscenario.LockReasonTypeLevel))
 		})
-	}
+
+		t.Run("faction 未所有のとき、faction 理由を返す", func(t *testing.T) {
+			env := newTestEnv()
+			seedTestEpisodes(env)
+			env.storyRepo.SetPlayerLevel("p1", 10)
+
+			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
+			require.NoError(t, err)
+			require.Len(t, eps, 2)
+			r := findReasonByType(eps[0].LockReasons, apiscenario.LockReasonTypeFaction)
+			require.NotNil(t, r)
+			require.NotNil(t, r.RequiredFaction)
+			assert.Equal(t, "SHE", *r.RequiredFaction)
+		})
+
+		t.Run("前提エピソード未完了のとき、episode 理由を返す", func(t *testing.T) {
+			env := newTestEnv()
+			seedTestEpisodes(env)
+			env.storyRepo.SetPlayerLevel("p1", 10)
+			env.storyRepo.GrantFaction("p1", "SHE")
+
+			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
+			require.NoError(t, err)
+			require.Len(t, eps, 2)
+			assert.False(t, eps[1].IsUnlocked)
+			assert.NotNil(t, findReasonByType(eps[1].LockReasons, apiscenario.LockReasonTypeEpisode))
+		})
+
+		t.Run("lang=en のとき、英語タイトルを返す", func(t *testing.T) {
+			env := newTestEnv()
+			seedTestEpisodes(env)
+			env.storyRepo.SetPlayerLevel("p1", 10)
+			env.storyRepo.GrantFaction("p1", "SHE")
+
+			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "en")
+			require.NoError(t, err)
+			assert.Equal(t, "SHE Chapter 1", eps[0].Title)
+		})
+
+		t.Run("前提エピソード完了済みのとき、IsCompleted=true で後続をアンロックする", func(t *testing.T) {
+			env := newTestEnv()
+			seedTestEpisodes(env)
+			env.storyRepo.SetPlayerLevel("p1", 10)
+			env.storyRepo.GrantFaction("p1", "SHE")
+			_ = env.storyRepo.MarkComplete(context.Background(), "p1", "she_ep1")
+
+			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
+			require.NoError(t, err)
+			assert.True(t, eps[0].IsCompleted)
+			assert.True(t, eps[1].IsUnlocked)
+		})
+	})
 }
 
 func TestCompleteEpisode(t *testing.T) {
-	tests := []struct {
-		name      string
-		setup     func(env *testEnv)
-		episodeID string
-		verify    func(t *testing.T, err error)
-	}{
-		{
-			name: "アンロック済みエピソードを完了できる",
-			setup: func(env *testEnv) {
-				env.storyRepo.SetPlayerLevel("p1", 5)
-				env.storyRepo.GrantFaction("p1", "SHE")
+	t.Run("エピソードの完了", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			setup     func(env *testEnv)
+			episodeID string
+			wantErr   error
+		}{
+			{
+				name: "アンロック済みのとき、完了できる (エラーにならない)",
+				setup: func(env *testEnv) {
+					env.storyRepo.SetPlayerLevel("p1", 5)
+					env.storyRepo.GrantFaction("p1", "SHE")
+				},
+				episodeID: "she_ep1",
+				wantErr:   nil,
 			},
-			episodeID: "she_ep1",
-			verify: func(t *testing.T, err error) {
-				require.NoError(t, err)
+			{
+				name: "存在しないエピソードのとき、ErrEpisodeNotFound になる",
+				setup: func(env *testEnv) {
+					env.storyRepo.SetPlayerLevel("p1", 5)
+				},
+				episodeID: "nonexistent",
+				wantErr:   ErrEpisodeNotFound,
 			},
-		},
-		{
-			name: "存在しないエピソードは ErrEpisodeNotFound",
-			setup: func(env *testEnv) {
-				env.storyRepo.SetPlayerLevel("p1", 5)
+			{
+				name: "ロック中のエピソードのとき、ErrEpisodeLocked になる",
+				setup: func(env *testEnv) {
+					env.storyRepo.SetPlayerLevel("p1", 1)
+				},
+				episodeID: "she_ep1",
+				wantErr:   ErrEpisodeLocked,
 			},
-			episodeID: "nonexistent",
-			verify: func(t *testing.T, err error) {
-				assert.ErrorIs(t, err, ErrEpisodeNotFound)
+			{
+				name: "非アクティブエピソードのとき、ErrEpisodeNotFound になる",
+				setup: func(env *testEnv) {
+					env.storyRepo.SetPlayerLevel("p1", 99)
+				},
+				episodeID: "inactive_ep",
+				wantErr:   ErrEpisodeNotFound,
 			},
-		},
-		{
-			name: "ロック中のエピソードは ErrEpisodeLocked",
-			setup: func(env *testEnv) {
-				env.storyRepo.SetPlayerLevel("p1", 1)
-			},
-			episodeID: "she_ep1",
-			verify: func(t *testing.T, err error) {
-				assert.ErrorIs(t, err, ErrEpisodeLocked)
-			},
-		},
-		{
-			name: "非アクティブエピソードは ErrEpisodeNotFound",
-			setup: func(env *testEnv) {
-				env.storyRepo.SetPlayerLevel("p1", 99)
-			},
-			episodeID: "inactive_ep",
-			verify: func(t *testing.T, err error) {
-				assert.ErrorIs(t, err, ErrEpisodeNotFound)
-			},
-		},
-	}
+		}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				env := newTestEnv()
+				seedTestEpisodes(env)
+				tc.setup(env)
+
+				err := env.svc.CompleteEpisode(context.Background(), "p1", tc.episodeID)
+				assert.ErrorIs(t, err, tc.wantErr)
+			})
+		}
+
+		t.Run("同じエピソードを 2 回完了しても、完了 ID は 1 件のまま (冪等)", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
-			tc.setup(env)
+			env.storyRepo.SetPlayerLevel("p1", 5)
+			env.storyRepo.GrantFaction("p1", "SHE")
 
-			err := env.svc.CompleteEpisode(context.Background(), "p1", tc.episodeID)
-			tc.verify(t, err)
+			require.NoError(t, env.svc.CompleteEpisode(context.Background(), "p1", "she_ep1"))
+			require.NoError(t, env.svc.CompleteEpisode(context.Background(), "p1", "she_ep1"))
+
+			ids, err := env.storyRepo.GetCompletedEpisodeIDs(context.Background(), "p1")
+			require.NoError(t, err)
+			assert.Equal(t, []string{"she_ep1"}, ids)
 		})
-	}
-}
-
-func TestCompleteEpisode_Idempotent(t *testing.T) {
-	env := newTestEnv()
-	seedTestEpisodes(env)
-	env.storyRepo.SetPlayerLevel("p1", 5)
-	env.storyRepo.GrantFaction("p1", "SHE")
-
-	require.NoError(t, env.svc.CompleteEpisode(context.Background(), "p1", "she_ep1"))
-	require.NoError(t, env.svc.CompleteEpisode(context.Background(), "p1", "she_ep1"))
-
-	ids, err := env.storyRepo.GetCompletedEpisodeIDs(context.Background(), "p1")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"she_ep1"}, ids)
+	})
 }
 
 func TestGetScript(t *testing.T) {
-	tests := []struct {
-		name      string
-		setup     func(env *testEnv)
-		episodeID string
-		lang      string
-		wantErr   error
-	}{
-		{
-			name: "存在しないエピソードは ErrEpisodeNotFound",
-			setup: func(env *testEnv) {
-				env.storyRepo.SetPlayerLevel("p1", 10)
+	t.Run("スクリプトの取得", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			setup     func(env *testEnv)
+			episodeID string
+			lang      string
+			wantErr   error
+		}{
+			{
+				name: "存在しないエピソードのとき、ErrEpisodeNotFound になる",
+				setup: func(env *testEnv) {
+					env.storyRepo.SetPlayerLevel("p1", 10)
+				},
+				episodeID: "nonexistent",
+				lang:      "ja",
+				wantErr:   ErrEpisodeNotFound,
 			},
-			episodeID: "nonexistent",
-			lang:      "ja",
-			wantErr:   ErrEpisodeNotFound,
-		},
-		{
-			name: "非アクティブエピソードは ErrEpisodeNotFound",
-			setup: func(env *testEnv) {
-				env.storyRepo.SetPlayerLevel("p1", 99)
+			{
+				name: "非アクティブエピソードのとき、ErrEpisodeNotFound になる",
+				setup: func(env *testEnv) {
+					env.storyRepo.SetPlayerLevel("p1", 99)
+				},
+				episodeID: "inactive_ep",
+				lang:      "ja",
+				wantErr:   ErrEpisodeNotFound,
 			},
-			episodeID: "inactive_ep",
-			lang:      "ja",
-			wantErr:   ErrEpisodeNotFound,
-		},
-		{
-			name: "ロック中のエピソードは ErrEpisodeLocked",
-			setup: func(env *testEnv) {
-				env.storyRepo.SetPlayerLevel("p1", 1)
+			{
+				name: "ロック中のエピソードのとき、ErrEpisodeLocked になる",
+				setup: func(env *testEnv) {
+					env.storyRepo.SetPlayerLevel("p1", 1)
+				},
+				episodeID: "she_ep1",
+				lang:      "ja",
+				wantErr:   ErrEpisodeLocked,
 			},
-			episodeID: "she_ep1",
-			lang:      "ja",
-			wantErr:   ErrEpisodeLocked,
-		},
-	}
+		}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				env := newTestEnv()
+				seedTestEpisodes(env)
+				tc.setup(env)
+
+				_, err := env.svc.GetScript(context.Background(), "p1", tc.episodeID, tc.lang)
+				assert.ErrorIs(t, err, tc.wantErr)
+			})
+		}
+
+		t.Run("要求言語のスクリプトが無いとき、フォールバックせず ErrScriptNotFound になる", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
-			tc.setup(env)
+			env.storyRepo.SetPlayerLevel("p1", 10)
+			env.storyRepo.GrantFaction("p1", "SHE")
 
-			_, err := env.svc.GetScript(context.Background(), "p1", tc.episodeID, tc.lang)
-			assert.ErrorIs(t, err, tc.wantErr)
+			fake := &fakeScriptStore{missing: true}
+			svc := New(env.storyRepo, fake)
+
+			_, err := svc.GetScript(context.Background(), "p1", "she_ep1", "en")
+			require.Error(t, err)
+			assert.ErrorIs(t, err, port.ErrScriptNotFound)
+			require.Len(t, fake.calls, 1, "フォールバック廃止のため要求言語で一度のみ読みに行く")
+			assert.Equal(t, "stories/en/she_ep1.ks", fake.calls[0])
 		})
-	}
-}
-
-func TestGetScript_NoLanguageFallback(t *testing.T) {
-	env := newTestEnv()
-	seedTestEpisodes(env)
-	env.storyRepo.SetPlayerLevel("p1", 10)
-	env.storyRepo.GrantFaction("p1", "SHE")
-
-	fake := &fakeScriptStore{missing: true}
-	svc := New(env.storyRepo, fake)
-
-	_, err := svc.GetScript(context.Background(), "p1", "she_ep1", "en")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, port.ErrScriptNotFound)
-	require.Len(t, fake.calls, 1, "フォールバック廃止のため要求言語で一度のみ読みに行く")
-	assert.Equal(t, "stories/en/she_ep1.ks", fake.calls[0])
+	})
 }
 
 type fakeScriptStore struct {
@@ -319,4 +297,3 @@ func (f *fakeScriptStore) ReadScript(_ context.Context, key string) (string, err
 	}
 	return "@endofscript\n", nil
 }
-

@@ -110,84 +110,88 @@ func fetchOutboxState(t *testing.T, id uuid.UUID) (publishedAt *time.Time, failu
 	return
 }
 
-func TestIntegration_RunOnce_PublishesAndMarks(t *testing.T) {
-	relay, sub, _ := setupRelay(t)
+func TestRunOnceIntegration(t *testing.T) {
+	t.Run("Relay.RunOnce の Pub/Sub 連携", func(t *testing.T) {
+		t.Run("未配信行があるとき、publish して published_at をマークする", func(t *testing.T) {
+			relay, sub, _ := setupRelay(t)
 
-	payload := []byte(`{"event_type":"player_onboarded","player_id":"p-1","initial_faction_id":"Tenki"}`)
-	id := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, payload)
+			payload := []byte(`{"event_type":"player_onboarded","player_id":"p-1","initial_faction_id":"Tenki"}`)
+			id := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, payload)
 
-	require.NoError(t, relay.RunOnce(context.Background()))
+			require.NoError(t, relay.RunOnce(context.Background()))
 
-	msg, err := sub.WaitForMessage(context.Background(), 5*time.Second)
-	require.NoError(t, err)
-	assert.JSONEq(t, string(payload), string(msg.Data))
+			msg, err := sub.WaitForMessage(context.Background(), 5*time.Second)
+			require.NoError(t, err)
+			assert.JSONEq(t, string(payload), string(msg.Data))
 
-	publishedAt, failureCount, lastError := fetchOutboxState(t, id)
-	require.NotNil(t, publishedAt, "published_at must be set after successful publish")
-	assert.WithinDuration(t, time.Now(), *publishedAt, 5*time.Second)
-	assert.Equal(t, 0, failureCount)
-	assert.Nil(t, lastError)
-}
+			publishedAt, failureCount, lastError := fetchOutboxState(t, id)
+			require.NotNil(t, publishedAt, "published_at must be set after successful publish")
+			assert.WithinDuration(t, time.Now(), *publishedAt, 5*time.Second)
+			assert.Equal(t, 0, failureCount)
+			assert.Nil(t, lastError)
+		})
 
-func TestIntegration_RunOnce_DeliversTypedPayload(t *testing.T) {
-	relay, sub, _ := setupRelay(t)
+		t.Run("typed payload を publish すると、subscriber 側で decode できる", func(t *testing.T) {
+			relay, sub, _ := setupRelay(t)
 
-	id := uuid.New()
-	payload, err := json.Marshal(apiscenario.PlayerOnboardedEvent{
-		EventType:        apiscenario.EventTypePlayerOnboarded,
-		EventID:          id.String(),
-		Timestamp:        time.Now().UTC(),
-		PlayerID:         "player-xyz",
-		InitialFactionID: "SHE",
+			id := uuid.New()
+			payload, err := json.Marshal(apiscenario.PlayerOnboardedEvent{
+				EventType:        apiscenario.EventTypePlayerOnboarded,
+				EventID:          id.String(),
+				Timestamp:        time.Now().UTC(),
+				PlayerID:         "player-xyz",
+				InitialFactionID: "SHE",
+			})
+			require.NoError(t, err)
+			_, err = sharedPg.Pool.Exec(context.Background(),
+				`INSERT INTO scenario.outbox_events (event_id, event_type, payload, failure_count)
+				 VALUES ($1, $2, $3, 0)`,
+				id, apiscenario.EventTypePlayerOnboarded, payload)
+			require.NoError(t, err)
+
+			require.NoError(t, relay.RunOnce(context.Background()))
+
+			msg, err := sub.WaitForMessage(context.Background(), 5*time.Second)
+			require.NoError(t, err)
+
+			var decoded apiscenario.PlayerOnboardedEvent
+			require.NoError(t, json.Unmarshal(msg.Data, &decoded))
+			assert.Equal(t, apiscenario.EventTypePlayerOnboarded, decoded.EventType)
+			assert.Equal(t, id.String(), decoded.EventID)
+			assert.Equal(t, "player-xyz", decoded.PlayerID)
+			assert.Equal(t, "SHE", decoded.InitialFactionID)
+		})
+
+		t.Run("未登録の event type のとき、publish されず RecordFailure が記録される", func(t *testing.T) {
+			relay, sub, _ := setupRelay(t)
+
+			const wrongEventType = "wrong-event-type"
+			id := insertOutboxRow(t, wrongEventType, []byte(`{"k":"v"}`))
+
+			require.NoError(t, relay.RunOnce(context.Background()))
+
+			_, err := sub.WaitForMessage(context.Background(), 300*time.Millisecond)
+			assert.ErrorIs(t, err, pubsubtest.ErrTimeout)
+
+			publishedAt, failureCount, lastError := fetchOutboxState(t, id)
+			assert.Nil(t, publishedAt, "published_at must remain NULL on failure")
+			assert.Equal(t, 1, failureCount)
+			require.NotNil(t, lastError)
+			assert.Contains(t, *lastError, "unknown event type")
+		})
+
+		t.Run("既配信行のとき、再度 publish されない", func(t *testing.T) {
+			relay, sub, _ := setupRelay(t)
+
+			id := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, []byte(`{"k":"v"}`))
+			_, err := sharedPg.Pool.Exec(context.Background(),
+				`UPDATE scenario.outbox_events SET published_at = now() WHERE event_id = $1`, id)
+			require.NoError(t, err)
+
+			require.NoError(t, relay.RunOnce(context.Background()))
+
+			_, err = sub.WaitForMessage(context.Background(), 300*time.Millisecond)
+			assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "既配信行は再度 publish されない")
+		})
 	})
-	require.NoError(t, err)
-	_, err = sharedPg.Pool.Exec(context.Background(),
-		`INSERT INTO scenario.outbox_events (event_id, event_type, payload, failure_count)
-		 VALUES ($1, $2, $3, 0)`,
-		id, apiscenario.EventTypePlayerOnboarded, payload)
-	require.NoError(t, err)
-
-	require.NoError(t, relay.RunOnce(context.Background()))
-
-	msg, err := sub.WaitForMessage(context.Background(), 5*time.Second)
-	require.NoError(t, err)
-
-	var decoded apiscenario.PlayerOnboardedEvent
-	require.NoError(t, json.Unmarshal(msg.Data, &decoded))
-	assert.Equal(t, apiscenario.EventTypePlayerOnboarded, decoded.EventType)
-	assert.Equal(t, id.String(), decoded.EventID)
-	assert.Equal(t, "player-xyz", decoded.PlayerID)
-	assert.Equal(t, "SHE", decoded.InitialFactionID)
-}
-
-func TestIntegration_RunOnce_UnknownEventType_RecordsFailure(t *testing.T) {
-	relay, sub, _ := setupRelay(t)
-
-	const wrongEventType = "wrong-event-type"
-	id := insertOutboxRow(t, wrongEventType, []byte(`{"k":"v"}`))
-
-	require.NoError(t, relay.RunOnce(context.Background()))
-
-	_, err := sub.WaitForMessage(context.Background(), 300*time.Millisecond)
-	assert.ErrorIs(t, err, pubsubtest.ErrTimeout)
-
-	publishedAt, failureCount, lastError := fetchOutboxState(t, id)
-	assert.Nil(t, publishedAt, "published_at must remain NULL on failure")
-	assert.Equal(t, 1, failureCount)
-	require.NotNil(t, lastError)
-	assert.Contains(t, *lastError, "unknown event type")
-}
-
-func TestIntegration_RunOnce_AlreadyPublished_NoOp(t *testing.T) {
-	relay, sub, _ := setupRelay(t)
-
-	id := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, []byte(`{"k":"v"}`))
-	_, err := sharedPg.Pool.Exec(context.Background(),
-		`UPDATE scenario.outbox_events SET published_at = now() WHERE event_id = $1`, id)
-	require.NoError(t, err)
-
-	require.NoError(t, relay.RunOnce(context.Background()))
-
-	_, err = sub.WaitForMessage(context.Background(), 300*time.Millisecond)
-	assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "既配信行は再度 publish されない")
 }
