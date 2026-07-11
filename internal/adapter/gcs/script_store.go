@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 
 	"cloud.google.com/go/storage"
 
@@ -35,8 +35,8 @@ func (s *ScriptStore) ReadScript(ctx context.Context, key string) (string, error
 	}
 	defer func() {
 		if cerr := rc.Close(); cerr != nil {
-			log.Printf("scenario: gcs reader close failed (bucket=%q object=%q): %v",
-				s.bucketName, key, cerr)
+			slog.Warn("gcs reader close failed",
+				"bucket", s.bucketName, "object", key, "error", cerr)
 		}
 	}()
 
