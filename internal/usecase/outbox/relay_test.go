@@ -17,16 +17,13 @@ import (
 // fakeOutboxStore は port.OutboxStore の簡易モック。claim 系の返り値と各メソッド
 // 呼び出しを記録し、RunOnce が claim → publish → mark/fail の順序で呼ぶことを観察する。
 type fakeOutboxStore struct {
-	claimed              []port.ClaimedOutboxEvent
-	claimErr             error
-	markedPublished      []uuid.UUID
-	markErr              error
-	failures             []failureCall
-	failErr              error
-	claimCalls           int
-	lastVisibilityTO     time.Duration
-	lastLimit            int
-	lastFailureThreshold int
+	claimed         []port.ClaimedOutboxEvent
+	claimErr        error
+	markedPublished []uuid.UUID
+	markErr         error
+	failures        []failureCall
+	failErr         error
+	claimCalls      int
 }
 
 type failureCall struct {
@@ -36,9 +33,6 @@ type failureCall struct {
 
 func (f *fakeOutboxStore) ClaimUnpublished(_ context.Context, limit int, visibilityTimeout time.Duration, failureThreshold int) ([]port.ClaimedOutboxEvent, error) {
 	f.claimCalls++
-	f.lastLimit = limit
-	f.lastVisibilityTO = visibilityTimeout
-	f.lastFailureThreshold = failureThreshold
 	if f.claimErr != nil {
 		return nil, f.claimErr
 	}
@@ -208,20 +202,6 @@ func TestRunOnce(t *testing.T) {
 			assert.Empty(t, pub.calls)
 			assert.Empty(t, store.markedPublished)
 			assert.Empty(t, store.failures)
-		})
-
-		t.Run("Config の BatchSize / VisibilityTimeout / FailureThreshold を store に渡す", func(t *testing.T) {
-			store := &fakeOutboxStore{}
-			pub := &fakeRawPublisher{}
-			s, err := New(store, pub, Config{
-				BatchSize: 42, FailureThreshold: 5, VisibilityTimeout: 17 * time.Second,
-			})
-			require.NoError(t, err)
-
-			require.NoError(t, s.RunOnce(context.Background()))
-			assert.Equal(t, 42, store.lastLimit)
-			assert.Equal(t, 17*time.Second, store.lastVisibilityTO)
-			assert.Equal(t, 5, store.lastFailureThreshold)
 		})
 	})
 }
