@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kenyamaneko/overload-party-scenario/internal/adapter/local"
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
@@ -47,21 +50,6 @@ func (r *fakeOnboardingRepo) PublishEvents(_ context.Context, events ...port.Out
 	return r.publishErr
 }
 
-// fakeScriptStore はテスト用の ScriptStore 実装。
-type fakeScriptStore struct {
-	body string
-	err  error
-	last string
-}
-
-func (s *fakeScriptStore) ReadScript(_ context.Context, key string) (string, error) {
-	s.last = key
-	if s.err != nil {
-		return "", s.err
-	}
-	return s.body, nil
-}
-
 // fakeNameValidator は OnboardingNameValidator のスタブ。
 type fakeNameValidator struct {
 	err   error
@@ -92,54 +80,47 @@ func (r *fakePlayerReader) GetOnboardingPlayer(_ context.Context) (port.AccountP
 
 func strPtr(s string) *string { return &s }
 
+// writeScript は実 local.ScriptStore が読むディレクトリ構造 (scripts/onboarding/<lang>.ks) に
+// 本文を書き込む。lang ごとに異なる本文を置くことで、lang ルーティングの効果を実ファイル経由で観測できる。
+func writeScript(t *testing.T, root, lang, body string) {
+	t.Helper()
+	path := filepath.Join(root, "scripts", "onboarding", lang+".ks")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
+}
+
 func TestGetScript(t *testing.T) {
 	t.Run("オンボーディングスクリプトの取得", func(t *testing.T) {
-		tests := []struct {
-			name      string
-			storeBody string
-			storeErr  error
-			lang      string
-			wantBody  string
-			wantKey   string
-			wantErr   error
-		}{
-			{
-				name:      "ja 指定のとき、対応キーから body を取得する",
-				storeBody: "@endofscript\n",
-				lang:      "ja",
-				wantBody:  "@endofscript\n",
-				wantKey:   "scripts/onboarding/ja.ks",
-				wantErr:   nil,
-			},
-			{
-				name:      "en 指定のとき、対応キーから body を取得する",
-				storeBody: "english body",
-				lang:      "en",
-				wantBody:  "english body",
-				wantKey:   "scripts/onboarding/en.ks",
-				wantErr:   nil,
-			},
-			{
-				name:     "スクリプトが不在のとき、ErrScriptNotFound に翻訳する",
-				storeErr: port.ErrScriptNotFound,
-				lang:     "en",
-				wantBody: "",
-				wantKey:  "scripts/onboarding/en.ks",
-				wantErr:  ErrScriptNotFound,
-			},
-		}
+		t.Run("ja 指定のとき、ja の本文が返る", func(t *testing.T) {
+			root := t.TempDir()
+			writeScript(t, root, "ja", "@endofscript (ja)\n")
+			writeScript(t, root, "en", "english body")
+			svc := New(&fakeOnboardingRepo{}, local.NewScriptStore(root), nil, nil)
 
-		for _, tc := range tests {
-			t.Run(tc.name, func(t *testing.T) {
-				store := &fakeScriptStore{body: tc.storeBody, err: tc.storeErr}
-				svc := New(&fakeOnboardingRepo{}, store, nil, nil)
+			body, err := svc.GetScript(context.Background(), "p1", "ja")
+			require.NoError(t, err)
+			assert.Equal(t, "@endofscript (ja)\n", body)
+		})
 
-				body, err := svc.GetScript(context.Background(), "p1", tc.lang)
-				require.ErrorIs(t, err, tc.wantErr)
-				assert.Equal(t, tc.wantBody, body)
-				assert.Equal(t, tc.wantKey, store.last)
-			})
-		}
+		t.Run("en 指定のとき、en の本文が返る", func(t *testing.T) {
+			root := t.TempDir()
+			writeScript(t, root, "ja", "@endofscript (ja)\n")
+			writeScript(t, root, "en", "english body")
+			svc := New(&fakeOnboardingRepo{}, local.NewScriptStore(root), nil, nil)
+
+			body, err := svc.GetScript(context.Background(), "p1", "en")
+			require.NoError(t, err)
+			assert.Equal(t, "english body", body)
+		})
+
+		t.Run("スクリプトが不在のとき、ErrScriptNotFound に翻訳する", func(t *testing.T) {
+			root := t.TempDir()
+			svc := New(&fakeOnboardingRepo{}, local.NewScriptStore(root), nil, nil)
+
+			body, err := svc.GetScript(context.Background(), "p1", "en")
+			require.ErrorIs(t, err, ErrScriptNotFound)
+			assert.Empty(t, body)
+		})
 	})
 }
 
