@@ -220,7 +220,7 @@ func TestRunOnceIntegration(t *testing.T) {
 			assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "既配信行は再度 publish されない")
 		})
 
-		t.Run("BatchSize を超える未配信行があるとき、BatchSize 件だけ publish され残りは未配信のまま残る", func(t *testing.T) {
+		t.Run("バッチサイズを超える未配信行があるとき、バッチサイズ件だけ publish され残りは未配信のまま残る", func(t *testing.T) {
 			relay, sub, _ := setupRelayWithConfig(t, outbox.Config{BatchSize: 1, FailureThreshold: 5, VisibilityTimeout: 30 * time.Second})
 
 			id1 := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, []byte(`{"k":"1"}`))
@@ -232,7 +232,7 @@ func TestRunOnceIntegration(t *testing.T) {
 			require.NoError(t, err)
 			assert.Len(t, msgs, 1)
 			_, err = sub.WaitForMessage(context.Background(), 300*time.Millisecond)
-			assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "BatchSize=1 なので2件目は今回の RunOnce で publish されない")
+			assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "バッチサイズが 1 なので2件目は今回の RunOnce で publish されない")
 
 			publishedAt1, _, _ := fetchOutboxState(t, id1)
 			publishedAt2, _, _ := fetchOutboxState(t, id2)
@@ -242,10 +242,10 @@ func TestRunOnceIntegration(t *testing.T) {
 					publishedCount++
 				}
 			}
-			assert.Equal(t, 1, publishedCount, "BatchSize=1 なのでちょうど1件だけ published_at が立つ")
+			assert.Equal(t, 1, publishedCount, "バッチサイズが 1 なのでちょうど1件だけ published_at が立つ")
 		})
 
-		t.Run("VisibilityTimeout 以内の in-flight 行はスキップされ、超過した行は再 claim される", func(t *testing.T) {
+		t.Run("可視性タイムアウト以内で試行中の行はスキップされ、超過した行は再び publish される", func(t *testing.T) {
 			relay, sub, _ := setupRelayWithConfig(t, outbox.Config{BatchSize: 10, FailureThreshold: 5, VisibilityTimeout: 200 * time.Millisecond})
 
 			inFlightID := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, []byte(`{"k":"in-flight"}`))
@@ -260,16 +260,16 @@ func TestRunOnceIntegration(t *testing.T) {
 			require.NoError(t, err)
 			assert.JSONEq(t, `{"k":"recovered"}`, string(msg.Data))
 			_, err = sub.WaitForMessage(context.Background(), 300*time.Millisecond)
-			assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "in-flight 行は今回の RunOnce では publish されない")
+			assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "試行中の行は今回の RunOnce では publish されない")
 
 			publishedAtInFlight, _, _ := fetchOutboxState(t, inFlightID)
-			assert.Nil(t, publishedAtInFlight, "visibility timeout 以内の行は skip される")
+			assert.Nil(t, publishedAtInFlight, "可視性タイムアウト以内の行はスキップされる")
 
 			publishedAtRecovered, _, _ := fetchOutboxState(t, recoveredID)
-			assert.NotNil(t, publishedAtRecovered, "visibility timeout 超過の行は再 claim され publish される")
+			assert.NotNil(t, publishedAtRecovered, "可視性タイムアウト超過の行は再び publish される")
 		})
 
-		t.Run("FailureThreshold に到達した行は claim されず publish されない", func(t *testing.T) {
+		t.Run("失敗回数の上限に到達した行は処理対象に含まれず、publish されない", func(t *testing.T) {
 			relay, sub, _ := setupRelayWithConfig(t, outbox.Config{BatchSize: 10, FailureThreshold: 2, VisibilityTimeout: 30 * time.Second})
 
 			exhaustedID := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, []byte(`{"k":"exhausted"}`))
@@ -278,11 +278,11 @@ func TestRunOnceIntegration(t *testing.T) {
 			require.NoError(t, relay.RunOnce(context.Background()))
 
 			_, err := sub.WaitForMessage(context.Background(), 300*time.Millisecond)
-			assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "failure threshold 到達行は claim されず publish されない")
+			assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "失敗回数の上限到達行は処理対象に含まれず publish されない")
 
 			publishedAt, failureCount, _ := fetchOutboxState(t, exhaustedID)
 			assert.Nil(t, publishedAt)
-			assert.Equal(t, 2, failureCount, "claim されないので failure_count は変化しない")
+			assert.Equal(t, 2, failureCount, "処理対象に含まれないので failure_count は変化しない")
 		})
 	})
 }
