@@ -113,7 +113,7 @@ func TestGetScript(t *testing.T) {
 			assert.Equal(t, "english body", body)
 		})
 
-		t.Run("スクリプトが不在のとき、ErrScriptNotFound に翻訳する", func(t *testing.T) {
+		t.Run("スクリプトが不在のとき、ErrScriptNotFound になる", func(t *testing.T) {
 			root := t.TempDir()
 			svc := New(&fakeOnboardingRepo{}, local.NewScriptStore(root), nil, nil)
 

@@ -61,7 +61,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// setupRelay は既定 Config (BatchSize=10 / FailureThreshold=5 / VisibilityTimeout=30s) で setupRelayWithConfig を呼ぶ。
+// setupRelay は既定設定で setupRelayWithConfig を呼ぶ。
 func setupRelay(t *testing.T) (*outbox.Relay, *pubsubtest.Subscription, string) {
 	t.Helper()
 	return setupRelayWithConfig(t, outbox.Config{
