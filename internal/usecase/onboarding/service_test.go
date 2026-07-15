@@ -126,7 +126,7 @@ func TestGetScript(t *testing.T) {
 
 func TestUpdateName(t *testing.T) {
 	t.Run("表示名の更新", func(t *testing.T) {
-		t.Run("正常系: validate 成功後に onboarding-name-set を outbox publish する", func(t *testing.T) {
+		t.Run("表示名が有効なとき、表示名更新イベントが発行される", func(t *testing.T) {
 			repo := &fakeOnboardingRepo{}
 			validator := &fakeNameValidator{}
 			svc := New(repo, nil, validator, nil)
@@ -146,7 +146,7 @@ func TestUpdateName(t *testing.T) {
 			assert.Equal(t, ev.EventID.String(), decoded.EventID)
 		})
 
-		t.Run("validate 失敗のときは publish せず、対応する sentinel に翻訳する", func(t *testing.T) {
+		t.Run("表示名が無効なとき、イベントは発行されず、対応するエラーになる", func(t *testing.T) {
 			transientErr := errors.New("account 5xx")
 			tests := []struct {
 				name      string
@@ -155,19 +155,19 @@ func TestUpdateName(t *testing.T) {
 				wantErr   error
 			}{
 				{
-					name:      "account の ErrInvalidName のとき、ErrInvalidName に翻訳する",
+					name:      "名前が不正なとき、ErrInvalidName になる",
 					injectErr: port.ErrInvalidName,
 					input:     "",
 					wantErr:   ErrInvalidName,
 				},
 				{
-					name:      "account の ErrPlayerNotFound のとき、ErrPlayerNotFound に翻訳する",
+					name:      "プレイヤーが存在しないとき、ErrPlayerNotFound になる",
 					injectErr: port.ErrPlayerNotFound,
 					input:     "Alice",
 					wantErr:   ErrPlayerNotFound,
 				},
 				{
-					name:      "それ以外の account エラーのとき、wrap して伝播する",
+					name:      "その他のエラーのとき、そのエラーが伝播する",
 					injectErr: transientErr,
 					input:     "Bob",
 					wantErr:   transientErr,
@@ -182,12 +182,12 @@ func TestUpdateName(t *testing.T) {
 					err := svc.UpdateName(context.Background(), "p1", tt.input)
 					require.Error(t, err)
 					assert.ErrorIs(t, err, tt.wantErr)
-					assert.Empty(t, repo.publishCalls, "validate 失敗時に publish しない")
+					assert.Empty(t, repo.publishCalls, "検証に失敗したときはイベントを発行しない")
 				})
 			}
 		})
 
-		t.Run("outbox publish 失敗のとき、wrap して伝播する", func(t *testing.T) {
+		t.Run("イベントの発行に失敗すると、そのエラーが伝播する", func(t *testing.T) {
 			publishErr := errors.New("outbox down")
 			repo := &fakeOnboardingRepo{publishErr: publishErr}
 			svc := New(repo, nil, &fakeNameValidator{}, nil)
@@ -200,8 +200,8 @@ func TestUpdateName(t *testing.T) {
 }
 
 func TestSelectFaction(t *testing.T) {
-	t.Run("初期 faction の選択", func(t *testing.T) {
-		t.Run("正常系: SelectableFactions 内なら onboarding-faction-set を outbox publish する", func(t *testing.T) {
+	t.Run("初期陣営の選択", func(t *testing.T) {
+		t.Run("選択可能な陣営を選ぶと、陣営設定イベントが発行される", func(t *testing.T) {
 			repo := &fakeOnboardingRepo{}
 			svc := New(repo, nil, nil, nil)
 
@@ -217,14 +217,14 @@ func TestSelectFaction(t *testing.T) {
 			assert.Equal(t, "SHE", decoded.InitialFactionID)
 		})
 
-		t.Run("SelectableFactions 外のときは publish せず、ErrInvalidFaction になる", func(t *testing.T) {
+		t.Run("選択できない陣営のとき、イベントは発行されず、ErrInvalidFaction になる", func(t *testing.T) {
 			tests := []struct {
 				name             string
 				initialFactionID string
 			}{
 				{name: "Neutral のとき、ErrInvalidFaction になる", initialFactionID: "Neutral"},
-				{name: "不明な faction のとき、ErrInvalidFaction になる", initialFactionID: "Mystery"},
-				{name: "空文字の faction のとき、ErrInvalidFaction になる", initialFactionID: ""},
+				{name: "不明な陣営のとき、ErrInvalidFaction になる", initialFactionID: "Mystery"},
+				{name: "空文字のとき、ErrInvalidFaction になる", initialFactionID: ""},
 			}
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
@@ -239,7 +239,7 @@ func TestSelectFaction(t *testing.T) {
 			}
 		})
 
-		t.Run("outbox publish 失敗のとき、wrap して伝播する", func(t *testing.T) {
+		t.Run("イベントの発行に失敗すると、そのエラーが伝播する", func(t *testing.T) {
 			publishErr := errors.New("outbox down")
 			repo := &fakeOnboardingRepo{publishErr: publishErr}
 			svc := New(repo, nil, nil, nil)
@@ -253,7 +253,7 @@ func TestSelectFaction(t *testing.T) {
 
 func TestComplete(t *testing.T) {
 	t.Run("オンボーディングの完了", func(t *testing.T) {
-		t.Run("正常系: player-onboarded イベント 1 本を outbox へ渡す", func(t *testing.T) {
+		t.Run("オンボーディングを完了すると、完了イベントが1本発行される", func(t *testing.T) {
 			reader := &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("SHE")}}
 			repo := &fakeOnboardingRepo{}
 			svc := New(repo, nil, nil, reader)
@@ -273,14 +273,13 @@ func TestComplete(t *testing.T) {
 			assert.Equal(t, ev.EventID.String(), decoded.EventID)
 		})
 
-		t.Run("initial_faction が未確定のときは記録せず、ErrFactionNotSelected になる", func(t *testing.T) {
-			// フロー違反 (faction 未選択のまま完了) を弾く。
+		t.Run("初期陣営が未選択のとき、完了せず ErrFactionNotSelected になる", func(t *testing.T) {
 			tests := []struct {
 				name           string
 				initialFaction *string
 			}{
-				{name: "initial_faction が nil のとき、ErrFactionNotSelected になる", initialFaction: nil},
-				{name: "initial_faction が空文字のとき、ErrFactionNotSelected になる", initialFaction: strPtr("")},
+				{name: "初期陣営が未設定のとき、ErrFactionNotSelected になる", initialFaction: nil},
+				{name: "初期陣営が空文字のとき、ErrFactionNotSelected になる", initialFaction: strPtr("")},
 			}
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
@@ -296,7 +295,7 @@ func TestComplete(t *testing.T) {
 			}
 		})
 
-		t.Run("依存のエラーは対応する sentinel に翻訳・伝播する", func(t *testing.T) {
+		t.Run("完了処理でエラーが起きると、対応するエラーになる", func(t *testing.T) {
 			repoErr := errors.New("db down")
 			accountErr := errors.New("account down")
 			tests := []struct {
@@ -306,25 +305,25 @@ func TestComplete(t *testing.T) {
 				wantErr error
 			}{
 				{
-					name:    "account に Player が存在しないとき、ErrPlayerNotFound になる",
+					name:    "プレイヤーが存在しないとき、ErrPlayerNotFound になる",
 					reader:  &fakePlayerReader{err: port.ErrPlayerNotFound},
 					repo:    &fakeOnboardingRepo{},
 					wantErr: ErrPlayerNotFound,
 				},
 				{
-					name:    "二度目の完了のとき、ErrAlreadyOnboarded に翻訳する",
+					name:    "二度目の完了のとき、ErrAlreadyOnboarded になる",
 					reader:  &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("SHE")}},
 					repo:    &fakeOnboardingRepo{markCompleteErr: port.ErrAlreadyOnboarded},
 					wantErr: ErrAlreadyOnboarded,
 				},
 				{
-					name:    "repo の未分類エラーのとき、wrap して伝播する",
+					name:    "完了の保存でエラーが起きたとき、そのエラーが伝播する",
 					reader:  &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("SHE")}},
 					repo:    &fakeOnboardingRepo{markCompleteErr: repoErr},
 					wantErr: repoErr,
 				},
 				{
-					name:    "account の未分類エラーのとき、wrap して伝播する",
+					name:    "プレイヤー取得でエラーが起きたとき、そのエラーが伝播する",
 					reader:  &fakePlayerReader{err: accountErr},
 					repo:    &fakeOnboardingRepo{},
 					wantErr: accountErr,
