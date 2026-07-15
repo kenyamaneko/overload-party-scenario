@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kenyamaneko/overload-party-scenario/internal/adapter/local"
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
@@ -47,21 +50,6 @@ func (r *fakeOnboardingRepo) PublishEvents(_ context.Context, events ...port.Out
 	return r.publishErr
 }
 
-// fakeScriptStore はテスト用の ScriptStore 実装。
-type fakeScriptStore struct {
-	body string
-	err  error
-	last string
-}
-
-func (s *fakeScriptStore) ReadScript(_ context.Context, key string) (string, error) {
-	s.last = key
-	if s.err != nil {
-		return "", s.err
-	}
-	return s.body, nil
-}
-
 // fakeNameValidator は OnboardingNameValidator のスタブ。
 type fakeNameValidator struct {
 	err   error
@@ -92,60 +80,53 @@ func (r *fakePlayerReader) GetOnboardingPlayer(_ context.Context) (port.AccountP
 
 func strPtr(s string) *string { return &s }
 
+// writeScript は実 local.ScriptStore が読むディレクトリ構造 (scripts/onboarding/<lang>.ks) に
+// 本文を書き込む。lang ごとに異なる本文を置くことで、lang ルーティングの効果を実ファイル経由で観測できる。
+func writeScript(t *testing.T, root, lang, body string) {
+	t.Helper()
+	path := filepath.Join(root, "scripts", "onboarding", lang+".ks")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
+}
+
 func TestGetScript(t *testing.T) {
 	t.Run("オンボーディングスクリプトの取得", func(t *testing.T) {
-		tests := []struct {
-			name      string
-			storeBody string
-			storeErr  error
-			lang      string
-			wantBody  string
-			wantKey   string
-			wantErr   error
-		}{
-			{
-				name:      "ja 指定のとき、対応キーから body を取得する",
-				storeBody: "@endofscript\n",
-				lang:      "ja",
-				wantBody:  "@endofscript\n",
-				wantKey:   "scripts/onboarding/ja.ks",
-				wantErr:   nil,
-			},
-			{
-				name:      "en 指定のとき、対応キーから body を取得する",
-				storeBody: "english body",
-				lang:      "en",
-				wantBody:  "english body",
-				wantKey:   "scripts/onboarding/en.ks",
-				wantErr:   nil,
-			},
-			{
-				name:     "スクリプトが不在のとき、ErrScriptNotFound に翻訳する",
-				storeErr: port.ErrScriptNotFound,
-				lang:     "en",
-				wantBody: "",
-				wantKey:  "scripts/onboarding/en.ks",
-				wantErr:  ErrScriptNotFound,
-			},
-		}
+		t.Run("ja 指定のとき、ja の本文が返る", func(t *testing.T) {
+			root := t.TempDir()
+			writeScript(t, root, "ja", "@endofscript (ja)\n")
+			writeScript(t, root, "en", "english body")
+			svc := New(&fakeOnboardingRepo{}, local.NewScriptStore(root), nil, nil)
 
-		for _, tc := range tests {
-			t.Run(tc.name, func(t *testing.T) {
-				store := &fakeScriptStore{body: tc.storeBody, err: tc.storeErr}
-				svc := New(&fakeOnboardingRepo{}, store, nil, nil)
+			body, err := svc.GetScript(context.Background(), "p1", "ja")
+			require.NoError(t, err)
+			assert.Equal(t, "@endofscript (ja)\n", body)
+		})
 
-				body, err := svc.GetScript(context.Background(), "p1", tc.lang)
-				require.ErrorIs(t, err, tc.wantErr)
-				assert.Equal(t, tc.wantBody, body)
-				assert.Equal(t, tc.wantKey, store.last)
-			})
-		}
+		t.Run("en 指定のとき、en の本文が返る", func(t *testing.T) {
+			root := t.TempDir()
+			writeScript(t, root, "ja", "@endofscript (ja)\n")
+			writeScript(t, root, "en", "english body")
+			svc := New(&fakeOnboardingRepo{}, local.NewScriptStore(root), nil, nil)
+
+			body, err := svc.GetScript(context.Background(), "p1", "en")
+			require.NoError(t, err)
+			assert.Equal(t, "english body", body)
+		})
+
+		t.Run("スクリプトが不在のとき、ErrScriptNotFound になる", func(t *testing.T) {
+			root := t.TempDir()
+			svc := New(&fakeOnboardingRepo{}, local.NewScriptStore(root), nil, nil)
+
+			body, err := svc.GetScript(context.Background(), "p1", "en")
+			require.ErrorIs(t, err, ErrScriptNotFound)
+			assert.Empty(t, body)
+		})
 	})
 }
 
 func TestUpdateName(t *testing.T) {
 	t.Run("表示名の更新", func(t *testing.T) {
-		t.Run("正常系: validate 成功後に onboarding-name-set を outbox publish する", func(t *testing.T) {
+		t.Run("表示名が有効なとき、表示名更新イベントが発行される", func(t *testing.T) {
 			repo := &fakeOnboardingRepo{}
 			validator := &fakeNameValidator{}
 			svc := New(repo, nil, validator, nil)
@@ -165,7 +146,7 @@ func TestUpdateName(t *testing.T) {
 			assert.Equal(t, ev.EventID.String(), decoded.EventID)
 		})
 
-		t.Run("validate 失敗のときは publish せず、対応する sentinel に翻訳する", func(t *testing.T) {
+		t.Run("表示名が無効なとき、イベントは発行されず、対応するエラーになる", func(t *testing.T) {
 			transientErr := errors.New("account 5xx")
 			tests := []struct {
 				name      string
@@ -174,19 +155,19 @@ func TestUpdateName(t *testing.T) {
 				wantErr   error
 			}{
 				{
-					name:      "account の ErrInvalidName のとき、ErrInvalidName に翻訳する",
+					name:      "名前が不正なとき、ErrInvalidName になる",
 					injectErr: port.ErrInvalidName,
 					input:     "",
 					wantErr:   ErrInvalidName,
 				},
 				{
-					name:      "account の ErrPlayerNotFound のとき、ErrPlayerNotFound に翻訳する",
+					name:      "プレイヤーが存在しないとき、ErrPlayerNotFound になる",
 					injectErr: port.ErrPlayerNotFound,
 					input:     "Alice",
 					wantErr:   ErrPlayerNotFound,
 				},
 				{
-					name:      "それ以外の account エラーのとき、wrap して伝播する",
+					name:      "その他のエラーのとき、そのエラーが伝播する",
 					injectErr: transientErr,
 					input:     "Bob",
 					wantErr:   transientErr,
@@ -201,12 +182,12 @@ func TestUpdateName(t *testing.T) {
 					err := svc.UpdateName(context.Background(), "p1", tt.input)
 					require.Error(t, err)
 					assert.ErrorIs(t, err, tt.wantErr)
-					assert.Empty(t, repo.publishCalls, "validate 失敗時に publish しない")
+					assert.Empty(t, repo.publishCalls, "検証に失敗したときはイベントを発行しない")
 				})
 			}
 		})
 
-		t.Run("outbox publish 失敗のとき、wrap して伝播する", func(t *testing.T) {
+		t.Run("イベントの発行に失敗すると、そのエラーが伝播する", func(t *testing.T) {
 			publishErr := errors.New("outbox down")
 			repo := &fakeOnboardingRepo{publishErr: publishErr}
 			svc := New(repo, nil, &fakeNameValidator{}, nil)
@@ -219,8 +200,8 @@ func TestUpdateName(t *testing.T) {
 }
 
 func TestSelectFaction(t *testing.T) {
-	t.Run("初期 faction の選択", func(t *testing.T) {
-		t.Run("正常系: SelectableFactions 内なら onboarding-faction-set を outbox publish する", func(t *testing.T) {
+	t.Run("初期陣営の選択", func(t *testing.T) {
+		t.Run("選択可能な陣営を選ぶと、陣営設定イベントが発行される", func(t *testing.T) {
 			repo := &fakeOnboardingRepo{}
 			svc := New(repo, nil, nil, nil)
 
@@ -236,14 +217,14 @@ func TestSelectFaction(t *testing.T) {
 			assert.Equal(t, "SHE", decoded.InitialFactionID)
 		})
 
-		t.Run("SelectableFactions 外のときは publish せず、ErrInvalidFaction になる", func(t *testing.T) {
+		t.Run("選択できない陣営のとき、イベントは発行されず、ErrInvalidFaction になる", func(t *testing.T) {
 			tests := []struct {
 				name             string
 				initialFactionID string
 			}{
 				{name: "Neutral のとき、ErrInvalidFaction になる", initialFactionID: "Neutral"},
-				{name: "不明な faction のとき、ErrInvalidFaction になる", initialFactionID: "Mystery"},
-				{name: "空文字の faction のとき、ErrInvalidFaction になる", initialFactionID: ""},
+				{name: "不明な陣営のとき、ErrInvalidFaction になる", initialFactionID: "Mystery"},
+				{name: "空文字のとき、ErrInvalidFaction になる", initialFactionID: ""},
 			}
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
@@ -258,7 +239,7 @@ func TestSelectFaction(t *testing.T) {
 			}
 		})
 
-		t.Run("outbox publish 失敗のとき、wrap して伝播する", func(t *testing.T) {
+		t.Run("イベントの発行に失敗すると、そのエラーが伝播する", func(t *testing.T) {
 			publishErr := errors.New("outbox down")
 			repo := &fakeOnboardingRepo{publishErr: publishErr}
 			svc := New(repo, nil, nil, nil)
@@ -272,7 +253,7 @@ func TestSelectFaction(t *testing.T) {
 
 func TestComplete(t *testing.T) {
 	t.Run("オンボーディングの完了", func(t *testing.T) {
-		t.Run("正常系: player-onboarded イベント 1 本を outbox へ渡す", func(t *testing.T) {
+		t.Run("オンボーディングを完了すると、完了イベントが1本発行される", func(t *testing.T) {
 			reader := &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("SHE")}}
 			repo := &fakeOnboardingRepo{}
 			svc := New(repo, nil, nil, reader)
@@ -292,14 +273,13 @@ func TestComplete(t *testing.T) {
 			assert.Equal(t, ev.EventID.String(), decoded.EventID)
 		})
 
-		t.Run("initial_faction が未確定のときは記録せず、ErrFactionNotSelected になる", func(t *testing.T) {
-			// フロー違反 (faction 未選択のまま完了) を弾く。
+		t.Run("初期陣営が未選択のとき、完了せず ErrFactionNotSelected になる", func(t *testing.T) {
 			tests := []struct {
 				name           string
 				initialFaction *string
 			}{
-				{name: "initial_faction が nil のとき、ErrFactionNotSelected になる", initialFaction: nil},
-				{name: "initial_faction が空文字のとき、ErrFactionNotSelected になる", initialFaction: strPtr("")},
+				{name: "初期陣営が未設定のとき、ErrFactionNotSelected になる", initialFaction: nil},
+				{name: "初期陣営が空文字のとき、ErrFactionNotSelected になる", initialFaction: strPtr("")},
 			}
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
@@ -315,7 +295,7 @@ func TestComplete(t *testing.T) {
 			}
 		})
 
-		t.Run("依存のエラーは対応する sentinel に翻訳・伝播する", func(t *testing.T) {
+		t.Run("完了処理でエラーが起きると、対応するエラーになる", func(t *testing.T) {
 			repoErr := errors.New("db down")
 			accountErr := errors.New("account down")
 			tests := []struct {
@@ -325,25 +305,25 @@ func TestComplete(t *testing.T) {
 				wantErr error
 			}{
 				{
-					name:    "account に Player が存在しないとき、ErrPlayerNotFound になる",
+					name:    "プレイヤーが存在しないとき、ErrPlayerNotFound になる",
 					reader:  &fakePlayerReader{err: port.ErrPlayerNotFound},
 					repo:    &fakeOnboardingRepo{},
 					wantErr: ErrPlayerNotFound,
 				},
 				{
-					name:    "二度目の完了のとき、ErrAlreadyOnboarded に翻訳する",
+					name:    "二度目の完了のとき、ErrAlreadyOnboarded になる",
 					reader:  &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("SHE")}},
 					repo:    &fakeOnboardingRepo{markCompleteErr: port.ErrAlreadyOnboarded},
 					wantErr: ErrAlreadyOnboarded,
 				},
 				{
-					name:    "repo の未分類エラーのとき、wrap して伝播する",
+					name:    "完了の保存でエラーが起きたとき、そのエラーが伝播する",
 					reader:  &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("SHE")}},
 					repo:    &fakeOnboardingRepo{markCompleteErr: repoErr},
 					wantErr: repoErr,
 				},
 				{
-					name:    "account の未分類エラーのとき、wrap して伝播する",
+					name:    "プレイヤー取得でエラーが起きたとき、そのエラーが伝播する",
 					reader:  &fakePlayerReader{err: accountErr},
 					repo:    &fakeOnboardingRepo{},
 					wantErr: accountErr,

@@ -5,6 +5,7 @@ package outbox_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"testing"
@@ -60,10 +61,20 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// setupRelay は emulator に scenario の全 topic を作り、Publisher と OutboxRepository を組み上げて Relay を返す。
-// 物理 topic 名は infra (Terraform) が SSoT のため、本テストではリテラルで宣言する。
-// 戻り値の topic は player_onboarded 用 (EventTypePlayerOnboarded を扱う test ケースが受信側で参照する)。
+// setupRelay は既定設定で setupRelayWithConfig を呼ぶ。
 func setupRelay(t *testing.T) (*outbox.Relay, *pubsubtest.Subscription, string) {
+	t.Helper()
+	return setupRelayWithConfig(t, outbox.Config{
+		BatchSize:         10,
+		FailureThreshold:  5,
+		VisibilityTimeout: 30 * time.Second,
+	})
+}
+
+// setupRelayWithConfig は emulator に scenario の全 topic を作り、Publisher と OutboxRepository を組み上げて
+// 指定 Config で Relay を返す。物理 topic 名は infra (Terraform) が SSoT のため、本テストではリテラルで宣言する。
+// 戻り値の topic は player_onboarded 用 (EventTypePlayerOnboarded を扱う test ケースが受信側で参照する)。
+func setupRelayWithConfig(t *testing.T, cfg outbox.Config) (*outbox.Relay, *pubsubtest.Subscription, string) {
 	t.Helper()
 	sharedPg.Truncate(t)
 
@@ -78,13 +89,28 @@ func setupRelay(t *testing.T) (*outbox.Relay, *pubsubtest.Subscription, string) 
 	t.Cleanup(func() { _ = pub.Close() })
 
 	store := postgres.NewOutboxRepository(sharedPg.Pool)
-	relay, err := outbox.New(store, pub, outbox.Config{
-		BatchSize:         10,
-		FailureThreshold:  5,
-		VisibilityTimeout: 30 * time.Second,
-	})
+	relay, err := outbox.New(store, pub, cfg)
 	require.NoError(t, err)
 	return relay, sub, playerOnboardedTopic
+}
+
+// backdateLastAttempted は last_attempted_at を過去方向に移動させ、別 worker が既に
+// 試行中 (visibility timeout 内) もしくは試行後 (timeout 超過) の状態を作る。
+func backdateLastAttempted(t *testing.T, id uuid.UUID, ago time.Duration) {
+	t.Helper()
+	interval := fmt.Sprintf("%d milliseconds", ago.Milliseconds())
+	_, err := sharedPg.Pool.Exec(context.Background(),
+		`UPDATE scenario.outbox_events SET last_attempted_at = now() - ($2::text)::interval WHERE event_id = $1`,
+		id, interval)
+	require.NoError(t, err)
+}
+
+// setFailureCountDirectly は seed 後に failure_count を直接指定値に更新する。
+func setFailureCountDirectly(t *testing.T, id uuid.UUID, count int) {
+	t.Helper()
+	_, err := sharedPg.Pool.Exec(context.Background(),
+		`UPDATE scenario.outbox_events SET failure_count = $2 WHERE event_id = $1`, id, count)
+	require.NoError(t, err)
 }
 
 // insertOutboxRow は scenario.outbox_events に 1 行 INSERT して event_id を返す。
@@ -111,8 +137,8 @@ func fetchOutboxState(t *testing.T, id uuid.UUID) (publishedAt *time.Time, failu
 }
 
 func TestRunOnceIntegration(t *testing.T) {
-	t.Run("Relay.RunOnce の Pub/Sub 連携", func(t *testing.T) {
-		t.Run("未配信行があるとき、publish して published_at をマークする", func(t *testing.T) {
+	t.Run("未配信イベントの配信", func(t *testing.T) {
+		t.Run("未配信のイベントがあるとき、購読側に届き、配信済みとして記録される", func(t *testing.T) {
 			relay, sub, _ := setupRelay(t)
 
 			payload := []byte(`{"event_type":"player_onboarded","player_id":"p-1","initial_faction_id":"Tenki"}`)
@@ -131,7 +157,7 @@ func TestRunOnceIntegration(t *testing.T) {
 			assert.Nil(t, lastError)
 		})
 
-		t.Run("typed payload を publish すると、subscriber 側で decode できる", func(t *testing.T) {
+		t.Run("配信したイベントの内容が、購読側でそのまま受け取れる", func(t *testing.T) {
 			relay, sub, _ := setupRelay(t)
 
 			id := uuid.New()
@@ -162,7 +188,7 @@ func TestRunOnceIntegration(t *testing.T) {
 			assert.Equal(t, "SHE", decoded.InitialFactionID)
 		})
 
-		t.Run("未登録の event type のとき、publish されず RecordFailure が記録される", func(t *testing.T) {
+		t.Run("未対応のイベント種別のとき、配信されず失敗として記録される", func(t *testing.T) {
 			relay, sub, _ := setupRelay(t)
 
 			const wrongEventType = "wrong-event-type"
@@ -180,7 +206,7 @@ func TestRunOnceIntegration(t *testing.T) {
 			assert.Contains(t, *lastError, "unknown event type")
 		})
 
-		t.Run("既配信行のとき、再度 publish されない", func(t *testing.T) {
+		t.Run("配信済みのイベントは、再び配信されない", func(t *testing.T) {
 			relay, sub, _ := setupRelay(t)
 
 			id := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, []byte(`{"k":"v"}`))
@@ -191,7 +217,72 @@ func TestRunOnceIntegration(t *testing.T) {
 			require.NoError(t, relay.RunOnce(context.Background()))
 
 			_, err = sub.WaitForMessage(context.Background(), 300*time.Millisecond)
-			assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "既配信行は再度 publish されない")
+			assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "配信済みのイベントは再び配信されない")
+		})
+
+		t.Run("未配信イベントがバッチサイズを超えるとき、1回の実行ではバッチサイズ件だけ配信され、残りは未配信のまま残る", func(t *testing.T) {
+			relay, sub, _ := setupRelayWithConfig(t, outbox.Config{BatchSize: 1, FailureThreshold: 5, VisibilityTimeout: 30 * time.Second})
+
+			id1 := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, []byte(`{"k":"1"}`))
+			id2 := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, []byte(`{"k":"2"}`))
+
+			require.NoError(t, relay.RunOnce(context.Background()))
+
+			msgs, err := sub.WaitForN(context.Background(), 1, 2*time.Second)
+			require.NoError(t, err)
+			assert.Len(t, msgs, 1)
+			_, err = sub.WaitForMessage(context.Background(), 300*time.Millisecond)
+			assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "バッチサイズが 1 なので2件目は今回の実行では配信されない")
+
+			publishedAt1, _, _ := fetchOutboxState(t, id1)
+			publishedAt2, _, _ := fetchOutboxState(t, id2)
+			publishedCount := 0
+			for _, p := range []*time.Time{publishedAt1, publishedAt2} {
+				if p != nil {
+					publishedCount++
+				}
+			}
+			assert.Equal(t, 1, publishedCount, "バッチサイズが 1 なのでちょうど1件だけ配信済みになる")
+		})
+
+		t.Run("可視性タイムアウト以内で処理中のイベントはスキップされ、超過したイベントは再び配信される", func(t *testing.T) {
+			relay, sub, _ := setupRelayWithConfig(t, outbox.Config{BatchSize: 10, FailureThreshold: 5, VisibilityTimeout: 200 * time.Millisecond})
+
+			inFlightID := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, []byte(`{"k":"in-flight"}`))
+			backdateLastAttempted(t, inFlightID, 50*time.Millisecond)
+
+			recoveredID := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, []byte(`{"k":"recovered"}`))
+			backdateLastAttempted(t, recoveredID, 500*time.Millisecond)
+
+			require.NoError(t, relay.RunOnce(context.Background()))
+
+			msg, err := sub.WaitForMessage(context.Background(), 2*time.Second)
+			require.NoError(t, err)
+			assert.JSONEq(t, `{"k":"recovered"}`, string(msg.Data))
+			_, err = sub.WaitForMessage(context.Background(), 300*time.Millisecond)
+			assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "処理中のイベントは今回の実行では配信されない")
+
+			publishedAtInFlight, _, _ := fetchOutboxState(t, inFlightID)
+			assert.Nil(t, publishedAtInFlight, "可視性タイムアウト以内のイベントはスキップされる")
+
+			publishedAtRecovered, _, _ := fetchOutboxState(t, recoveredID)
+			assert.NotNil(t, publishedAtRecovered, "可視性タイムアウトを超えたイベントは再び配信される")
+		})
+
+		t.Run("失敗回数の上限に達したイベントは処理対象から外れ、配信されない", func(t *testing.T) {
+			relay, sub, _ := setupRelayWithConfig(t, outbox.Config{BatchSize: 10, FailureThreshold: 2, VisibilityTimeout: 30 * time.Second})
+
+			exhaustedID := insertOutboxRow(t, apiscenario.EventTypePlayerOnboarded, []byte(`{"k":"exhausted"}`))
+			setFailureCountDirectly(t, exhaustedID, 2)
+
+			require.NoError(t, relay.RunOnce(context.Background()))
+
+			_, err := sub.WaitForMessage(context.Background(), 300*time.Millisecond)
+			assert.ErrorIs(t, err, pubsubtest.ErrTimeout, "失敗回数の上限に達したイベントは処理対象から外れ配信されない")
+
+			publishedAt, failureCount, _ := fetchOutboxState(t, exhaustedID)
+			assert.Nil(t, publishedAt)
+			assert.Equal(t, 2, failureCount, "処理対象から外れるので失敗回数は変化しない")
 		})
 	})
 }
