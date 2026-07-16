@@ -12,7 +12,7 @@ import (
 )
 
 func TestToLockReason(t *testing.T) {
-	t.Run("LockReason の wire 変換", func(t *testing.T) {
+	t.Run("ロック理由の変換", func(t *testing.T) {
 		requiredLv5 := int64(5)
 		currentLv2 := int64(2)
 		factionSHE := "SHE"
