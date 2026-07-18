@@ -106,7 +106,7 @@ func TestStoryGetScriptContract(t *testing.T) {
 				wantBody:   "story script infrastructure error",
 			},
 			{
-				name: "必須 faction を所有していないとき、スクリプト取得は 403 になる",
+				name: "必須陣営を所有していないとき、スクリプト取得は 403 になる",
 				setup: func(t *testing.T, _ string) {
 					seedPlayer(t, contractPlayerID, 5)
 					seedEpisode(t, "ep-faction-locked", 1, "ep-faction-locked/{lang}.txt", true)

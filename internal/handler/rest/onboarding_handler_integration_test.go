@@ -269,14 +269,14 @@ func TestOnboardingSelectFactionContract(t *testing.T) {
 }
 
 func TestOnboardingSelectFactionOutboxPayload(t *testing.T) {
-	t.Run("選択可能な全 faction での初期陣営選択", func(t *testing.T) {
+	t.Run("初期陣営選択", func(t *testing.T) {
 		tests := []struct {
 			name      string
 			factionID string
 		}{
-			{name: "Tenki を選ぶと、204 で outbox の payload の faction が Tenki になる", factionID: "Tenki"},
-			{name: "Sugar を選ぶと、204 で outbox の payload の faction が Sugar になる", factionID: "Sugar"},
-			{name: "Tuners を選ぶと、204 で outbox の payload の faction が Tuners になる", factionID: "Tuners"},
+			{name: "Tenki を選ぶと、204 で outbox の payload の陣営が Tenki になる", factionID: "Tenki"},
+			{name: "Sugar を選ぶと、204 で outbox の payload の陣営が Sugar になる", factionID: "Sugar"},
+			{name: "Tuners を選ぶと、204 で outbox の payload の陣営が Tuners になる", factionID: "Tuners"},
 		}
 
 		for _, tt := range tests {

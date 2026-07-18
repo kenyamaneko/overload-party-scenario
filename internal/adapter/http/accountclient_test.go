@@ -81,7 +81,7 @@ func TestAccountClient_ValidateOnboardingName(t *testing.T) {
 
 func TestAccountClient_GetOnboardingPlayer(t *testing.T) {
 	t.Run("オンボード用プレイヤー取得の HTTP 応答翻訳", func(t *testing.T) {
-		t.Run("account がプレイヤー情報を返すとき、player_id と initial_faction が取得できる", func(t *testing.T) {
+		t.Run("account がプレイヤー情報を返すとき、プレイヤー ID と初期陣営が取得できる", func(t *testing.T) {
 			faction := "SHE"
 			resp := apiaccount.PlayerResponse{
 				PlayerID:         "TST-P1",
