@@ -84,6 +84,56 @@ func TestStoryGetScriptContract(t *testing.T) {
 				wantStatus: http.StatusOK,
 				wantBody:   "シナリオ本文",
 			},
+			{
+				name: "アンロック済みのエピソードのスクリプトファイルが無いとき、404 になる",
+				setup: func(t *testing.T, _ string) {
+					seedPlayer(t, contractPlayerID, 5)
+					seedEpisode(t, "ep-no-script", 5, "ep-no-script/{lang}.txt", true)
+				},
+				episodeID:  "ep-no-script",
+				wantStatus: http.StatusNotFound,
+				wantBody:   "story script not found",
+			},
+			{
+				name: "スクリプトの保存先が読み取れない状態のとき、500 になる",
+				setup: func(t *testing.T, scriptRoot string) {
+					seedPlayer(t, contractPlayerID, 5)
+					seedEpisode(t, "ep-infra", 5, "ep-infra/{lang}.txt", true)
+					require.NoError(t, os.MkdirAll(filepath.Join(scriptRoot, "ep-infra/ja.txt"), 0o755))
+				},
+				episodeID:  "ep-infra",
+				wantStatus: http.StatusInternalServerError,
+				wantBody:   "story script infrastructure error",
+			},
+			{
+				name: "必須 faction を所有していないとき、スクリプト取得は 403 になる",
+				setup: func(t *testing.T, _ string) {
+					seedPlayer(t, contractPlayerID, 5)
+					seedEpisode(t, "ep-faction-locked", 1, "ep-faction-locked/{lang}.txt", true)
+					seedRequiredFaction(t, "ep-faction-locked", "SHE")
+				},
+				episodeID:  "ep-faction-locked",
+				wantStatus: http.StatusForbidden,
+				wantBody:   "episode is locked",
+			},
+			{
+				name: "前提エピソードが未完了のとき、スクリプト取得は 403 になる",
+				setup: func(t *testing.T, _ string) {
+					seedPlayer(t, contractPlayerID, 5)
+					seedEpisodeWithRequiredEpisodes(t, "ep-prereq-locked", 1, "ep-prereq-locked/{lang}.txt", true, []string{"ep-prereq"})
+				},
+				episodeID:  "ep-prereq-locked",
+				wantStatus: http.StatusForbidden,
+				wantBody:   "episode is locked",
+			},
+			{
+				name: "プレイヤーの行が未同期のとき、スクリプト取得は 500 になる",
+				setup: func(t *testing.T, _ string) {
+					seedEpisode(t, "ep-no-player", 1, "ep-no-player/{lang}.txt", true)
+				},
+				episodeID:  "ep-no-player",
+				wantStatus: http.StatusInternalServerError,
+			},
 		}
 
 		for _, tt := range tests {
@@ -100,5 +150,21 @@ func TestStoryGetScriptContract(t *testing.T) {
 				assert.Contains(t, w.Body.String(), tt.wantBody)
 			})
 		}
+
+		t.Run("lang を指定しないとき、日本語のスクリプトが返る", func(t *testing.T) {
+			sharedPg.Truncate(t)
+			scriptRoot := t.TempDir()
+			seedPlayer(t, contractPlayerID, 5)
+			seedEpisode(t, "ep-default-lang", 5, "ep-default-lang/{lang}.txt", true)
+			writeScript(t, scriptRoot, "ep-default-lang/ja.txt", "日本語本文")
+			writeScript(t, scriptRoot, "ep-default-lang/en.txt", "english body")
+
+			req := httptest.NewRequest(http.MethodGet, "/episodes/ep-default-lang/script", nil)
+			w := httptest.NewRecorder()
+			newStoryEngine(contractPlayerID, scriptRoot).ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code)
+			assert.Contains(t, w.Body.String(), "日本語本文")
+		})
 	})
 }

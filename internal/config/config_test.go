@@ -110,6 +110,62 @@ func TestFromEnv(t *testing.T) {
 			assert.Equal(t, "overload-party-dev:asia-northeast1:overload-party-db", cfg.CloudSQLConnectionName)
 		})
 
+		t.Run(`STORY_BUCKET が "local:/tmp/story" のとき、ローカルパス /tmp/story として読める`, func(t *testing.T) {
+			setEnv(t, mergeEnv(validEnv, map[string]string{"STORY_BUCKET": "local:/tmp/story"}))
+
+			cfg, err := FromEnv()
+
+			require.NoError(t, err)
+			assert.True(t, cfg.IsLocalStory())
+			assert.Equal(t, "/tmp/story", cfg.StoryLocalPath())
+		})
+
+		t.Run(`STORY_BUCKET が "scenario-story" のとき、ローカルパスにならない`, func(t *testing.T) {
+			setEnv(t, mergeEnv(validEnv, map[string]string{"STORY_BUCKET": "scenario-story"}))
+
+			cfg, err := FromEnv()
+
+			require.NoError(t, err)
+			assert.False(t, cfg.IsLocalStory())
+			assert.Empty(t, cfg.StoryLocalPath())
+		})
+
+		t.Run("OUTBOX_POLL_INTERVAL が 1ns のとき、その値が Config に反映される", func(t *testing.T) {
+			setEnv(t, mergeEnv(validEnv, map[string]string{"OUTBOX_POLL_INTERVAL": "1ns"}))
+
+			cfg, err := FromEnv()
+
+			require.NoError(t, err)
+			assert.Equal(t, time.Nanosecond, cfg.OutboxPollInterval)
+		})
+
+		t.Run("OUTBOX_BATCH_SIZE が 1 のとき、その値が Config に反映される", func(t *testing.T) {
+			setEnv(t, mergeEnv(validEnv, map[string]string{"OUTBOX_BATCH_SIZE": "1"}))
+
+			cfg, err := FromEnv()
+
+			require.NoError(t, err)
+			assert.Equal(t, 1, cfg.OutboxBatchSize)
+		})
+
+		t.Run("OUTBOX_FAILURE_THRESHOLD が 1 のとき、その値が Config に反映される", func(t *testing.T) {
+			setEnv(t, mergeEnv(validEnv, map[string]string{"OUTBOX_FAILURE_THRESHOLD": "1"}))
+
+			cfg, err := FromEnv()
+
+			require.NoError(t, err)
+			assert.Equal(t, 1, cfg.OutboxFailureThreshold)
+		})
+
+		t.Run("OUTBOX_VISIBILITY_TIMEOUT が 1ms のとき、その値が Config に反映される", func(t *testing.T) {
+			setEnv(t, mergeEnv(validEnv, map[string]string{"OUTBOX_VISIBILITY_TIMEOUT": "1ms"}))
+
+			cfg, err := FromEnv()
+
+			require.NoError(t, err)
+			assert.Equal(t, time.Millisecond, cfg.OutboxVisibilityTimeout)
+		})
+
 		invalidCases := []struct {
 			name    string
 			envs    map[string]string
@@ -250,7 +306,7 @@ func TestFromEnv(t *testing.T) {
 			},
 			{
 				name:    "OUTBOX_VISIBILITY_TIMEOUT が 1ms 未満のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_VISIBILITY_TIMEOUT": "500us"}),
+				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_VISIBILITY_TIMEOUT": "999us"}),
 				wantErr: "OUTBOX_VISIBILITY_TIMEOUT must be >= 1ms",
 			},
 		}

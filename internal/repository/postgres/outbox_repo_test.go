@@ -194,6 +194,16 @@ func TestClaimUnpublished(t *testing.T) {
 				failureThreshold:  failureThreshold,
 				wantPayloads:      []string{`{"k":"healthy"}`},
 			},
+			{
+				name: "failure_count が閾値の1つ手前の行があるとき、claim する",
+				seeds: []seed{
+					{payload: `{"k":"almost-exhausted"}`, insert: insertExhausted(failureThreshold - 1)},
+				},
+				limit:             10,
+				visibilityTimeout: defaultVisibility,
+				failureThreshold:  failureThreshold,
+				wantPayloads:      []string{`{"k":"almost-exhausted"}`},
+			},
 		}
 
 		for i, tt := range tests {

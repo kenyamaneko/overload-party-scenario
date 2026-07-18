@@ -340,3 +340,59 @@ func TestComplete(t *testing.T) {
 		})
 	})
 }
+
+func TestBuildOnboardingEvent(t *testing.T) {
+	t.Run("イベント構築", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			build    func(playerID, value string) (port.OutboxEvent, error)
+			playerID string
+			value    string
+		}{
+			{
+				name:     "表示名設定イベントは、プレイヤー ID が空のとき、構築できずエラーになる",
+				build:    buildOnboardingNameSetEvent,
+				playerID: "",
+				value:    "Kenya",
+			},
+			{
+				name:     "表示名設定イベントは、表示名が空のとき、構築できずエラーになる",
+				build:    buildOnboardingNameSetEvent,
+				playerID: "TST-P1",
+				value:    "",
+			},
+			{
+				name:     "陣営設定イベントは、プレイヤー ID が空のとき、構築できずエラーになる",
+				build:    buildOnboardingFactionSetEvent,
+				playerID: "",
+				value:    "SHE",
+			},
+			{
+				name:     "陣営設定イベントは、陣営が空のとき、構築できずエラーになる",
+				build:    buildOnboardingFactionSetEvent,
+				playerID: "TST-P1",
+				value:    "",
+			},
+			{
+				name:     "オンボード完了イベントは、プレイヤー ID が空のとき、構築できずエラーになる",
+				build:    buildPlayerOnboardedEvent,
+				playerID: "",
+				value:    "SHE",
+			},
+			{
+				name:     "オンボード完了イベントは、陣営が空のとき、構築できずエラーになる",
+				build:    buildPlayerOnboardedEvent,
+				playerID: "TST-P1",
+				value:    "",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ev, err := tt.build(tt.playerID, tt.value)
+				require.Error(t, err)
+				assert.Equal(t, port.OutboxEvent{}, ev)
+			})
+		}
+	})
+}
