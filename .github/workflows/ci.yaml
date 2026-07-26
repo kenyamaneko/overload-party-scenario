@@ -4,12 +4,6 @@ name: CI
 on:
   pull_request:
     branches: [main]
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - '.vscode/**'
-      - '.gitignore'
-      - 'LICENSE'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -19,7 +13,23 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.detect.outputs.changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect code change
+        id: detect
+        uses: kenyamaneko/overload-party-common/.github/actions/detect-code-change@main
+
   lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubicloud-standard-2
     timeout-minutes: 10
     steps:
@@ -50,6 +60,8 @@ jobs:
           GOPRIVATE: github.com/kenyamaneko/overload-party-common
 
   test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubicloud-standard-2
     timeout-minutes: 30
     steps:
@@ -95,6 +107,8 @@ jobs:
   # 起動) を要する `//go:build integration` テストの実行ジョブ。test ジョブとは独立に走らせ、
   # 既存の高速フィードバックを壊さない。
   test-integration:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubicloud-standard-2
     timeout-minutes: 30
     steps:
@@ -140,6 +154,8 @@ jobs:
           title: 結合テスト結果
 
   image-scan:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubicloud-standard-2
     timeout-minutes: 20
     steps:
@@ -165,6 +181,8 @@ jobs:
           severity: "CRITICAL,HIGH"
 
   codegen-sync:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubicloud-standard-2
     timeout-minutes: 10
     steps:
