@@ -112,8 +112,8 @@ func buildPlayerOnboardedOutbox(t *testing.T, playerID, initialFactionID string)
 }
 
 func TestPublishIntegration(t *testing.T) {
-	t.Run("Publisher の Pub/Sub 配信", func(t *testing.T) {
-		t.Run("onboarding-name-set を publish すると、subscriber に payload がそのまま届く", func(t *testing.T) {
+	t.Run("Pub/Sub への配信", func(t *testing.T) {
+		t.Run("onboarding-name-set を配信すると、購読側に送信内容がそのまま届く", func(t *testing.T) {
 			// outbox worker 送出経路の近似。bytes がそのまま subscriber まで届くことを固定する。
 			pub, topics := setupPublisher(t)
 			sub := sharedEmulator.Subscribe(t, topics.onboardingNameSet)
@@ -135,7 +135,7 @@ func TestPublishIntegration(t *testing.T) {
 			assert.Equal(t, "Kenya", decoded.Name)
 		})
 
-		t.Run("onboarding-faction-set を publish すると、送信 shape が保たれる", func(t *testing.T) {
+		t.Run("onboarding-faction-set を配信すると、送信内容が保たれる", func(t *testing.T) {
 			pub, topics := setupPublisher(t)
 			sub := sharedEmulator.Subscribe(t, topics.onboardingFactionSet)
 
@@ -155,7 +155,7 @@ func TestPublishIntegration(t *testing.T) {
 			assert.Equal(t, "SHE", decoded.InitialFactionID)
 		})
 
-		t.Run("player-onboarded を publish すると、送信 shape が保たれる", func(t *testing.T) {
+		t.Run("player-onboarded を配信すると、送信内容が保たれる", func(t *testing.T) {
 			pub, topics := setupPublisher(t)
 			sub := sharedEmulator.Subscribe(t, topics.playerOnboarded)
 
@@ -176,7 +176,7 @@ func TestPublishIntegration(t *testing.T) {
 			assert.Equal(t, "Tenki", decoded.InitialFactionID)
 		})
 
-		t.Run("未登録の event type を publish すると、unknown event type エラーになる", func(t *testing.T) {
+		t.Run("未登録のイベント種別を配信すると、エラーになる", func(t *testing.T) {
 			// outbox 行の eventType 設定ミスを worker の failure_count に積ませるため、
 			// 未登録 eventType は Pub/Sub SDK 到達前に adapter 側で弾く。
 			pub, _ := setupPublisher(t)
@@ -186,7 +186,7 @@ func TestPublishIntegration(t *testing.T) {
 			assert.Contains(t, err.Error(), "unknown event type")
 		})
 
-		t.Run("publish しなければ、subscriber は timeout する", func(t *testing.T) {
+		t.Run("配信しなければ、購読側はタイムアウトする", func(t *testing.T) {
 			// 正例テストの偽陽性除け。
 			_, topics := setupPublisher(t)
 			sub := sharedEmulator.Subscribe(t, topics.playerOnboarded)
