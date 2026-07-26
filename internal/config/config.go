@@ -39,6 +39,11 @@ type Config struct {
 	OutboxBatchSize         int
 	OutboxFailureThreshold  int
 	OutboxVisibilityTimeout time.Duration
+
+	// DatabaseIAMAuthEnabled は Cloud SQL への接続方式を切り替える。
+	DatabaseIAMAuthEnabled bool
+	// CloudSQLConnectionName は Cloud SQL インスタンスの接続名 (project:region:instance)。
+	CloudSQLConnectionName string
 }
 
 // FromEnv は環境変数から Config を構築する。
@@ -95,6 +100,22 @@ func FromEnv() (*Config, error) {
 	}
 	if cfg.InternalAuthSecret == "" {
 		return nil, fmt.Errorf("config: INTERNAL_AUTH_SECRET is required (gateway → scenario JWT 検証鍵)")
+	}
+
+	rawIAMAuth := os.Getenv("DATABASE_IAM_AUTH_ENABLED")
+	switch rawIAMAuth {
+	case "true":
+		cfg.DatabaseIAMAuthEnabled = true
+	case "false":
+		cfg.DatabaseIAMAuthEnabled = false
+	default:
+		return nil, fmt.Errorf("config: DATABASE_IAM_AUTH_ENABLED must be %q or %q, got %q", "true", "false", rawIAMAuth)
+	}
+	if cfg.DatabaseIAMAuthEnabled {
+		cfg.CloudSQLConnectionName = os.Getenv("CLOUDSQL_CONNECTION_NAME")
+		if cfg.CloudSQLConnectionName == "" {
+			return nil, fmt.Errorf("config: CLOUDSQL_CONNECTION_NAME is required when DATABASE_IAM_AUTH_ENABLED is true")
+		}
 	}
 
 	rawPoll := os.Getenv("OUTBOX_POLL_INTERVAL")
