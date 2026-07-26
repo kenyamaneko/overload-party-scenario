@@ -85,6 +85,7 @@ services:
       ENV: local
       PORT: "9007"
       DATABASE_CONN: host=postgres port=5432 dbname=scenario user=scenario password=scenario sslmode=disable
+      DATABASE_IAM_AUTH_ENABLED: "false"
       GOOGLE_CLOUD_PROJECT: overload-party-local
       GOOGLE_CLOUD_PROJECT_ID: overload-party-local
       INTERNAL_AUTH_SECRET: dev-secret-not-for-prod

@@ -30,12 +30,12 @@ func (r *StoryRepository) ListActiveEpisodes(ctx context.Context) ([]*domain.Epi
 		`SELECT e.episode_id, e.faction, e.episode_number, e.title_ja, e.title_en,
 		        e.required_level,
 		        COALESCE(ARRAY(
-		          SELECT faction_id FROM episode_required_factions
+		          SELECT faction_id FROM scenario.episode_required_factions
 		          WHERE episode_id = e.episode_id ORDER BY faction_id
 		        ), '{}') AS required_factions,
 		        e.required_episodes,
 		        e.script_path, e.thumbnail_path, e.sort_order, e.is_active, e.created_at
-		 FROM scenario_episodes e
+		 FROM scenario.scenario_episodes e
 		 WHERE e.is_active = true
 		 ORDER BY e.sort_order`)
 	if err != nil {
@@ -67,12 +67,12 @@ func (r *StoryRepository) FindEpisodeByID(ctx context.Context, episodeID string)
 		`SELECT e.episode_id, e.faction, e.episode_number, e.title_ja, e.title_en,
 		        e.required_level,
 		        COALESCE(ARRAY(
-		          SELECT faction_id FROM episode_required_factions
+		          SELECT faction_id FROM scenario.episode_required_factions
 		          WHERE episode_id = e.episode_id ORDER BY faction_id
 		        ), '{}') AS required_factions,
 		        e.required_episodes,
 		        e.script_path, e.thumbnail_path, e.sort_order, e.is_active, e.created_at
-		 FROM scenario_episodes e
+		 FROM scenario.scenario_episodes e
 		 WHERE e.episode_id = $1`,
 		episodeID)
 
@@ -94,7 +94,7 @@ func (r *StoryRepository) FindEpisodeByID(ctx context.Context, episodeID string)
 // GetCompletedEpisodeIDs はプレイヤーの完了済みエピソード ID 一覧を返す。
 func (r *StoryRepository) GetCompletedEpisodeIDs(ctx context.Context, playerID string) ([]string, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT episode_id FROM player_story_progress WHERE player_id = $1`,
+		`SELECT episode_id FROM scenario.player_story_progress WHERE player_id = $1`,
 		playerID)
 	if err != nil {
 		return nil, fmt.Errorf("query completed episodes: %w", err)
@@ -121,7 +121,7 @@ func (r *StoryRepository) GetUnlockContext(ctx context.Context, playerID string)
 		`SELECT
 		   pp.level,
 		   COALESCE(ARRAY(SELECT faction FROM player_factions WHERE player_id = $1), '{}'),
-		   COALESCE(ARRAY(SELECT episode_id FROM player_story_progress WHERE player_id = $1), '{}')
+		   COALESCE(ARRAY(SELECT episode_id FROM scenario.player_story_progress WHERE player_id = $1), '{}')
 		 FROM players p
 		 JOIN player_progression pp ON pp.player_id = p.player_id
 		 WHERE p.player_id = $1`,
@@ -153,7 +153,7 @@ func (r *StoryRepository) GetUnlockContext(ctx context.Context, playerID string)
 // MarkComplete はエピソードの完了を記録する (重複は ON CONFLICT でべき等)。
 func (r *StoryRepository) MarkComplete(ctx context.Context, playerID, episodeID string) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO player_story_progress (player_id, episode_id)
+		`INSERT INTO scenario.player_story_progress (player_id, episode_id)
 		 VALUES ($1, $2)
 		 ON CONFLICT (player_id, episode_id) DO NOTHING`,
 		playerID, episodeID,
