@@ -195,7 +195,7 @@ func TestClaimUnpublished(t *testing.T) {
 				wantPayloads:      []string{`{"k":"healthy"}`},
 			},
 			{
-				name: "failure_count が閾値の1つ手前の行があるとき、claim する",
+				name: "failure_count が閾値の1つ手前の行があるとき、取得する",
 				seeds: []seed{
 					{payload: `{"k":"almost-exhausted"}`, insert: insertExhausted(failureThreshold - 1)},
 				},
