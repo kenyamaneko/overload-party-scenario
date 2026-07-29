@@ -47,13 +47,13 @@ func TestStoryListEpisodesContract(t *testing.T) {
 			name       string
 			setup      func(t *testing.T, engine *gin.Engine)
 			wantStatus int
-			verify     func(t *testing.T, body apiscenario.EpisodesListResponse)
+			verify     func(t *testing.T, body apiscenario.EpisodesListResponse, rawBody string)
 		}{
 			{
 				name:       "エピソードが1件も無いとき、200で一覧は空になる",
 				setup:      func(t *testing.T, _ *gin.Engine) { seedPlayer(t, contractPlayerID, 10) },
 				wantStatus: http.StatusOK,
-				verify: func(t *testing.T, body apiscenario.EpisodesListResponse) {
+				verify: func(t *testing.T, body apiscenario.EpisodesListResponse, _ string) {
 					assert.Empty(t, body.Episodes)
 				},
 			},
@@ -64,7 +64,7 @@ func TestStoryListEpisodesContract(t *testing.T) {
 					seedEpisode(t, "ep-boundary", 5, "ep-boundary/{lang}.txt", true)
 				},
 				wantStatus: http.StatusOK,
-				verify: func(t *testing.T, body apiscenario.EpisodesListResponse) {
+				verify: func(t *testing.T, body apiscenario.EpisodesListResponse, _ string) {
 					require.Len(t, body.Episodes, 1)
 					assert.True(t, body.Episodes[0].IsUnlocked)
 					assert.Empty(t, body.Episodes[0].LockReasons)
@@ -77,7 +77,7 @@ func TestStoryListEpisodesContract(t *testing.T) {
 					seedEpisode(t, "ep-locked", 5, "ep-locked/{lang}.txt", true)
 				},
 				wantStatus: http.StatusOK,
-				verify: func(t *testing.T, body apiscenario.EpisodesListResponse) {
+				verify: func(t *testing.T, body apiscenario.EpisodesListResponse, _ string) {
 					require.Len(t, body.Episodes, 1)
 					require.Len(t, body.Episodes[0].LockReasons, 1)
 					reason := body.Episodes[0].LockReasons[0]
@@ -95,7 +95,7 @@ func TestStoryListEpisodesContract(t *testing.T) {
 					seedEpisode(t, "ep-inactive", 1, "ep-inactive/{lang}.txt", false)
 				},
 				wantStatus: http.StatusOK,
-				verify: func(t *testing.T, body apiscenario.EpisodesListResponse) {
+				verify: func(t *testing.T, body apiscenario.EpisodesListResponse, _ string) {
 					assert.Empty(t, body.Episodes)
 				},
 			},
@@ -109,30 +109,34 @@ func TestStoryListEpisodesContract(t *testing.T) {
 					require.Equal(t, http.StatusOK, w.Code)
 				},
 				wantStatus: http.StatusOK,
-				verify: func(t *testing.T, body apiscenario.EpisodesListResponse) {
+				verify: func(t *testing.T, body apiscenario.EpisodesListResponse, _ string) {
 					require.Len(t, body.Episodes, 1)
 					assert.True(t, body.Episodes[0].IsCompleted)
 				},
 			},
 			{
+				// episode_number と episode_id の昇順はいずれも sort_order の昇順と逆になるよう
+				// 値をずらし、sort_order 以外のカラムでも同じ結果になる弱いテストを避ける。
 				name: "複数エピソードは表示順の設定どおりに並んで返る",
 				setup: func(t *testing.T, _ *gin.Engine) {
 					seedPlayer(t, contractPlayerID, 10)
-					seedEpisodeWithOrder(t, "ep-second", 2, 1, "ep-second/{lang}.txt", 2, true)
-					seedEpisodeWithOrder(t, "ep-first", 1, 1, "ep-first/{lang}.txt", 1, true)
+					seedEpisodeWithOrder(t, "ep-zulu", 2, 1, "ep-zulu/{lang}.txt", 1, true)
+					seedEpisodeWithOrder(t, "ep-alpha", 1, 1, "ep-alpha/{lang}.txt", 2, true)
 				},
 				wantStatus: http.StatusOK,
-				verify: func(t *testing.T, body apiscenario.EpisodesListResponse) {
+				verify: func(t *testing.T, body apiscenario.EpisodesListResponse, _ string) {
 					require.Len(t, body.Episodes, 2)
-					assert.Equal(t, "ep-first", body.Episodes[0].EpisodeID)
-					assert.Equal(t, "ep-second", body.Episodes[1].EpisodeID)
+					assert.Equal(t, "ep-zulu", body.Episodes[0].EpisodeID)
+					assert.Equal(t, "ep-alpha", body.Episodes[1].EpisodeID)
 				},
 			},
 			{
 				name:       "account 由来のプレイヤー行が未同期のとき、500になる",
 				setup:      func(t *testing.T, _ *gin.Engine) {},
 				wantStatus: http.StatusInternalServerError,
-				verify:     func(t *testing.T, _ apiscenario.EpisodesListResponse) {},
+				verify: func(t *testing.T, _ apiscenario.EpisodesListResponse, rawBody string) {
+					assert.Contains(t, rawBody, "get unlock context")
+				},
 			},
 		}
 
@@ -148,7 +152,7 @@ func TestStoryListEpisodesContract(t *testing.T) {
 				assert.Equal(t, tt.wantStatus, w.Code)
 				var body apiscenario.EpisodesListResponse
 				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-				tt.verify(t, body)
+				tt.verify(t, body, w.Body.String())
 			})
 		}
 	})
@@ -163,6 +167,7 @@ func TestStoryCompleteEpisodeContract(t *testing.T) {
 			wantStatus        int
 			wantCompletion    int
 			wantBodyEpisodeID string
+			wantBodyContains  string
 		}{
 			{
 				name: "アンロック済みのエピソードを完了すると、200になり完了記録が1件残る",
@@ -174,6 +179,7 @@ func TestStoryCompleteEpisodeContract(t *testing.T) {
 				wantStatus:        http.StatusOK,
 				wantCompletion:    1,
 				wantBodyEpisodeID: "ep-unlocked",
+				wantBodyContains:  "episode completed",
 			},
 			{
 				name: "同じエピソードを二度完了しても、200のまま完了記録は1件に保たれる",
@@ -188,6 +194,7 @@ func TestStoryCompleteEpisodeContract(t *testing.T) {
 				wantStatus:        http.StatusOK,
 				wantCompletion:    1,
 				wantBodyEpisodeID: "ep-repeat",
+				wantBodyContains:  "episode completed",
 			},
 			{
 				name:              "存在しないエピソードを完了しようとすると、404になり記録は残らない",
@@ -196,6 +203,7 @@ func TestStoryCompleteEpisodeContract(t *testing.T) {
 				wantStatus:        http.StatusNotFound,
 				wantCompletion:    0,
 				wantBodyEpisodeID: "",
+				wantBodyContains:  "episode not found",
 			},
 			{
 				name: "非アクティブのエピソードを完了しようとすると、404になり記録は残らない",
@@ -207,6 +215,7 @@ func TestStoryCompleteEpisodeContract(t *testing.T) {
 				wantStatus:        http.StatusNotFound,
 				wantCompletion:    0,
 				wantBodyEpisodeID: "",
+				wantBodyContains:  "episode not found",
 			},
 			{
 				name: "レベル不足でロック中のエピソードを完了しようとすると、403になり記録は残らない",
@@ -218,6 +227,7 @@ func TestStoryCompleteEpisodeContract(t *testing.T) {
 				wantStatus:        http.StatusForbidden,
 				wantCompletion:    0,
 				wantBodyEpisodeID: "",
+				wantBodyContains:  "episode is locked",
 			},
 		}
 
@@ -232,6 +242,7 @@ func TestStoryCompleteEpisodeContract(t *testing.T) {
 
 				assert.Equal(t, tt.wantStatus, w.Code)
 				assert.Equal(t, tt.wantCompletion, countCompletedEpisodes(t, contractPlayerID))
+				assert.Contains(t, w.Body.String(), tt.wantBodyContains)
 				var body apiscenario.ScenarioCompleteResponse
 				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 				assert.Equal(t, tt.wantBodyEpisodeID, body.EpisodeID)
