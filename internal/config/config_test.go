@@ -306,7 +306,7 @@ func TestFromEnv(t *testing.T) {
 			},
 			{
 				name:    "OUTBOX_VISIBILITY_TIMEOUT が 1ms 未満のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_VISIBILITY_TIMEOUT": "999us"}),
+				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_VISIBILITY_TIMEOUT": "500us"}),
 				wantErr: "OUTBOX_VISIBILITY_TIMEOUT must be >= 1ms",
 			},
 		}
