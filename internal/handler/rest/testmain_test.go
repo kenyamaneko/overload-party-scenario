@@ -58,8 +58,7 @@ func seedRequiredFaction(t *testing.T, episodeID, factionID string) {
 	require.NoError(t, err)
 }
 
-// seedEpisodeWithOrder は episode_number / sort_order を指定してエピソードをシードする。
-// 固定順の seedEpisode では表現できない表示順・章番号の検証に使う。
+// seedEpisodeWithOrder は episode_number / sort_order を指定して 1 エピソードをシードする。
 func seedEpisodeWithOrder(t *testing.T, episodeID string, episodeNumber, requiredLevel int64, scriptPath string, sortOrder int64, isActive bool) {
 	t.Helper()
 	_, err := sharedPg.Pool.Exec(context.Background(),

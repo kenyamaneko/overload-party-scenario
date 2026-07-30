@@ -115,8 +115,6 @@ func TestStoryListEpisodesContract(t *testing.T) {
 				},
 			},
 			{
-				// episode_number と episode_id の昇順はいずれも sort_order の昇順と逆になるよう
-				// 値をずらし、sort_order 以外のカラムでも同じ結果になる弱いテストを避ける。
 				name: "複数エピソードは表示順の設定どおりに並んで返る",
 				setup: func(t *testing.T, _ *gin.Engine) {
 					seedPlayer(t, contractPlayerID, 10)
