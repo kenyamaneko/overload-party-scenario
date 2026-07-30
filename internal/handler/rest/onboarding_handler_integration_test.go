@@ -4,9 +4,13 @@ package rest
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,6 +23,7 @@ import (
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 	"github.com/kenyamaneko/overload-party-scenario/internal/repository/postgres"
 	"github.com/kenyamaneko/overload-party-scenario/internal/usecase/onboarding"
+	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
 // stubNameValidator は account 表示名バリデーション (外部境界) を固定結果に差し替える。
@@ -85,6 +90,17 @@ func countOutbox(t *testing.T) int {
 	return n
 }
 
+// fetchLatestOutboxEvent は outbox_events の最新 1 行の event_type と payload を読む。
+func fetchLatestOutboxEvent(t *testing.T) (string, []byte) {
+	t.Helper()
+	var eventType string
+	var payload []byte
+	require.NoError(t, sharedPg.Pool.QueryRow(context.Background(),
+		`SELECT event_type, payload FROM scenario.outbox_events ORDER BY created_at DESC LIMIT 1`,
+	).Scan(&eventType, &payload))
+	return eventType, payload
+}
+
 func TestOnboardingGetScriptContract(t *testing.T) {
 	t.Run("オンボーディングスクリプト取得の応答契約", func(t *testing.T) {
 		tests := []struct {
@@ -107,6 +123,14 @@ func TestOnboardingGetScriptContract(t *testing.T) {
 				wantStatus: http.StatusOK,
 				wantBody:   "プロローグ本文",
 			},
+			{
+				name: "スクリプトの保存先が読み取れない状態のとき、500 になる",
+				setup: func(t *testing.T, scriptRoot string) {
+					require.NoError(t, os.MkdirAll(filepath.Join(scriptRoot, "scripts/onboarding/ja.ks"), 0o755))
+				},
+				wantStatus: http.StatusInternalServerError,
+				wantBody:   "story script infrastructure error",
+			},
 		}
 
 		for _, tt := range tests {
@@ -123,6 +147,20 @@ func TestOnboardingGetScriptContract(t *testing.T) {
 				assert.Contains(t, w.Body.String(), tt.wantBody)
 			})
 		}
+
+		t.Run("lang を指定しないとき、日本語のスクリプトが返る", func(t *testing.T) {
+			sharedPg.Truncate(t)
+			scriptRoot := t.TempDir()
+			writeScript(t, scriptRoot, "scripts/onboarding/ja.ks", "日本語プロローグ")
+			writeScript(t, scriptRoot, "scripts/onboarding/en.ks", "english prologue")
+
+			req := httptest.NewRequest(http.MethodGet, "/onboarding/script", nil)
+			w := httptest.NewRecorder()
+			newOnboardingEngine(contractPlayerID, scriptRoot, stubNameValidator{}, stubPlayerReader{}).ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code)
+			assert.Contains(t, w.Body.String(), "日本語プロローグ")
+		})
 	})
 }
 
@@ -225,6 +263,37 @@ func TestOnboardingSelectFactionContract(t *testing.T) {
 				assert.Equal(t, tt.wantStatus, w.Code)
 				assert.Contains(t, w.Body.String(), tt.wantBody)
 				assert.Equal(t, tt.wantOutbox, countOutbox(t))
+			})
+		}
+	})
+}
+
+func TestOnboardingSelectFactionOutboxPayload(t *testing.T) {
+	t.Run("初期陣営選択", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			factionID string
+		}{
+			{name: "Tenki を選ぶと、204 で outbox の payload の陣営が Tenki になる", factionID: "Tenki"},
+			{name: "Sugar を選ぶと、204 で outbox の payload の陣営が Sugar になる", factionID: "Sugar"},
+			{name: "Tuners を選ぶと、204 で outbox の payload の陣営が Tuners になる", factionID: "Tuners"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				sharedPg.Truncate(t)
+
+				body := fmt.Sprintf(`{"initial_faction_id":%q}`, tt.factionID)
+				req := httptest.NewRequest(http.MethodPost, "/onboarding/faction", strings.NewReader(body))
+				w := httptest.NewRecorder()
+				newOnboardingEngine(contractPlayerID, t.TempDir(), stubNameValidator{}, stubPlayerReader{}).ServeHTTP(w, req)
+
+				require.Equal(t, http.StatusNoContent, w.Code)
+				eventType, payload := fetchLatestOutboxEvent(t)
+				assert.Equal(t, apiscenario.EventTypeOnboardingFactionSet, eventType)
+				var decoded apiscenario.OnboardingFactionSetEvent
+				require.NoError(t, json.Unmarshal(payload, &decoded))
+				assert.Equal(t, tt.factionID, decoded.InitialFactionID)
 			})
 		}
 	})

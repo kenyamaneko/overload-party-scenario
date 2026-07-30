@@ -123,11 +123,15 @@ func TestRunOnce(t *testing.T) {
 	t.Run("1回の配信実行", func(t *testing.T) {
 		okID := uuid.New()
 		ngID := uuid.New()
+		markFailID1 := uuid.New()
+		markFailID2 := uuid.New()
 
 		tests := []struct {
 			name             string
 			claimed          []port.ClaimedOutboxEvent
 			publishErrs      map[string]error // eventType → error
+			storeMarkErr     error
+			storeFailErr     error
 			wantMarked       []uuid.UUID
 			wantFailed       []uuid.UUID
 			wantPublishCalls int
@@ -164,11 +168,33 @@ func TestRunOnce(t *testing.T) {
 				wantFailed:       []uuid.UUID{ngID},
 				wantPublishCalls: 2,
 			},
+			{
+				name: "配信済みマークの保存に失敗しても、エラーにならず残りのイベントを配信する",
+				claimed: []port.ClaimedOutboxEvent{
+					{EventID: markFailID1, EventType: "mark-fail-event-type-1", Payload: []byte(`{}`), FailureCount: 0},
+					{EventID: markFailID2, EventType: "mark-fail-event-type-2", Payload: []byte(`{}`), FailureCount: 0},
+				},
+				storeMarkErr:     errors.New("mark storage down"),
+				wantMarked:       []uuid.UUID{markFailID1, markFailID2},
+				wantPublishCalls: 2,
+			},
+			{
+				name: "失敗記録の保存に失敗しても、エラーにならず残りのイベントを処理する",
+				claimed: []port.ClaimedOutboxEvent{
+					{EventID: ngID, EventType: "record-fail-event-type", Payload: []byte(`{}`), FailureCount: 0},
+					{EventID: okID, EventType: "record-fail-recovers-event-type", Payload: []byte(`{}`), FailureCount: 0},
+				},
+				publishErrs:      map[string]error{"record-fail-event-type": errors.New("nope")},
+				storeFailErr:     errors.New("failure storage down"),
+				wantMarked:       []uuid.UUID{okID},
+				wantFailed:       []uuid.UUID{ngID},
+				wantPublishCalls: 2,
+			},
 		}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				store := &fakeOutboxStore{claimed: tt.claimed}
+				store := &fakeOutboxStore{claimed: tt.claimed, markErr: tt.storeMarkErr, failErr: tt.storeFailErr}
 				pub := &fakeRawPublisher{errByEventType: tt.publishErrs}
 				s, err := New(store, pub, Config{
 					BatchSize: 10, FailureThreshold: 5, VisibilityTimeout: 30 * time.Second,

@@ -50,6 +50,23 @@ func TestGameConfigRepository(t *testing.T) {
 			require.Error(t, err)
 			assert.True(t, errors.Is(err, port.ErrNotFound), "expected ErrNotFound, got: %v", err)
 		})
+
+		t.Run("設定値が数値でないとき、エラーになる", func(t *testing.T) {
+			_, err := client.Collection("game_config").Doc("not_a_number").Set(ctx, map[string]any{"value": "abc"})
+			require.NoError(t, err)
+
+			_, err = repo.GetInt64(ctx, "not_a_number")
+			require.Error(t, err)
+		})
+
+		t.Run("呼び出しがキャンセル済みのとき、ErrNotFound 以外のエラーになる", func(t *testing.T) {
+			cancelCtx, cancel := context.WithCancel(ctx)
+			cancel()
+
+			_, err := repo.GetInt64(cancelCtx, "exp_win")
+			require.Error(t, err)
+			assert.False(t, errors.Is(err, port.ErrNotFound))
+		})
 	})
 }
 

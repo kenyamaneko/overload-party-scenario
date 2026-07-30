@@ -131,6 +131,17 @@ func TestFindEpisodeByID(t *testing.T) {
 			assert.Equal(t, []string{"SHE"}, got.RequiredFactions)
 		})
 
+		t.Run("非アクティブな ID のとき、非アクティブ状態のエピソードを返す", func(t *testing.T) {
+			seedEpisode(t, "ep_inactive", strPtr("SHE"), 1, "非アクティブ", "Inactive", 1,
+				nil, "s/ep_inactive/{lang}.json", 1, false)
+
+			got, err := repo.FindEpisodeByID(ctx, "ep_inactive")
+			require.NoError(t, err)
+			require.NotNil(t, got)
+			assert.False(t, got.IsActive)
+			assert.Equal(t, "非アクティブ", got.TitleJa)
+		})
+
 		notFoundCases := []struct {
 			name      string
 			episodeID string
