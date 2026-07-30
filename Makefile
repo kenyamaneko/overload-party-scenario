@@ -5,10 +5,10 @@ APP := overload-party-scenario
 build: ## Build Docker image
 	docker build -t $(APP) .
 
-test: ## Run unit tests (Testcontainers; requires Docker running)
+test: ## Run unit tests
 	go test ./... -count=1 -race
 
-test-integration: ## Run unit + integration tests (Pub/Sub emulator container; slower)
+test-integration: ## Run unit + integration tests (Testcontainers で Postgres / Pub/Sub emulator を起動するので Docker 必須。FIRESTORE_EMULATOR_HOST 設定時は Firestore も検証)
 	go test -tags=integration ./... -count=1 -race
 
 vet: ## Run go vet

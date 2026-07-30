@@ -71,20 +71,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Set up Java (Firestore emulator runtime)
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-      - name: Set up gcloud (Firestore emulator)
-        uses: google-github-actions/setup-gcloud@v2
-      - name: Install Firestore emulator component
-        run: gcloud components install cloud-firestore-emulator beta --quiet
-      - name: Start Firestore emulator
-        run: .github/scripts/ci/start-firestore-emulator.sh
-      # Testcontainers はテスト中に自動 pull するが、時間がかかりタイムアウトの原因になるため事前に取得する
-      - name: Pre-pull postgres image (Testcontainers)
-        run: docker pull postgres:16-alpine
       - name: Configure Go private modules
         uses: kenyamaneko/overload-party-common/.github/actions/setup-go-private-modules@main
         with:
@@ -94,8 +80,6 @@ jobs:
         run: go test -race -count=1 ./... -json | tee go-test-unit.json
         env:
           GOPRIVATE: github.com/kenyamaneko/overload-party-common
-          FIRESTORE_EMULATOR_HOST: localhost:9041
-          GOOGLE_CLOUD_PROJECT_ID: overload-party-test
       - name: Report test results
         if: ${{ !cancelled() }}
         uses: kenyamaneko/overload-party-common/.github/actions/go-test-report@main
