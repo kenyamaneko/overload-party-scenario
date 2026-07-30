@@ -58,6 +58,18 @@ func seedRequiredFaction(t *testing.T, episodeID, factionID string) {
 	require.NoError(t, err)
 }
 
+// seedEpisodeWithOrder は episode_number / sort_order を指定して 1 エピソードをシードする。
+func seedEpisodeWithOrder(t *testing.T, episodeID string, episodeNumber, requiredLevel int64, scriptPath string, sortOrder int64, isActive bool) {
+	t.Helper()
+	_, err := sharedPg.Pool.Exec(context.Background(),
+		`INSERT INTO scenario.scenario_episodes
+		   (episode_id, category, faction, episode_number, title_ja, title_en,
+		    required_level, required_episodes, script_path, sort_order, is_active)
+		 VALUES ($1, 'main', NULL, $2, 'タイトル', 'Title', $3, '{}', $4, $5, $6)`,
+		episodeID, episodeNumber, requiredLevel, scriptPath, sortOrder, isActive)
+	require.NoError(t, err)
+}
+
 // seedPlayer は 1 プレイヤーをシードする。
 func seedPlayer(t *testing.T, playerID string, level int64) {
 	t.Helper()
