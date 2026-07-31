@@ -4,6 +4,8 @@
 
 詳細は [機能仕様書](docs/FEATURE_SPEC.md) / [サービス設計書](docs/ARCHITECTURE.md) / [REST契約 (SSoT)](data/openapi.yaml) / [Pub/Sub契約 (SSoT)](data/asyncapi.yaml) / [データ設計書](docs/DATA_DESIGN.md) を参照。
 
+[テスト観点カタログ](https://kenyamaneko.github.io/overload-party-scenario/): テスト名から生成した、テスト済みの観点の一覧。
+
 ## アーキテクチャ概要
 
 ```
