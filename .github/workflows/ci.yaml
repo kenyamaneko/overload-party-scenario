@@ -4,10 +4,16 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  workflow_call:
+    outputs:
+      code-changed:
+        description: "'true' when the run touched code. The test results exist only then."
+        value: ${{ jobs.changes.outputs.code }}
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # main の run は GitHub Pages への deploy に繋がるため、後続の push で打ち切らない
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -86,6 +92,13 @@ jobs:
         with:
           json-path: go-test-unit.json
           title: 単体テスト結果
+      # 同一 run 内でテスト観点カタログを組むためだけに使うので保持は最短にする
+      - name: Upload unit test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-test-unit
+          path: go-test-unit.json
+          retention-days: 1
 
   # Pub/Sub emulator (testcontainers 経由で gcr.io/google.com/cloudsdktool/cloud-sdk:emulators を
   # 起動) を要する `//go:build integration` テストの実行ジョブ。test ジョブとは独立に走らせ、
@@ -136,6 +149,13 @@ jobs:
         with:
           json-path: go-test-integration.json
           title: 結合テスト結果
+      # 同一 run 内でテスト観点カタログを組むためだけに使うので保持は最短にする
+      - name: Upload integration test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-test-integration
+          path: go-test-integration.json
+          retention-days: 1
 
   image-scan:
     needs: changes
