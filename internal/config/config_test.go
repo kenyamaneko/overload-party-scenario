@@ -8,6 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testPublicKeyPEM は config が値をそのまま保持することの確認にだけ使うダミー。
+// 鍵としての妥当性は検証しないため、PEM の体裁だけ揃えている。
+const testPublicKeyPEM = "-----BEGIN PUBLIC KEY-----\ndummy-not-a-real-key\n-----END PUBLIC KEY-----\n"
+
 var allEnvKeys = []string{
 	"PORT",
 	"ENV",
@@ -18,7 +22,7 @@ var allEnvKeys = []string{
 	"ONBOARDING_FACTION_SET_TOPIC",
 	"PLAYER_ONBOARDED_TOPIC",
 	"ACCOUNT_BASE_URL",
-	"INTERNAL_AUTH_SECRET",
+	"INTERNAL_AUTH_PUBLIC_KEY",
 	"DATABASE_IAM_AUTH_ENABLED",
 	"CLOUDSQL_CONNECTION_NAME",
 	"OUTBOX_POLL_INTERVAL",
@@ -55,7 +59,7 @@ var validEnv = map[string]string{
 	"ONBOARDING_FACTION_SET_TOPIC": "onboarding-faction-set",
 	"PLAYER_ONBOARDED_TOPIC":       "player-onboarded",
 	"ACCOUNT_BASE_URL":             "http://localhost:9001",
-	"INTERNAL_AUTH_SECRET":         "test-internal-auth-secret-do-not-use-in-prod-xxxxx",
+	"INTERNAL_AUTH_PUBLIC_KEY":     testPublicKeyPEM,
 	"DATABASE_IAM_AUTH_ENABLED":    "false",
 	"OUTBOX_POLL_INTERVAL":         "1s",
 	"OUTBOX_BATCH_SIZE":            "100",
@@ -80,7 +84,7 @@ func TestFromEnv(t *testing.T) {
 			assert.Equal(t, "onboarding-faction-set", cfg.OnboardingFactionSetTopic)
 			assert.Equal(t, "player-onboarded", cfg.PlayerOnboardedTopic)
 			assert.Equal(t, "http://localhost:9001", cfg.AccountBaseURL)
-			assert.Equal(t, "test-internal-auth-secret-do-not-use-in-prod-xxxxx", cfg.InternalAuthSecret)
+			assert.Equal(t, testPublicKeyPEM, cfg.InternalAuthPublicKey)
 			assert.Equal(t, time.Second, cfg.OutboxPollInterval)
 			assert.Equal(t, 100, cfg.OutboxBatchSize)
 			assert.Equal(t, 5, cfg.OutboxFailureThreshold)
@@ -227,9 +231,9 @@ func TestFromEnv(t *testing.T) {
 				wantErr: "ACCOUNT_BASE_URL is required",
 			},
 			{
-				name:    "INTERNAL_AUTH_SECRET が未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"INTERNAL_AUTH_SECRET": ""}),
-				wantErr: "INTERNAL_AUTH_SECRET is required",
+				name:    "INTERNAL_AUTH_PUBLIC_KEY が未設定のとき、エラーになる",
+				envs:    mergeEnv(validEnv, map[string]string{"INTERNAL_AUTH_PUBLIC_KEY": ""}),
+				wantErr: "INTERNAL_AUTH_PUBLIC_KEY is required",
 			},
 			{
 				name:    "DATABASE_IAM_AUTH_ENABLED が未設定のとき、変数名を含むエラーになる",

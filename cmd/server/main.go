@@ -153,8 +153,12 @@ func run() error {
 		return fmt.Errorf("outbox ticker: %w", err)
 	}
 
+	internalAuthKey, err := internalauth.ParsePublicKeyPEM([]byte(cfg.InternalAuthPublicKey))
+	if err != nil {
+		return fmt.Errorf("INTERNAL_AUTH_PUBLIC_KEY is invalid: %w", err)
+	}
 	authVerifier := internalauth.NewVerifier(
-		internalauth.StaticHS256Resolver([]byte(cfg.InternalAuthSecret), internalauth.DefaultKeyID),
+		internalauth.StaticPublicKeyResolver(internalAuthKey, internalauth.DefaultKeyID),
 	)
 
 	srv := &http.Server{
