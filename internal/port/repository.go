@@ -6,12 +6,11 @@ import (
 	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
 )
 
-// StoryRepo はストーリーエピソードの永続化を抽象化する。
+// StoryRepo は scenario が所有するストーリーエピソードとプレイヤー進行の永続化を抽象化する。
 type StoryRepo interface {
 	ListActiveEpisodes(ctx context.Context) ([]*domain.Episode, error)
 	FindEpisodeByID(ctx context.Context, episodeID string) (*domain.Episode, error)
 	GetCompletedEpisodeIDs(ctx context.Context, playerID string) ([]string, error)
-	GetUnlockContext(ctx context.Context, playerID string) (*domain.UnlockContext, error)
 	MarkComplete(ctx context.Context, playerID, episodeID string) error
 }
 

@@ -23,7 +23,7 @@ scenario は以下の機能ドメインを所有する。
 | オンボーディングシナリオ | 初回起動時に一度だけ読ませる。各ステップ完了で `onboarding-name-set` / `onboarding-faction-set` / `player-onboarded` を outbox publish し、業務データの永続化は account の subscriber に委ねる（§10、[ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md)） |
 | 初期 faction 選択 hand-off | オンボーディング完了時に `player-onboarded` Pub/Sub イベントの `initial_faction_id` で card の初期パック配布へ伝播する（§10。`selected_faction` への永続化は先行する `onboarding-faction-set` で account に書込済み） |
 
-scenario は **scenario スキーマの DB 行と Firestore `game_config` を唯一の真実とし**、account スキーマ (`players.level` / `player_factions`) は cross-schema read のみで扱う。card / gateway を直接呼び出さない。account に対しては onboarding 内 REST 直叩き 2 経路（表示名 validate と Complete 時の faction 取得）に限り例外的に呼び出す（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md) / [ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md)）。
+scenario は **scenario スキーマの DB 行と Firestore `game_config` を唯一の真実とし**、プレイヤーのレベルと所有 faction は account の REST API から取得する。card / gateway を直接呼び出さない。account に対しては 3 経路（表示名 validate、Complete 時の faction 取得、アンロック判定の到達状況取得）に限り呼び出す（[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md) / [ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md)）。
 
 ### 非対象
 
@@ -76,11 +76,11 @@ scenario は **scenario スキーマの DB 行と Firestore `game_config` を唯
 
 | フィールド | ソース |
 |---|---|
-| `PlayerLevel` | `account.players.level` |
-| `OwnedFactions` | `account.player_factions` を集合化 |
+| `PlayerLevel` | account の player 取得 API |
+| `OwnedFactions` | account の faction 一覧 API を集合化 |
 | `CompletedEpisodes` | `scenario.player_story_progress` を集合化 |
 
-現実装は `players` / `player_factions` / `player_story_progress` を結合する単一クエリで取得する。account と scenario の DB 分離後は account クライアント経由に置換される予定。
+account への 2 回の問い合わせと scenario の完了記録の取得を usecase 層で束ねて組み立てる。account から取得できなかった場合はロック扱いにせず失敗させる。
 
 ### 2.4 LockReason
 

@@ -1,4 +1,4 @@
-// Package http はオンボーディング限定の account REST クライアントを提供する。
+// Package http は account が所有するデータを読み書きするための REST クライアントを提供する。
 package http
 
 import (
@@ -14,7 +14,7 @@ import (
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 )
 
-// AccountClient は scenario onboarding が account に対して同期書込・読み取りを行う唯一の経路。
+// AccountClient は scenario が account に対して同期書込・読み取りを行う唯一の経路。
 type AccountClient struct {
 	api *apiaccountclient.Client
 }
@@ -59,5 +59,29 @@ func (c *AccountClient) GetOnboardingPlayer(ctx context.Context) (port.AccountPl
 	return port.AccountPlayer{
 		PlayerID:       resp.PlayerID,
 		InitialFaction: resp.InitialFaction,
+	}, nil
+}
+
+// GetPlayerProgress はアンロック判定に使う level と保有 faction を account から取得する。
+func (c *AccountClient) GetPlayerProgress(ctx context.Context) (port.PlayerProgress, error) {
+	player, err := c.api.GetPlayer(ctx)
+	if errors.Is(err, apiaccountclient.ErrNotFound) {
+		return port.PlayerProgress{}, port.ErrPlayerNotFound
+	}
+	if err != nil {
+		return port.PlayerProgress{}, err
+	}
+
+	factions, err := c.api.ListFactions(ctx)
+	if errors.Is(err, apiaccountclient.ErrNotFound) {
+		return port.PlayerProgress{}, port.ErrPlayerNotFound
+	}
+	if err != nil {
+		return port.PlayerProgress{}, err
+	}
+
+	return port.PlayerProgress{
+		Level:         player.Level,
+		OwnedFactions: factions.Factions,
 	}, nil
 }

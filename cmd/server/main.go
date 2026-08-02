@@ -129,11 +129,11 @@ func run() error {
 		}()
 	}
 
-	storyRepo := postgres.NewStoryRepository(pool)
-	storySvc := story.New(storyRepo, scriptStore)
-	storyH := rest.NewStoryHandler(storySvc)
-
 	accountClient := adapterhttp.NewAccountClient(cfg.AccountBaseURL)
+
+	storyRepo := postgres.NewStoryRepository(pool)
+	storySvc := story.New(storyRepo, scriptStore, accountClient)
+	storyH := rest.NewStoryHandler(storySvc)
 
 	onboardingRepo := postgres.NewOnboardingRepository(pool)
 	onboardingSvc := onboarding.New(onboardingRepo, scriptStore, accountClient, accountClient)

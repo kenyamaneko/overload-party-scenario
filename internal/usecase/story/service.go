@@ -16,13 +16,15 @@ import (
 type Service struct {
 	storyRepo   port.StoryRepo
 	scriptStore port.ScriptStore
+	account     port.PlayerProgressReader
 }
 
 // New は Service を構築する。
-func New(storyRepo port.StoryRepo, scriptStore port.ScriptStore) *Service {
+func New(storyRepo port.StoryRepo, scriptStore port.ScriptStore, account port.PlayerProgressReader) *Service {
 	return &Service{
 		storyRepo:   storyRepo,
 		scriptStore: scriptStore,
+		account:     account,
 	}
 }
 
@@ -33,9 +35,9 @@ func (s *Service) ListEpisodes(ctx context.Context, playerID, lang string) ([]ap
 		return nil, fmt.Errorf("list episodes: %w", err)
 	}
 
-	uc, err := s.storyRepo.GetUnlockContext(ctx, playerID)
+	uc, err := s.loadUnlockContext(ctx, playerID)
 	if err != nil {
-		return nil, fmt.Errorf("get unlock context: %w", err)
+		return nil, err
 	}
 
 	return presenter.BuildEpisodesWithStatus(episodes, uc, lang), nil
@@ -85,14 +87,41 @@ func (s *Service) CompleteEpisode(ctx context.Context, playerID, episodeID strin
 }
 
 func (s *Service) validateUnlock(ctx context.Context, ep *domain.Episode, playerID string) error {
-	uc, err := s.storyRepo.GetUnlockContext(ctx, playerID)
+	uc, err := s.loadUnlockContext(ctx, playerID)
 	if err != nil {
-		return fmt.Errorf("get unlock context: %w", err)
+		return err
 	}
 	if reasons := ep.LockReasons(uc); len(reasons) > 0 {
 		return ErrEpisodeLocked
 	}
 	return nil
+}
+
+// loadUnlockContext は account が持つ到達状況と scenario が持つ完了記録からアンロック判定材料を組み立てる。
+func (s *Service) loadUnlockContext(ctx context.Context, playerID string) (*domain.UnlockContext, error) {
+	progress, err := s.account.GetPlayerProgress(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get player progress: %w", err)
+	}
+	completed, err := s.storyRepo.GetCompletedEpisodeIDs(ctx, playerID)
+	if err != nil {
+		return nil, fmt.Errorf("get completed episodes: %w", err)
+	}
+
+	ownedFactions := make(map[string]bool, len(progress.OwnedFactions))
+	for _, faction := range progress.OwnedFactions {
+		ownedFactions[faction] = true
+	}
+	completedEpisodes := make(map[string]bool, len(completed))
+	for _, episodeID := range completed {
+		completedEpisodes[episodeID] = true
+	}
+
+	return &domain.UnlockContext{
+		PlayerLevel:       progress.Level,
+		OwnedFactions:     ownedFactions,
+		CompletedEpisodes: completedEpisodes,
+	}, nil
 }
 
 // readScript は pathTemplate の {lang} を指定言語で置換し ScriptStore から読む。

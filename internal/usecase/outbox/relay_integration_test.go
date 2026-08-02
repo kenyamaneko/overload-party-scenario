@@ -34,7 +34,6 @@ func TestMain(m *testing.M) {
 
 	pg, err := postgrestest.Start(ctx,
 		postgrestest.WithSchemaFile("db/schema.sql"),
-		postgrestest.WithSchemaFile("internal/repository/postgres/testdata/account_stub.sql"),
 		postgrestest.WithSchema("scenario"),
 		postgrestest.WithSearchPath("scenario", "public"),
 	)

@@ -2,6 +2,7 @@ package story
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,14 +16,21 @@ import (
 type testEnv struct {
 	svc       *Service
 	storyRepo *mockStoryRepository
+	account   *fakePlayerProgressReader
 }
 
 func newTestEnv() *testEnv {
 	storyRepo := newMockStoryRepository()
+	account := &fakePlayerProgressReader{}
 	return &testEnv{
-		svc:       New(storyRepo, nil),
+		svc:       New(storyRepo, nil, account),
 		storyRepo: storyRepo,
+		account:   account,
 	}
+}
+
+func (e *testEnv) setPlayerProgress(level int64, ownedFactions ...string) {
+	e.account.progress = port.PlayerProgress{Level: level, OwnedFactions: ownedFactions}
 }
 
 func seedTestEpisodes(env *testEnv) {
@@ -84,8 +92,7 @@ func TestListEpisodes(t *testing.T) {
 		t.Run("レベル未達のとき、後続エピソードは level 理由でロックされる", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
-			env.storyRepo.SetPlayerLevel("p1", 5)
-			env.storyRepo.GrantFaction("p1", "SHE")
+			env.setPlayerProgress(5, "SHE")
 
 			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
 			require.NoError(t, err)
@@ -98,7 +105,7 @@ func TestListEpisodes(t *testing.T) {
 		t.Run("faction 未所有のとき、faction 理由を返す", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
-			env.storyRepo.SetPlayerLevel("p1", 10)
+			env.setPlayerProgress(10)
 
 			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
 			require.NoError(t, err)
@@ -112,8 +119,7 @@ func TestListEpisodes(t *testing.T) {
 		t.Run("前提エピソード未完了のとき、episode 理由を返す", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
-			env.storyRepo.SetPlayerLevel("p1", 10)
-			env.storyRepo.GrantFaction("p1", "SHE")
+			env.setPlayerProgress(10, "SHE")
 
 			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
 			require.NoError(t, err)
@@ -125,8 +131,7 @@ func TestListEpisodes(t *testing.T) {
 		t.Run("lang=en のとき、英語タイトルを返す", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
-			env.storyRepo.SetPlayerLevel("p1", 10)
-			env.storyRepo.GrantFaction("p1", "SHE")
+			env.setPlayerProgress(10, "SHE")
 
 			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "en")
 			require.NoError(t, err)
@@ -136,14 +141,22 @@ func TestListEpisodes(t *testing.T) {
 		t.Run("前提エピソード完了済みのとき、IsCompleted=true で後続をアンロックする", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
-			env.storyRepo.SetPlayerLevel("p1", 10)
-			env.storyRepo.GrantFaction("p1", "SHE")
+			env.setPlayerProgress(10, "SHE")
 			_ = env.storyRepo.MarkComplete(context.Background(), "p1", "she_ep1")
 
 			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
 			require.NoError(t, err)
 			assert.True(t, eps[0].IsCompleted)
 			assert.True(t, eps[1].IsUnlocked)
+		})
+
+		t.Run("account から到達状況を取得できないとき、一覧の取得はその理由付きで失敗する", func(t *testing.T) {
+			env := newTestEnv()
+			seedTestEpisodes(env)
+			env.account.err = errAccountUnavailable
+
+			_, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
+			assert.ErrorIs(t, err, errAccountUnavailable)
 		})
 	})
 }
@@ -159,8 +172,7 @@ func TestCompleteEpisode(t *testing.T) {
 			{
 				name: "アンロック済みのとき、完了できる (エラーにならない)",
 				setup: func(env *testEnv) {
-					env.storyRepo.SetPlayerLevel("p1", 5)
-					env.storyRepo.GrantFaction("p1", "SHE")
+					env.setPlayerProgress(5, "SHE")
 				},
 				episodeID: "she_ep1",
 				wantErr:   nil,
@@ -168,7 +180,7 @@ func TestCompleteEpisode(t *testing.T) {
 			{
 				name: "存在しないエピソードのとき、ErrEpisodeNotFound になる",
 				setup: func(env *testEnv) {
-					env.storyRepo.SetPlayerLevel("p1", 5)
+					env.setPlayerProgress(5)
 				},
 				episodeID: "nonexistent",
 				wantErr:   ErrEpisodeNotFound,
@@ -176,7 +188,7 @@ func TestCompleteEpisode(t *testing.T) {
 			{
 				name: "ロック中のエピソードのとき、ErrEpisodeLocked になる",
 				setup: func(env *testEnv) {
-					env.storyRepo.SetPlayerLevel("p1", 1)
+					env.setPlayerProgress(1)
 				},
 				episodeID: "she_ep1",
 				wantErr:   ErrEpisodeLocked,
@@ -184,10 +196,18 @@ func TestCompleteEpisode(t *testing.T) {
 			{
 				name: "非アクティブエピソードのとき、ErrEpisodeNotFound になる",
 				setup: func(env *testEnv) {
-					env.storyRepo.SetPlayerLevel("p1", 99)
+					env.setPlayerProgress(99)
 				},
 				episodeID: "inactive_ep",
 				wantErr:   ErrEpisodeNotFound,
+			},
+			{
+				name: "account から到達状況を取得できないとき、ロック扱いにせずその理由を返す",
+				setup: func(env *testEnv) {
+					env.account.err = errAccountUnavailable
+				},
+				episodeID: "she_ep1",
+				wantErr:   errAccountUnavailable,
 			},
 		}
 
@@ -205,8 +225,7 @@ func TestCompleteEpisode(t *testing.T) {
 		t.Run("同じエピソードを 2 回完了しても、完了 ID は 1 件のまま (冪等)", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
-			env.storyRepo.SetPlayerLevel("p1", 5)
-			env.storyRepo.GrantFaction("p1", "SHE")
+			env.setPlayerProgress(5, "SHE")
 
 			require.NoError(t, env.svc.CompleteEpisode(context.Background(), "p1", "she_ep1"))
 			require.NoError(t, env.svc.CompleteEpisode(context.Background(), "p1", "she_ep1"))
@@ -230,7 +249,7 @@ func TestGetScript(t *testing.T) {
 			{
 				name: "存在しないエピソードのとき、ErrEpisodeNotFound になる",
 				setup: func(env *testEnv) {
-					env.storyRepo.SetPlayerLevel("p1", 10)
+					env.setPlayerProgress(10)
 				},
 				episodeID: "nonexistent",
 				lang:      "ja",
@@ -239,7 +258,7 @@ func TestGetScript(t *testing.T) {
 			{
 				name: "非アクティブエピソードのとき、ErrEpisodeNotFound になる",
 				setup: func(env *testEnv) {
-					env.storyRepo.SetPlayerLevel("p1", 99)
+					env.setPlayerProgress(99)
 				},
 				episodeID: "inactive_ep",
 				lang:      "ja",
@@ -248,11 +267,20 @@ func TestGetScript(t *testing.T) {
 			{
 				name: "ロック中のエピソードのとき、ErrEpisodeLocked になる",
 				setup: func(env *testEnv) {
-					env.storyRepo.SetPlayerLevel("p1", 1)
+					env.setPlayerProgress(1)
 				},
 				episodeID: "she_ep1",
 				lang:      "ja",
 				wantErr:   ErrEpisodeLocked,
+			},
+			{
+				name: "account から到達状況を取得できないとき、ロック扱いにせずその理由を返す",
+				setup: func(env *testEnv) {
+					env.account.err = errAccountUnavailable
+				},
+				episodeID: "she_ep1",
+				lang:      "ja",
+				wantErr:   errAccountUnavailable,
 			},
 		}
 
@@ -270,11 +298,10 @@ func TestGetScript(t *testing.T) {
 		t.Run("要求言語のスクリプトが無いとき、フォールバックせず ErrScriptNotFound になる", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
-			env.storyRepo.SetPlayerLevel("p1", 10)
-			env.storyRepo.GrantFaction("p1", "SHE")
+			env.setPlayerProgress(10, "SHE")
 
 			fake := &fakeScriptStore{missing: true}
-			svc := New(env.storyRepo, fake)
+			svc := New(env.storyRepo, fake, env.account)
 
 			_, err := svc.GetScript(context.Background(), "p1", "she_ep1", "en")
 			require.Error(t, err)
@@ -283,6 +310,18 @@ func TestGetScript(t *testing.T) {
 			assert.Equal(t, "stories/en/she_ep1.ks", fake.calls[0])
 		})
 	})
+}
+
+var errAccountUnavailable = errors.New("account unavailable")
+
+// fakePlayerProgressReader は account から返る到達状況 (外部境界) を注入値に差し替える。
+type fakePlayerProgressReader struct {
+	progress port.PlayerProgress
+	err      error
+}
+
+func (f *fakePlayerProgressReader) GetPlayerProgress(context.Context) (port.PlayerProgress, error) {
+	return f.progress, f.err
 }
 
 type fakeScriptStore struct {

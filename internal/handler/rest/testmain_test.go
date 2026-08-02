@@ -4,10 +4,14 @@ package rest
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	apiaccount "github.com/kenyamaneko/overload-party-account/packages/api-account"
+	"github.com/kenyamaneko/overload-party-account/packages/api-account/apiaccountserverfake"
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/repository/postgres/postgrestest"
 )
@@ -18,10 +22,24 @@ var sharedPg *postgrestest.Postgres
 func TestMain(m *testing.M) {
 	os.Exit(postgrestest.RunMain(m, &sharedPg,
 		postgrestest.WithSchemaFile("db/schema.sql"),
-		postgrestest.WithSchemaFile("internal/repository/postgres/testdata/account_stub.sql"),
 		postgrestest.WithSchema("scenario"),
 		postgrestest.WithSearchPath("scenario", "public"),
 	))
+}
+
+// newAccountFake は account を HTTP 境界で偽サーバに差し替え、プレイヤーの到達状況を固定応答にする。
+func newAccountFake(t *testing.T, level int64, ownedFactions ...string) *apiaccountserverfake.Server {
+	t.Helper()
+	factions := append([]string{}, ownedFactions...)
+	srv := apiaccountserverfake.NewServer()
+	srv.GetPlayerFn = func() (int, any) {
+		return http.StatusOK, apiaccount.PlayerResponse{PlayerID: contractPlayerID, Level: level}
+	}
+	srv.ListFactionsFn = func() (int, any) {
+		return http.StatusOK, apiaccount.FactionListing{Factions: factions}
+	}
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 // seedEpisode は 1 エピソードをシードする。
@@ -67,16 +85,5 @@ func seedEpisodeWithOrder(t *testing.T, episodeID string, episodeNumber, require
 		    required_level, required_episodes, script_path, sort_order, is_active)
 		 VALUES ($1, 'main', NULL, $2, 'タイトル', 'Title', $3, '{}', $4, $5, $6)`,
 		episodeID, episodeNumber, requiredLevel, scriptPath, sortOrder, isActive)
-	require.NoError(t, err)
-}
-
-// seedPlayer は 1 プレイヤーをシードする。
-func seedPlayer(t *testing.T, playerID string, level int64) {
-	t.Helper()
-	ctx := context.Background()
-	_, err := sharedPg.Pool.Exec(ctx, `INSERT INTO scenario.players (player_id) VALUES ($1)`, playerID)
-	require.NoError(t, err)
-	_, err = sharedPg.Pool.Exec(ctx,
-		`INSERT INTO scenario.player_progression (player_id, level) VALUES ($1, $2)`, playerID, level)
 	require.NoError(t, err)
 }

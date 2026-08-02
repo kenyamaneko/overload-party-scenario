@@ -20,6 +20,12 @@ type AccountPlayer struct {
 	InitialFaction *string
 }
 
+// PlayerProgress はエピソードのアンロック判定に使うプレイヤーの到達状況。
+type PlayerProgress struct {
+	Level         int64
+	OwnedFactions []string
+}
+
 // OnboardingNameValidator はオンボーディング内 name 入力ステップの account 表示名バリデーションポート。
 type OnboardingNameValidator interface {
 	ValidateOnboardingName(ctx context.Context, name string) error
@@ -28,4 +34,9 @@ type OnboardingNameValidator interface {
 // OnboardingPlayerReader はオンボード Complete 時の初期 faction を account から取得するポート。
 type OnboardingPlayerReader interface {
 	GetOnboardingPlayer(ctx context.Context) (AccountPlayer, error)
+}
+
+// PlayerProgressReader はアンロック判定に必要な到達状況を account から取得するポート。
+type PlayerProgressReader interface {
+	GetPlayerProgress(ctx context.Context) (PlayerProgress, error)
 }
