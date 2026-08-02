@@ -60,26 +60,5 @@ func seedProgress(t *testing.T, playerID, episodeID string) {
 	require.NoError(t, err)
 }
 
-// seedPlayer は account stub の scenario.players / player_progression にレコードを投入する。
-func seedPlayer(t *testing.T, playerID string, level int64) {
-	t.Helper()
-	_, err := sharedPg.Pool.Exec(context.Background(),
-		`INSERT INTO scenario.players (player_id) VALUES ($1)`, playerID)
-	require.NoError(t, err)
-	_, err = sharedPg.Pool.Exec(context.Background(),
-		`INSERT INTO scenario.player_progression (player_id, level) VALUES ($1, $2)`,
-		playerID, level)
-	require.NoError(t, err)
-}
-
-// seedPlayerFaction は account stub の scenario.player_factions にレコードを投入する。
-func seedPlayerFaction(t *testing.T, playerID, faction string) {
-	t.Helper()
-	_, err := sharedPg.Pool.Exec(context.Background(),
-		`INSERT INTO scenario.player_factions (player_id, faction) VALUES ($1, $2)`,
-		playerID, faction)
-	require.NoError(t, err)
-}
-
 // strPtr は string リテラルへのポインタを返す短縮ヘルパ。
 func strPtr(s string) *string { return &s }

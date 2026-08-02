@@ -223,49 +223,6 @@ func TestGetCompletedEpisodeIDs(t *testing.T) {
 	})
 }
 
-func TestGetUnlockContext(t *testing.T) {
-	repo := postgres.NewStoryRepository(sharedPg.Pool)
-	ctx := context.Background()
-
-	t.Run("アンロックコンテキストの取得", func(t *testing.T) {
-		t.Run("player + faction + progress があるとき、集約して返す", func(t *testing.T) {
-			sharedPg.Truncate(t)
-			seedPlayer(t, testPlayer1, 12)
-			seedPlayerFaction(t, testPlayer1, "SHE")
-			seedPlayerFaction(t, testPlayer1, "Tenki")
-			seedEpisode(t, "ep1", nil, 1, "JA", "EN", 1, nil, "s/ep1/{lang}.json", 1, true)
-			seedProgress(t, testPlayer1, "ep1")
-
-			got, err := repo.GetUnlockContext(ctx, testPlayer1)
-			require.NoError(t, err)
-			require.NotNil(t, got)
-			assert.Equal(t, int64(12), got.PlayerLevel)
-			assert.Equal(t, map[string]bool{"SHE": true, "Tenki": true}, got.OwnedFactions)
-			assert.Len(t, got.CompletedEpisodes, 1)
-		})
-
-		t.Run("faction / progress が無くても、level は返る", func(t *testing.T) {
-			sharedPg.Truncate(t)
-			seedPlayer(t, testPlayer1, 3)
-
-			got, err := repo.GetUnlockContext(ctx, testPlayer1)
-			require.NoError(t, err)
-			require.NotNil(t, got)
-			assert.Equal(t, int64(3), got.PlayerLevel)
-			assert.Equal(t, map[string]bool{}, got.OwnedFactions)
-			assert.Empty(t, got.CompletedEpisodes)
-		})
-
-		t.Run("存在しないプレイヤーのとき、エラーになる", func(t *testing.T) {
-			sharedPg.Truncate(t)
-			seedPlayer(t, testPlayer2, 1)
-
-			_, err := repo.GetUnlockContext(ctx, testPlayer1)
-			assert.Error(t, err)
-		})
-	})
-}
-
 func TestStoryRepository_MarkComplete(t *testing.T) {
 	repo := postgres.NewStoryRepository(sharedPg.Pool)
 	ctx := context.Background()

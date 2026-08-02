@@ -4,7 +4,7 @@
 
 サービス概要・起動手順は [../README.md](../README.md)、機能仕様は [FEATURE_SPEC.md](FEATURE_SPEC.md)、REST エンドポイントは [../data/openapi.yaml](../data/openapi.yaml) (SSoT)、Pub/Sub イベントは [../data/asyncapi.yaml](../data/asyncapi.yaml) (SSoT)、テーブル定義は [DATA_DESIGN.md](DATA_DESIGN.md) を参照。
 
-## Scenario の責務境界 (SSoT と cross-schema read)
+## Scenario の責務境界 (SSoT と account への問い合わせ)
 
 scenario は **ストーリーエピソード定義とプレイヤー進行** の single source of truth だが、**プレイヤーのレベルや所有 faction** の authoritative owner ではない。
 
@@ -14,12 +14,12 @@ scenario は **ストーリーエピソード定義とプレイヤー進行** �
 | エピソード必須 faction | `scenario.episode_required_factions` | 自サービス内で完結 |
 | プレイヤー進行 | `scenario.player_story_progress` | 自サービス内で完結 |
 | ゲーム設定値 (`game_config`) | Firestore (プロジェクト共通) | scenario は read のみ |
-| プレイヤーレベル | `account.players.level` | cross-schema read でアンロック判定に使用 |
-| プレイヤー所有 faction | `account.player_factions` | cross-schema read でアンロック判定に使用 |
+| プレイヤーレベル | account | account の REST API 経由でアンロック判定に使用 |
+| プレイヤー所有 faction | account | account の REST API 経由でアンロック判定に使用 |
 
-account と scenario は同一 DB クラスタ内の別スキーマに分かれており、現状は scenario の PostgreSQL プール経由で `players` / `player_factions` を直接 JOIN している (`postgres.StoryRepository.GetUnlockContext`)。ADR-014 の方針では scenario と account の DB 分離が予定されており、その段階で account クライアント経由 (HTTP / gRPC) に置換する。
+scenario の PostgreSQL プールが触るのは `scenario` スキーマだけで、account が所有するテーブルは読まない。所有者にしか分からないデータは所有サービスの API から取る、という原則をアンロック判定にも通している。
 
-scenario は他サービスを **直接呼ばない**。副作用を他サービスに伝えるのは `player-onboarded` Pub/Sub publish のみで、account / card / gateway は自分の read model を購読で更新する（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) で旧 `faction-selected` を統合）。
+scenario が他サービスを同期で呼ぶのは account の read だけで、副作用を他サービスに伝えるのは `player-onboarded` Pub/Sub publish のみ。account / card / gateway は自分の read model を購読で更新する（[ADR-022](../../overload-party-common/docs/adr/022-faction-selected-decomposition.md) で旧 `faction-selected` を統合）。
 
 ## レイヤー分割
 
@@ -119,11 +119,13 @@ CLAUDE.md の「GCS エラーを握りつぶさない。日本語へのフォー
 
 | 条件 | データソース | LockReason.type |
 |---|---|---|
-| プレイヤーレベル | `players.level` (account スキーマ) | `level` |
-| 所有ファクション | `player_factions` (account スキーマ) | `faction` |
+| プレイヤーレベル | account の player 取得 API | `level` |
+| 所有ファクション | account の faction 一覧 API | `faction` |
 | 前提エピソード完了 | `player_story_progress` (scenario スキーマ) | `episode` |
 
-`StoryUnlockContext` は `StoryRepo.GetUnlockContext` で 1 リクエストあたり 1 回だけ pull する（`ListEpisodes` 内では全エピソードで共有、`GetScript` / `CompleteEpisode` では `validateUnlock` から単発で取得）。キャッシュはしない。
+判定材料は usecase 層 (`story.Service.loadUnlockContext`) が account と scenario から取得して束ねる。1 リクエストあたり 1 回だけ pull する（`ListEpisodes` 内では全エピソードで共有、`GetScript` / `CompleteEpisode` では `validateUnlock` から単発で取得）。キャッシュはしない。
+
+account への問い合わせが失敗したときは、ロック扱いに丸めず 500 を返す。プレイヤーの到達状況が分からない状態と、条件を満たしていない状態を混同しないため。
 
 **意図**: 未達条件を 1 つでも返せば即 `ErrEpisodeLocked` にする実装は `GetScript` / `CompleteEpisode` の validate 側だけで、`ListEpisodes` は全未達条件を reasons として返す。これは UX 差（一覧では「なぜロックされているか」を全部見せたい、取得時は 403 を返して終わり）をサービス層で直接表現するため。
 
@@ -202,7 +204,7 @@ scenario は「オンボ完了フラグ」と「スクリプト」の SSoT を�
 
 ### account 直叩きの構造的封じ込め
 
-scenario → account の HTTP 直叩きは「拡散させない」ことが許容条件と一体になっている。`internal/adapter/http/accountclient.go` を `packages/` 外に置いて他リポからの import を構造的に禁じ、usecase 層には `port.OnboardingNameValidator` / `port.OnboardingPlayerReader` という **ユースケース名を冠した狭い port** だけを露出させる。汎用的な `AccountClient` を usecase が引き取らないため、onboarding 以外の経路で account を叩く実装は構造的に書けない。account の業務エラー (400 → `ErrInvalidName`、404 → `ErrPlayerNotFound`) は adapter 内で port sentinel に翻訳し、HTTP の概念を usecase より上に漏らさない。
+scenario → account の HTTP 呼び出しは「拡散させない」ことが許容条件と一体になっている。`internal/adapter/http/accountclient.go` を `packages/` 外に置いて他リポからの import を構造的に禁じ、usecase 層には `port.OnboardingNameValidator` / `port.OnboardingPlayerReader` / `port.PlayerProgressReader` という **用途を冠した狭い port** だけを露出させる。汎用的な `AccountClient` を usecase が引き取らないため、用途を宣言せずに account を叩く実装は構造的に書けない。account の業務エラー (400 → `ErrInvalidName`、404 → `ErrPlayerNotFound`) は adapter 内で port sentinel に翻訳し、HTTP の概念を usecase より上に漏らさない。
 
 ### 進行状態の取得経路
 
@@ -220,7 +222,7 @@ scenario は「静かに no-op で起動する」「nil publisher がログだ�
 - `STORY_BUCKET` 必須
 - `STORY_BUCKET=local:<path>` のとき `<path>` 非空
 - `GOOGLE_CLOUD_PROJECT_ID` 必須（Pub/Sub publish 先 + Firestore game_config 読み取り先で共通利用）
-- `ACCOUNT_BASE_URL` 必須（onboarding 限定の account 直叩き先 = name validate と Complete 時の faction 取得。未設定だと name 入力ステップと完了 publish がサイレントに 5xx 化するため起動時に拒否。[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md) / [ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md)）
+- `ACCOUNT_BASE_URL` 必須（account への問い合わせ先 = name validate、Complete 時の faction 取得、アンロック判定の到達状況取得。未設定だと name 入力ステップ・完了 publish・エピソード一覧がサイレントに 5xx 化するため起動時に拒否。[ADR-025](../../overload-party-common/docs/adr/025-onboarding-name-via-rest-and-cross-service-http.md) / [ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md)）
 
 ### outbox worker 構築時のゼロ値拒否と unknown topic 明示エラー
 

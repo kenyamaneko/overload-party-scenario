@@ -115,41 +115,6 @@ func (r *StoryRepository) GetCompletedEpisodeIDs(ctx context.Context, playerID s
 	return ids, nil
 }
 
-// GetUnlockContext は episode アンロック判定に必要なプレイヤーコンテキストを返す。
-func (r *StoryRepository) GetUnlockContext(ctx context.Context, playerID string) (*domain.UnlockContext, error) {
-	row := r.pool.QueryRow(ctx,
-		`SELECT
-		   pp.level,
-		   COALESCE(ARRAY(SELECT faction FROM player_factions WHERE player_id = $1), '{}'),
-		   COALESCE(ARRAY(SELECT episode_id FROM scenario.player_story_progress WHERE player_id = $1), '{}')
-		 FROM players p
-		 JOIN player_progression pp ON pp.player_id = p.player_id
-		 WHERE p.player_id = $1`,
-		playerID)
-
-	var level int64
-	var factions []string
-	var episodes []string
-	if err := row.Scan(&level, &factions, &episodes); err != nil {
-		return nil, fmt.Errorf("query unlock context: %w", err)
-	}
-
-	factionSet := make(map[string]bool, len(factions))
-	for _, f := range factions {
-		factionSet[f] = true
-	}
-	episodeSet := make(map[string]bool, len(episodes))
-	for _, e := range episodes {
-		episodeSet[e] = true
-	}
-
-	return &domain.UnlockContext{
-		PlayerLevel:       level,
-		OwnedFactions:     factionSet,
-		CompletedEpisodes: episodeSet,
-	}, nil
-}
-
 // MarkComplete はエピソードの完了を記録する (重複は ON CONFLICT でべき等)。
 func (r *StoryRepository) MarkComplete(ctx context.Context, playerID, episodeID string) error {
 	_, err := r.pool.Exec(ctx,

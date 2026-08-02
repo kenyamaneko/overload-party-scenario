@@ -21,7 +21,6 @@ type Episode struct {
 }
 
 // UnlockContext はアンロック判定に必要なプレイヤー状態のスナップショット。
-// players + player_factions + player_story_progress を集約した値オブジェクト。
 type UnlockContext struct {
 	PlayerLevel       int64
 	OwnedFactions     map[string]bool

@@ -41,14 +41,17 @@ func (stubStoryRepo) GetCompletedEpisodeIDs(context.Context, string) ([]string, 
 	return []string{}, nil
 }
 
-// GetUnlockContext は空のアンロック状態を返す。
-func (stubStoryRepo) GetUnlockContext(context.Context, string) (*domain.UnlockContext, error) {
-	return &domain.UnlockContext{}, nil
-}
-
 // MarkComplete は常に成功する。
 func (stubStoryRepo) MarkComplete(context.Context, string, string) error {
 	return nil
+}
+
+// stubPlayerProgressReader は zero value の到達状況を返す port.PlayerProgressReader スタブ。
+type stubPlayerProgressReader struct{}
+
+// GetPlayerProgress は zero value の到達状況を返す。
+func (stubPlayerProgressReader) GetPlayerProgress(context.Context) (port.PlayerProgress, error) {
+	return port.PlayerProgress{}, nil
 }
 
 // stubScriptStore は固定のスクリプト本文を返す port.ScriptStore スタブ。
@@ -90,7 +93,7 @@ func (stubPlayerReader) GetOnboardingPlayer(context.Context) (port.AccountPlayer
 
 // newTestRouter はスタブ port で組んだ実 usecase / handler で router を構築する。
 func newTestRouter(verifier internalauth.Verifier) *gin.Engine {
-	storyS := story.New(stubStoryRepo{}, stubScriptStore{})
+	storyS := story.New(stubStoryRepo{}, stubScriptStore{}, stubPlayerProgressReader{})
 	onboardingS := onboarding.New(stubOnboardingRepo{}, stubScriptStore{}, stubNameValidator{}, stubPlayerReader{})
 	return New(rest.NewStoryHandler(storyS), rest.NewOnboardingHandler(onboardingS), verifier)
 }
