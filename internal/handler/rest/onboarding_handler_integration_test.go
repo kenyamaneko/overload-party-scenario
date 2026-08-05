@@ -110,13 +110,13 @@ func TestOnboardingGetScriptContract(t *testing.T) {
 			wantBody   string
 		}{
 			{
-				name:       "スクリプトが無いとき、404 になる",
+				name:       "スクリプトが無いとき、404になる",
 				setup:      func(t *testing.T, _ string) {},
 				wantStatus: http.StatusNotFound,
 				wantBody:   "script not found",
 			},
 			{
-				name: "スクリプトが在るとき、200 で本文を返す",
+				name: "スクリプトが在るとき、200で本文を返す",
 				setup: func(t *testing.T, scriptRoot string) {
 					writeScript(t, scriptRoot, "scripts/onboarding/ja.ks", "プロローグ本文")
 				},
@@ -124,7 +124,7 @@ func TestOnboardingGetScriptContract(t *testing.T) {
 				wantBody:   "プロローグ本文",
 			},
 			{
-				name: "スクリプトの保存先が読み取れない状態のとき、500 になる",
+				name: "スクリプトの保存先が読み取れない状態のとき、500になる",
 				setup: func(t *testing.T, scriptRoot string) {
 					require.NoError(t, os.MkdirAll(filepath.Join(scriptRoot, "scripts/onboarding/ja.ks"), 0o755))
 				},
@@ -148,7 +148,7 @@ func TestOnboardingGetScriptContract(t *testing.T) {
 			})
 		}
 
-		t.Run("lang を指定しないとき、日本語のスクリプトが返る", func(t *testing.T) {
+		t.Run("langを指定しないとき、日本語のスクリプトが返る", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			scriptRoot := t.TempDir()
 			writeScript(t, scriptRoot, "scripts/onboarding/ja.ks", "日本語プロローグ")
@@ -175,7 +175,7 @@ func TestOnboardingUpdateNameContract(t *testing.T) {
 			wantOutbox int
 		}{
 			{
-				name:       "account が表示名を拒否するとき、400 になる",
+				name:       "accountが表示名を拒否するとき、400になる",
 				validator:  stubNameValidator{err: port.ErrInvalidName},
 				body:       `{"name":"x"}`,
 				wantStatus: http.StatusBadRequest,
@@ -183,7 +183,7 @@ func TestOnboardingUpdateNameContract(t *testing.T) {
 				wantOutbox: 0,
 			},
 			{
-				name:       "account に player が無いとき、404 になる",
+				name:       "accountにplayerが無いとき、404になる",
 				validator:  stubNameValidator{err: port.ErrPlayerNotFound},
 				body:       `{"name":"Kenya"}`,
 				wantStatus: http.StatusNotFound,
@@ -191,14 +191,14 @@ func TestOnboardingUpdateNameContract(t *testing.T) {
 				wantOutbox: 0,
 			},
 			{
-				name:       "JSON が壊れているとき、400 になる",
+				name:       "JSONが壊れているとき、400になる",
 				validator:  stubNameValidator{},
 				body:       `{"name":`,
 				wantStatus: http.StatusBadRequest,
 				wantOutbox: 0,
 			},
 			{
-				name:       "正常系のとき、204 で onboarding-name-set を outbox へ積む",
+				name:       "正常系のとき、204でonboarding-name-setをoutboxへ積む",
 				validator:  stubNameValidator{},
 				body:       `{"name":"Kenya"}`,
 				wantStatus: http.StatusNoContent,
@@ -223,7 +223,7 @@ func TestOnboardingUpdateNameContract(t *testing.T) {
 }
 
 func TestOnboardingSelectFactionContract(t *testing.T) {
-	t.Run("初期 faction 選択の応答契約", func(t *testing.T) {
+	t.Run("初期faction選択の応答契約", func(t *testing.T) {
 		tests := []struct {
 			name       string
 			body       string
@@ -232,20 +232,20 @@ func TestOnboardingSelectFactionContract(t *testing.T) {
 			wantOutbox int
 		}{
 			{
-				name:       "SelectableFactions 外のとき、400 になる",
+				name:       "SelectableFactions外のとき、400になる",
 				body:       `{"initial_faction_id":"Neutral"}`,
 				wantStatus: http.StatusBadRequest,
 				wantBody:   "invalid initial faction",
 				wantOutbox: 0,
 			},
 			{
-				name:       "JSON が壊れているとき、400 になる",
+				name:       "JSONが壊れているとき、400になる",
 				body:       `{"initial_faction_id":`,
 				wantStatus: http.StatusBadRequest,
 				wantOutbox: 0,
 			},
 			{
-				name:       "正常系のとき、204 で onboarding-faction-set を outbox へ積む",
+				name:       "正常系のとき、204でonboarding-faction-setをoutboxへ積む",
 				body:       `{"initial_faction_id":"SHE"}`,
 				wantStatus: http.StatusNoContent,
 				wantOutbox: 1,
@@ -274,9 +274,9 @@ func TestOnboardingSelectFactionOutboxPayload(t *testing.T) {
 			name      string
 			factionID string
 		}{
-			{name: "Tenki を選ぶと、204 で outbox の payload の陣営が Tenki になる", factionID: "Tenki"},
-			{name: "Sugar を選ぶと、204 で outbox の payload の陣営が Sugar になる", factionID: "Sugar"},
-			{name: "Tuners を選ぶと、204 で outbox の payload の陣営が Tuners になる", factionID: "Tuners"},
+			{name: "Tenkiを選ぶと、204でoutboxのpayloadの陣営がTenkiになる", factionID: "Tenki"},
+			{name: "Sugarを選ぶと、204でoutboxのpayloadの陣営がSugarになる", factionID: "Sugar"},
+			{name: "Tunersを選ぶと、204でoutboxのpayloadの陣営がTunersになる", factionID: "Tuners"},
 		}
 
 		for _, tt := range tests {
@@ -310,7 +310,7 @@ func TestOnboardingCompleteContract(t *testing.T) {
 			wantOnboarded int
 		}{
 			{
-				name:          "account に player が無いとき、404 になる",
+				name:          "accountにplayerが無いとき、404になる",
 				setup:         func(t *testing.T) {},
 				reader:        stubPlayerReader{err: port.ErrPlayerNotFound},
 				wantStatus:    http.StatusNotFound,
@@ -318,7 +318,7 @@ func TestOnboardingCompleteContract(t *testing.T) {
 				wantOnboarded: 0,
 			},
 			{
-				name:          "初期 faction 未選択のとき、409 になる",
+				name:          "初期faction未選択のとき、409になる",
 				setup:         func(t *testing.T) {},
 				reader:        stubPlayerReader{player: port.AccountPlayer{InitialFaction: nil}},
 				wantStatus:    http.StatusConflict,
@@ -326,7 +326,7 @@ func TestOnboardingCompleteContract(t *testing.T) {
 				wantOnboarded: 0,
 			},
 			{
-				name: "二度目の完了のとき、409 になる",
+				name: "二度目の完了のとき、409になる",
 				setup: func(t *testing.T) {
 					seedOnboardingComplete(t, contractPlayerID)
 				},
@@ -336,7 +336,7 @@ func TestOnboardingCompleteContract(t *testing.T) {
 				wantOnboarded: 1,
 			},
 			{
-				name:          "account の予期せぬ障害のとき、500 になる",
+				name:          "accountの予期せぬ障害のとき、500になる",
 				setup:         func(t *testing.T) {},
 				reader:        stubPlayerReader{err: errors.New("account unavailable")},
 				wantStatus:    http.StatusInternalServerError,
@@ -344,7 +344,7 @@ func TestOnboardingCompleteContract(t *testing.T) {
 				wantOnboarded: 0,
 			},
 			{
-				name:          "正常系のとき、200 で player_onboarding を記録する",
+				name:          "正常系のとき、200でplayer_onboardingを記録する",
 				setup:         func(t *testing.T) {},
 				reader:        stubPlayerReader{player: port.AccountPlayer{InitialFaction: toStringPtr("SHE")}},
 				wantStatus:    http.StatusOK,

@@ -119,37 +119,37 @@ func TestNew_ApiRouteRequiresInternalAuth(t *testing.T) {
 		path   string
 	}{
 		{
-			name:   "GET /episodes は auth header 欠落で 401",
+			name:   "GET /episodesはauth header欠落で401",
 			method: http.MethodGet,
 			path:   "/api/v1/scenarios/episodes",
 		},
 		{
-			name:   "GET /episodes/:episodeId/script は auth header 欠落で 401",
+			name:   "GET /episodes/:episodeId/scriptはauth header欠落で401",
 			method: http.MethodGet,
 			path:   "/api/v1/scenarios/episodes/EP-TST-0001/script",
 		},
 		{
-			name:   "POST /episodes/:episodeId/complete は auth header 欠落で 401",
+			name:   "POST /episodes/:episodeId/completeはauth header欠落で401",
 			method: http.MethodPost,
 			path:   "/api/v1/scenarios/episodes/EP-TST-0001/complete",
 		},
 		{
-			name:   "GET /onboarding/script は auth header 欠落で 401",
+			name:   "GET /onboarding/scriptはauth header欠落で401",
 			method: http.MethodGet,
 			path:   "/api/v1/scenarios/onboarding/script",
 		},
 		{
-			name:   "PUT /onboarding/name は auth header 欠落で 401",
+			name:   "PUT /onboarding/nameはauth header欠落で401",
 			method: http.MethodPut,
 			path:   "/api/v1/scenarios/onboarding/name",
 		},
 		{
-			name:   "POST /onboarding/faction は auth header 欠落で 401",
+			name:   "POST /onboarding/factionはauth header欠落で401",
 			method: http.MethodPost,
 			path:   "/api/v1/scenarios/onboarding/faction",
 		},
 		{
-			name:   "POST /onboarding/complete は auth header 欠落で 401",
+			name:   "POST /onboarding/completeはauth header欠落で401",
 			method: http.MethodPost,
 			path:   "/api/v1/scenarios/onboarding/complete",
 		},

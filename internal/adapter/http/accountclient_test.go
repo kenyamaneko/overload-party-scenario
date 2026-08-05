@@ -29,14 +29,14 @@ func newStubAccountServer(t *testing.T, status int, body []byte) *httptest.Serve
 }
 
 func TestAccountClient_ValidateOnboardingName(t *testing.T) {
-	t.Run("表示名バリデーションの HTTP 応答翻訳", func(t *testing.T) {
+	t.Run("表示名バリデーションのHTTP応答翻訳", func(t *testing.T) {
 		tests := []struct {
 			name   string
 			status int
 			verify func(t *testing.T, err error)
 		}{
 			{
-				name:   "account が表示名を 400 で拒否するとき、ErrInvalidName になる",
+				name:   "accountが表示名を400で拒否するとき、ErrInvalidNameになる",
 				status: http.StatusBadRequest,
 				verify: func(t *testing.T, err error) {
 					require.Error(t, err)
@@ -44,7 +44,7 @@ func TestAccountClient_ValidateOnboardingName(t *testing.T) {
 				},
 			},
 			{
-				name:   "account に対象プレイヤーが無く 404 のとき、ErrPlayerNotFound になる",
+				name:   "accountに対象プレイヤーが無く404のとき、ErrPlayerNotFoundになる",
 				status: http.StatusNotFound,
 				verify: func(t *testing.T, err error) {
 					require.Error(t, err)
@@ -52,14 +52,14 @@ func TestAccountClient_ValidateOnboardingName(t *testing.T) {
 				},
 			},
 			{
-				name:   "account が表示名を受理するとき、エラーにならない",
+				name:   "accountが表示名を受理するとき、エラーにならない",
 				status: http.StatusNoContent,
 				verify: func(t *testing.T, err error) {
 					assert.NoError(t, err)
 				},
 			},
 			{
-				name:   "account が 500 を返すとき、表示名検証はエラーになる",
+				name:   "accountが500を返すとき、表示名検証はエラーになる",
 				status: http.StatusInternalServerError,
 				verify: func(t *testing.T, err error) {
 					assert.Error(t, err)
@@ -80,8 +80,8 @@ func TestAccountClient_ValidateOnboardingName(t *testing.T) {
 }
 
 func TestAccountClient_GetOnboardingPlayer(t *testing.T) {
-	t.Run("オンボード用プレイヤー取得の HTTP 応答翻訳", func(t *testing.T) {
-		t.Run("account がプレイヤー情報を返すとき、プレイヤー ID と初期陣営が取得できる", func(t *testing.T) {
+	t.Run("オンボード用プレイヤー取得のHTTP応答翻訳", func(t *testing.T) {
+		t.Run("accountがプレイヤー情報を返すとき、プレイヤーIDと初期陣営が取得できる", func(t *testing.T) {
 			faction := "SHE"
 			resp := apiaccount.PlayerResponse{
 				PlayerID:         "TST-P1",
@@ -103,7 +103,7 @@ func TestAccountClient_GetOnboardingPlayer(t *testing.T) {
 			assert.Equal(t, "SHE", *player.InitialFaction)
 		})
 
-		t.Run("account にプレイヤーが無く 404 のとき、ErrPlayerNotFound になる", func(t *testing.T) {
+		t.Run("accountにプレイヤーが無く404のとき、ErrPlayerNotFoundになる", func(t *testing.T) {
 			srv := newStubAccountServer(t, http.StatusNotFound, nil)
 			c := NewAccountClient(srv.URL)
 

@@ -48,24 +48,24 @@ func TestPublishEvents(t *testing.T) {
 		return out
 	}
 
-	t.Run("outbox への複数イベント投入", func(t *testing.T) {
+	t.Run("outboxへの複数イベント投入", func(t *testing.T) {
 		tests := []struct {
 			name            string
 			events          []port.OutboxEvent
 			wantOutboxCount int
 		}{
 			{
-				name:            "events が複数のとき、単一 tx で全行が outbox に積まれる",
+				name:            "eventsが複数のとき、単一txで全行がoutboxに積まれる",
 				events:          makeEvents(2),
 				wantOutboxCount: 2,
 			},
 			{
-				name:            "events が 1 件のとき、outbox に 1 行積む",
+				name:            "eventsが1件のとき、outboxに1行積む",
 				events:          makeEvents(1),
 				wantOutboxCount: 1,
 			},
 			{
-				name:            "events が 0 件のとき、outbox に何も積まない",
+				name:            "eventsが0件のとき、outboxに何も積まない",
 				events:          nil,
 				wantOutboxCount: 0,
 			},
@@ -114,21 +114,21 @@ func TestOnboardingRepository_MarkComplete(t *testing.T) {
 			wantOnboardingCount int
 		}{
 			{
-				name:                "events が複数でも、player_onboarding と outbox へ atomic に書き込む",
+				name:                "eventsが複数でも、player_onboardingとoutboxへatomicに書き込む",
 				seed:                func(t *testing.T, playerID string) {},
 				events:              makeEvents(3),
 				wantOutboxCount:     3,
 				wantOnboardingCount: 1,
 			},
 			{
-				name:                "events が 0 件でも、player_onboarding への INSERT は成功する",
+				name:                "eventsが0件でも、player_onboardingへのINSERTは成功する",
 				seed:                func(t *testing.T, playerID string) {},
 				events:              nil,
 				wantOutboxCount:     0,
 				wantOnboardingCount: 1,
 			},
 			{
-				name:   "既に完了済みのとき、ErrAlreadyOnboarded になり outbox は積まれない",
+				name:   "既に完了済みのとき、ErrAlreadyOnboardedになりoutboxは積まれない",
 				seed:   func(t *testing.T, playerID string) { insertOnboardingRow(t, playerID) },
 				events: makeEvents(1),
 				// 一意違反で rollback されるため outbox には 1 行も積まれない。onboarding は事前 INSERT 分だけ残る。

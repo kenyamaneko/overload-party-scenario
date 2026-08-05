@@ -188,7 +188,7 @@ func TestStoryListEpisodesContract(t *testing.T) {
 			})
 		}
 
-		t.Run("account が応答しないとき、500 とその理由を返し、account が復旧すると一覧を返す", func(t *testing.T) {
+		t.Run("accountが応答しないとき、500とその理由を返し、accountが復旧すると一覧を返す", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			account := newAccountFake(t, 10)
 			engine := newStoryEpisodesEngine(contractPlayerID, t.TempDir(), account.URL())

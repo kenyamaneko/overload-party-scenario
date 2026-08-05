@@ -41,7 +41,7 @@ func TestListActiveEpisodes(t *testing.T) {
 			wantIDs []string // 期待される順序（sort_order 昇順）
 		}{
 			{
-				name: "active と inactive が混在するとき、active のみ sort_order 昇順で返す",
+				name: "activeとinactiveが混在するとき、activeのみsort_order昇順で返す",
 				seeds: []episodeSeed{
 					{"ep_b", strPtr("SHE"), 2, 20, true, nil},
 					{"ep_a", strPtr("SHE"), 1, 10, true, []string{"SHE"}},
@@ -56,7 +56,7 @@ func TestListActiveEpisodes(t *testing.T) {
 				wantIDs: nil,
 			},
 			{
-				name: "全て inactive のとき、空スライスを返す",
+				name: "全てinactiveのとき、空スライスを返す",
 				seeds: []episodeSeed{
 					{"ep_x", strPtr("SHE"), 1, 10, false, nil},
 					{"ep_y", strPtr("Tenki"), 1, 20, false, nil},
@@ -88,7 +88,7 @@ func TestListActiveEpisodes(t *testing.T) {
 			})
 		}
 
-		t.Run("エピソードごとに required faction を faction_id 昇順で集約する", func(t *testing.T) {
+		t.Run("エピソードごとにrequired factionをfaction_id昇順で集約する", func(t *testing.T) {
 			sharedPg.Truncate(t)
 
 			seedEpisode(t, "ep1", strPtr("SHE"), 1, "JA", "EN", 5, nil, "s/ep1/{lang}.json", 1, true)
@@ -118,13 +118,13 @@ func TestFindEpisodeByID(t *testing.T) {
 	repo := postgres.NewStoryRepository(sharedPg.Pool)
 	ctx := context.Background()
 
-	t.Run("episode_id によるエピソード取得", func(t *testing.T) {
+	t.Run("episode_idによるエピソード取得", func(t *testing.T) {
 		sharedPg.Truncate(t)
 		seedEpisode(t, "ep_found", strPtr("SHE"), 3, "見つかる", "Found", 5,
 			[]string{"prev1"}, "s/ep_found/{lang}.json", 42, true)
 		seedRequiredFaction(t, "ep_found", "SHE")
 
-		t.Run("存在する ID のとき、エピソードを返す", func(t *testing.T) {
+		t.Run("存在するIDのとき、エピソードを返す", func(t *testing.T) {
 			got, err := repo.FindEpisodeByID(ctx, "ep_found")
 			require.NoError(t, err)
 			require.NotNil(t, got)
@@ -133,7 +133,7 @@ func TestFindEpisodeByID(t *testing.T) {
 			assert.Equal(t, []string{"SHE"}, got.RequiredFactions)
 		})
 
-		t.Run("非アクティブな ID のとき、非アクティブ状態のエピソードを返す", func(t *testing.T) {
+		t.Run("非アクティブなIDのとき、非アクティブ状態のエピソードを返す", func(t *testing.T) {
 			seedEpisode(t, "ep_inactive", strPtr("SHE"), 1, "非アクティブ", "Inactive", 1,
 				nil, "s/ep_inactive/{lang}.json", 1, false)
 
@@ -148,8 +148,8 @@ func TestFindEpisodeByID(t *testing.T) {
 			name      string
 			episodeID string
 		}{
-			{name: "存在しない ID のとき、ErrNotFound になる", episodeID: "missing"},
-			{name: "空文字 ID のとき、ErrNotFound になる", episodeID: ""},
+			{name: "存在しないIDのとき、ErrNotFoundになる", episodeID: "missing"},
+			{name: "空文字IDのとき、ErrNotFoundになる", episodeID: ""},
 		}
 		for _, tt := range notFoundCases {
 			t.Run(tt.name, func(t *testing.T) {
@@ -164,7 +164,7 @@ func TestGetCompletedEpisodeIDs(t *testing.T) {
 	repo := postgres.NewStoryRepository(sharedPg.Pool)
 	ctx := context.Background()
 
-	t.Run("完了エピソード ID の取得", func(t *testing.T) {
+	t.Run("完了エピソードIDの取得", func(t *testing.T) {
 		tests := []struct {
 			name     string
 			seeds    map[string][]string // playerID -> episodeIDs
@@ -173,7 +173,7 @@ func TestGetCompletedEpisodeIDs(t *testing.T) {
 			wantIDs  []string
 		}{
 			{
-				name:     "対象プレイヤーに完了履歴があるとき、その ID のみ返す",
+				name:     "対象プレイヤーに完了履歴があるとき、そのIDのみ返す",
 				episodes: []string{"ep1", "ep2", "ep3"},
 				seeds: map[string][]string{
 					testPlayer1: {"ep1", "ep2"},
@@ -228,7 +228,7 @@ func TestStoryRepository_MarkComplete(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("完了エピソードの記録", func(t *testing.T) {
-		t.Run("新規完了のとき、1 行追加する", func(t *testing.T) {
+		t.Run("新規完了のとき、1行追加する", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			seedEpisode(t, "ep1", nil, 1, "JA", "EN", 1, nil, "s/ep1/{lang}.json", 1, true)
 
@@ -242,7 +242,7 @@ func TestStoryRepository_MarkComplete(t *testing.T) {
 			assert.Equal(t, 1, n)
 		})
 
-		t.Run("同じ完了を 2 回呼ぶとき、1 行のまま (冪等)", func(t *testing.T) {
+		t.Run("同じ完了を2回呼ぶとき、1行のまま (冪等)", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			seedEpisode(t, "ep1", nil, 1, "JA", "EN", 1, nil, "s/ep1/{lang}.json", 1, true)
 
@@ -257,7 +257,7 @@ func TestStoryRepository_MarkComplete(t *testing.T) {
 			assert.Equal(t, 1, n)
 		})
 
-		t.Run("存在しない episode_id のとき、FK 違反エラーになる", func(t *testing.T) {
+		t.Run("存在しないepisode_idのとき、FK違反エラーになる", func(t *testing.T) {
 			sharedPg.Truncate(t)
 
 			err := repo.MarkComplete(ctx, testPlayer1, "no_such_episode")

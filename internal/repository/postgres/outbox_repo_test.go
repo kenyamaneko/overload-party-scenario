@@ -135,7 +135,7 @@ func TestClaimUnpublished(t *testing.T) {
 			wantPayloads      []string // order-insensitive. 空スライスは「何も claim されない」を表す。
 		}{
 			{
-				name: "未配信行があるとき、payload そのままで返す",
+				name: "未配信行があるとき、payloadそのままで返す",
 				seeds: []seed{
 					{payload: `{"k":"a"}`, insert: insertUnpublished},
 					{payload: `{"k":"b"}`, insert: insertUnpublished},
@@ -146,7 +146,7 @@ func TestClaimUnpublished(t *testing.T) {
 				wantPayloads:      []string{`{"k":"a"}`, `{"k":"b"}`},
 			},
 			{
-				name: "published_at が埋まった行があるとき、スキップする",
+				name: "published_atが埋まった行があるとき、スキップする",
 				seeds: []seed{
 					{payload: `{"k":"old"}`, insert: insertAlreadyPublished},
 					{payload: `{"k":"new"}`, insert: insertUnpublished},
@@ -157,7 +157,7 @@ func TestClaimUnpublished(t *testing.T) {
 				wantPayloads:      []string{`{"k":"new"}`},
 			},
 			{
-				name: "visibility timeout 以内に試行された行があるとき、in-flight としてスキップする",
+				name: "visibility timeout以内に試行された行があるとき、in-flightとしてスキップする",
 				seeds: []seed{
 					{payload: `{"k":"in-flight"}`, insert: insertInFlight(5 * time.Second)},
 					{payload: `{"k":"available"}`, insert: insertUnpublished},
@@ -168,7 +168,7 @@ func TestClaimUnpublished(t *testing.T) {
 				wantPayloads:      []string{`{"k":"available"}`},
 			},
 			{
-				name: "visibility timeout を超えた行があるとき、再 claim 対象にする (worker クラッシュ後の再試行)",
+				name: "visibility timeoutを超えた行があるとき、再claim対象にする (workerクラッシュ後の再試行)",
 				seeds: []seed{
 					{payload: `{"k":"recovered"}`, insert: insertInFlight(60 * time.Second)},
 				},
@@ -186,7 +186,7 @@ func TestClaimUnpublished(t *testing.T) {
 				wantPayloads:      []string{},
 			},
 			{
-				name: "failure_count が閾値に達した行があるとき、スキップする",
+				name: "failure_countが閾値に達した行があるとき、スキップする",
 				seeds: []seed{
 					{payload: `{"k":"exhausted"}`, insert: insertExhausted(failureThreshold)},
 					{payload: `{"k":"healthy"}`, insert: insertUnpublished},
@@ -197,7 +197,7 @@ func TestClaimUnpublished(t *testing.T) {
 				wantPayloads:      []string{`{"k":"healthy"}`},
 			},
 			{
-				name: "failure_count が閾値の1つ手前の行があるとき、取得する",
+				name: "failure_countが閾値の1つ手前の行があるとき、取得する",
 				seeds: []seed{
 					{payload: `{"k":"almost-exhausted"}`, insert: insertExhausted(failureThreshold - 1)},
 				},
@@ -248,7 +248,7 @@ func TestClaimUnpublished(t *testing.T) {
 			assert.Equal(t, totalSeeded-limit, remaining, "claim されなかった行は未試行のまま残る")
 		})
 
-		t.Run("取得成功後、last_attempted_at が now() に更新される", func(t *testing.T) {
+		t.Run("取得成功後、last_attempted_atがnow()に更新される", func(t *testing.T) {
 			sharedPg.Truncate(t)
 
 			id := insertOutboxRow(t, 0, 0, []byte(`{"k":"v"}`))
@@ -275,7 +275,7 @@ func TestMarkPublished(t *testing.T) {
 			seed seed
 		}{
 			{
-				name: "未配信行のとき、published_at を立て last_error を解除する",
+				name: "未配信行のとき、published_atを立てlast_errorを解除する",
 				seed: seed{payload: `{"k":"v"}`, insert: insertUnpublished},
 			},
 			{
@@ -328,21 +328,21 @@ func TestRecordFailure(t *testing.T) {
 			wantLastError    string
 		}{
 			{
-				name:             "初回失敗のとき、failure_count=1 で last_error を記録する",
+				name:             "初回失敗のとき、failure_count=1でlast_errorを記録する",
 				priorFailures:    noPrior,
 				errMsg:           "pubsub down",
 				wantFailureCount: 1,
 				wantLastError:    "pubsub down",
 			},
 			{
-				name:             "連続失敗のとき、failure_count が積み上がる (死蔵検知の素材)",
+				name:             "連続失敗のとき、failure_countが積み上がる (死蔵検知の素材)",
 				priorFailures:    recordN(2, "prior"),
 				errMsg:           "still down",
 				wantFailureCount: 3,
 				wantLastError:    "still down",
 			},
 			{
-				name:             "再失敗のとき、last_error が直近エラーで上書きされる",
+				name:             "再失敗のとき、last_errorが直近エラーで上書きされる",
 				priorFailures:    recordN(1, "prior"),
 				errMsg:           "newer error",
 				wantFailureCount: 2,

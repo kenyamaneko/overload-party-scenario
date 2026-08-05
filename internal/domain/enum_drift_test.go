@@ -12,12 +12,12 @@ import (
 )
 
 func TestEnumDriftAgainstOpenAPISpec(t *testing.T) {
-	t.Run("domain と openapi.yaml の enum 整合", func(t *testing.T) {
+	t.Run("domainとopenapi.yamlのenum整合", func(t *testing.T) {
 		// SSoT は domain 側。openapi.yaml は外部公開ドキュメントとして同じ値集合を持つ必要があり、
 		// 値の追加・削除・rename が片方だけで起きれば本テストが失敗する。
 		spec := loadOpenAPISpec(t)
 
-		t.Run("LockReasonType enum が domain と openapi.yaml で一致する", func(t *testing.T) {
+		t.Run("LockReasonType enumがdomainとopenapi.yamlで一致する", func(t *testing.T) {
 			want := []string{
 				string(domain.LockReasonLevel),
 				string(domain.LockReasonFaction),

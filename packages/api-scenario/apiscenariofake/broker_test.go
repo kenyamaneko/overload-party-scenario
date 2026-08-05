@@ -18,17 +18,17 @@ func TestBroker(t *testing.T) {
 			payload string
 		}{
 			{
-				name:    "空ペイロードのとき、そのまま subscriber に届く",
+				name:    "空ペイロードのとき、そのままsubscriberに届く",
 				topic:   "t",
 				payload: "",
 			},
 			{
-				name:    "json ペイロードのとき、そのまま subscriber に届く",
+				name:    "jsonペイロードのとき、そのままsubscriberに届く",
 				topic:   "a",
 				payload: `{"k":"v"}`,
 			},
 			{
-				name:    "topic 名に hyphen を含むとき、そのまま subscriber に届く",
+				name:    "topic名にhyphenを含むとき、そのままsubscriberに届く",
 				topic:   "player-onboarded",
 				payload: `{"x":1}`,
 			},
@@ -47,7 +47,7 @@ func TestBroker(t *testing.T) {
 			})
 		}
 
-		t.Run("別 topic に publish したとき、別 topic の subscriber には届かない", func(t *testing.T) {
+		t.Run("別topicにpublishしたとき、別topicのsubscriberには届かない", func(t *testing.T) {
 			// 実 Pub/Sub の topic-based routing を fake でも保つ。
 			broker := apiscenariofake.NewBroker()
 			pub := apiscenariofake.NewPublisher(broker)
@@ -62,7 +62,7 @@ func TestBroker(t *testing.T) {
 			assertNoMessageWithin(t, chB, 50*time.Millisecond)
 		})
 
-		t.Run("同一 topic に複数 subscriber がいるとき、全員に配信される", func(t *testing.T) {
+		t.Run("同一topicに複数subscriberがいるとき、全員に配信される", func(t *testing.T) {
 			// gateway / account / card が同じ topic を consume する構成を表現する。
 			broker := apiscenariofake.NewBroker()
 			pub := apiscenariofake.NewPublisher(broker)
@@ -78,7 +78,7 @@ func TestBroker(t *testing.T) {
 			}
 		})
 
-		t.Run("subscribe より先に publish したとき、後から購読しても届かない", func(t *testing.T) {
+		t.Run("subscribeより先にpublishしたとき、後から購読しても届かない", func(t *testing.T) {
 			// 実 Pub/Sub の新規 subscription 挙動に合わせ、過去メッセージを再生しない。
 			broker := apiscenariofake.NewBroker()
 			pub := apiscenariofake.NewPublisher(broker)
@@ -93,8 +93,8 @@ func TestBroker(t *testing.T) {
 }
 
 func TestPublisher(t *testing.T) {
-	t.Run("Publisher の発行記録", func(t *testing.T) {
-		t.Run("publish した全メッセージを発行順に Published() で返す", func(t *testing.T) {
+	t.Run("Publisherの発行記録", func(t *testing.T) {
+		t.Run("publishした全メッセージを発行順にPublished()で返す", func(t *testing.T) {
 			broker := apiscenariofake.NewBroker()
 			pub := apiscenariofake.NewPublisher(broker)
 			ctx := context.Background()
@@ -113,7 +113,7 @@ func TestPublisher(t *testing.T) {
 			assert.Equal(t, `c`, string(history[2].Data))
 		})
 
-		t.Run("Published() の戻り値を caller が mutate しても、内部状態には影響しない", func(t *testing.T) {
+		t.Run("Published()の戻り値をcallerがmutateしても、内部状態には影響しない", func(t *testing.T) {
 			broker := apiscenariofake.NewBroker()
 			pub := apiscenariofake.NewPublisher(broker)
 			require.NoError(t, pub.Publish(context.Background(), "t", []byte(`orig`)))
