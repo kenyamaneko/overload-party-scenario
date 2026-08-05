@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	EventTypeOnboardingNameSet = "onboarding_name_set"
+	EventTypeOnboardingNameSet    = "onboarding_name_set"
 	EventTypeOnboardingFactionSet = "onboarding_faction_set"
-	EventTypePlayerOnboarded = "player_onboarded"
+	EventTypePlayerOnboarded      = "player_onboarded"
 )
 
 // OnboardingNameSetEvent は プレイヤーがオンボード内 name 入力ステップを完了した業務事実を表す scenario 発行イベント。
@@ -44,4 +44,3 @@ type PlayerOnboardedEvent struct {
 	PlayerID         string    `json:"player_id"`
 	InitialFactionID string    `json:"initial_faction_id"`
 }
-
