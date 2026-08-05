@@ -10,7 +10,7 @@ import (
 )
 
 // New は scenario の HTTP ルーターを構築する。
-// gateway 経由の player-scoped API は X-Internal-Auth (HS256 JWT) で認証し、
+// gateway 経由の player-scoped API は X-Internal-Auth (RS256 JWT) で認証し、
 // sub クレームを context に注入することで handler が path/body の player_id を扱わずに済む。
 func New(
 	storyH *rest.StoryHandler,
