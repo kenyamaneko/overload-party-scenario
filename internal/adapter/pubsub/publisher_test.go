@@ -40,13 +40,13 @@ func TestNew(t *testing.T) {
 			wantSubs  string
 		}{
 			{
-				name:      "プロジェクト ID が空のとき、生成に失敗する",
+				name:      "プロジェクトIDが空のとき、生成に失敗する",
 				projectID: "",
 				override:  func(*publisherTopics) {},
 				wantSubs:  "projectID is empty",
 			},
 			{
-				name:      "onboarding-name-set topic 名が空のとき、生成に失敗する",
+				name:      "onboarding-name-set topic名が空のとき、生成に失敗する",
 				projectID: "test-project",
 				override: func(topics *publisherTopics) {
 					topics.onboardingNameSet = ""
@@ -54,7 +54,7 @@ func TestNew(t *testing.T) {
 				wantSubs: "all topic names are required",
 			},
 			{
-				name:      "onboarding-faction-set topic 名が空のとき、生成に失敗する",
+				name:      "onboarding-faction-set topic名が空のとき、生成に失敗する",
 				projectID: "test-project",
 				override: func(topics *publisherTopics) {
 					topics.onboardingFactionSet = ""
@@ -62,7 +62,7 @@ func TestNew(t *testing.T) {
 				wantSubs: "all topic names are required",
 			},
 			{
-				name:      "player-onboarded topic 名が空のとき、生成に失敗する",
+				name:      "player-onboarded topic名が空のとき、生成に失敗する",
 				projectID: "test-project",
 				override: func(topics *publisherTopics) {
 					topics.playerOnboarded = ""

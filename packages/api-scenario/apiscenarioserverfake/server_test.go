@@ -14,7 +14,7 @@ import (
 
 func TestServer(t *testing.T) {
 	t.Run("サーバフェイク", func(t *testing.T) {
-		t.Run("Fn 未設定の endpoint は既定応答を返す", func(t *testing.T) {
+		t.Run("Fn未設定のendpointは既定応答を返す", func(t *testing.T) {
 			// consumer テストが setup を書かなくても最低限の HTTP 応答が得られる契約。
 			tests := []struct {
 				name       string
@@ -24,21 +24,21 @@ func TestServer(t *testing.T) {
 				wantBody   string
 			}{
 				{
-					name:       "ListEpisodes は 200 で空配列を返す",
+					name:       "ListEpisodesは200で空配列を返す",
 					method:     http.MethodGet,
 					path:       "/api/v1/scenarios/episodes",
 					wantStatus: http.StatusOK,
 					wantBody:   `{"episodes":[]}` + "\n",
 				},
 				{
-					name:       "GetScript は 200 で空スクリプトを返す",
+					name:       "GetScriptは200で空スクリプトを返す",
 					method:     http.MethodGet,
 					path:       "/api/v1/scenarios/episodes/ep-1/script",
 					wantStatus: http.StatusOK,
 					wantBody:   `{"episode_id":"ep-1","script":""}` + "\n",
 				},
 				{
-					name:       "CompleteEpisode は 204 No Content を返す",
+					name:       "CompleteEpisodeは204 No Contentを返す",
 					method:     http.MethodPost,
 					path:       "/api/v1/scenarios/episodes/ep-1/complete",
 					wantStatus: http.StatusNoContent,
@@ -62,7 +62,7 @@ func TestServer(t *testing.T) {
 			}
 		})
 
-		t.Run("ListEpisodesFn は lang query を受け取って応答を制御できる", func(t *testing.T) {
+		t.Run("ListEpisodesFnはlang queryを受け取って応答を制御できる", func(t *testing.T) {
 			srv := apiscenarioserverfake.NewServer()
 			defer srv.Close()
 
@@ -89,7 +89,7 @@ func TestServer(t *testing.T) {
 			assert.Equal(t, "ep-1", decoded.Episodes[0].EpisodeID)
 		})
 
-		t.Run("GetScriptFn は status code だけで error 応答 (body なし) を返せる", func(t *testing.T) {
+		t.Run("GetScriptFnはstatus codeだけでerror応答 (bodyなし)を返せる", func(t *testing.T) {
 			// scenarioclient は 404/403 を status code だけで判定するため body 無しで十分。
 			srv := apiscenarioserverfake.NewServer()
 			defer srv.Close()
@@ -107,7 +107,7 @@ func TestServer(t *testing.T) {
 			assert.Empty(t, body, "body=nil の場合は空応答")
 		})
 
-		t.Run("CompleteEpisodeFn は path variable を受け取って応答を決定する", func(t *testing.T) {
+		t.Run("CompleteEpisodeFnはpath variableを受け取って応答を決定する", func(t *testing.T) {
 			srv := apiscenarioserverfake.NewServer()
 			defer srv.Close()
 

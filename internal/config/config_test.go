@@ -68,8 +68,8 @@ var validEnv = map[string]string{
 }
 
 func TestFromEnv(t *testing.T) {
-	t.Run("環境変数からの Config 構築", func(t *testing.T) {
-		t.Run("必須 env が揃うとき、全フィールドが Config に伝搬する", func(t *testing.T) {
+	t.Run("環境変数からのConfig構築", func(t *testing.T) {
+		t.Run("必須envが揃うとき、全フィールドがConfigに伝搬する", func(t *testing.T) {
 			setEnv(t, validEnv)
 
 			cfg, err := FromEnv()
@@ -91,7 +91,7 @@ func TestFromEnv(t *testing.T) {
 			assert.Equal(t, 30*time.Second, cfg.OutboxVisibilityTimeout)
 		})
 
-		t.Run("DATABASE_IAM_AUTH_ENABLED が false のとき、CLOUDSQL_CONNECTION_NAME が未設定でも成功する", func(t *testing.T) {
+		t.Run("DATABASE_IAM_AUTH_ENABLEDがfalseのとき、CLOUDSQL_CONNECTION_NAMEが未設定でも成功する", func(t *testing.T) {
 			setEnv(t, validEnv)
 
 			cfg, err := FromEnv()
@@ -101,7 +101,7 @@ func TestFromEnv(t *testing.T) {
 			assert.Empty(t, cfg.CloudSQLConnectionName)
 		})
 
-		t.Run("DATABASE_IAM_AUTH_ENABLED が true かつ CLOUDSQL_CONNECTION_NAME が指定されるとき、両方の値が Config に反映される", func(t *testing.T) {
+		t.Run("DATABASE_IAM_AUTH_ENABLEDがtrueかつCLOUDSQL_CONNECTION_NAMEが指定されるとき、両方の値がConfigに反映される", func(t *testing.T) {
 			setEnv(t, mergeEnv(validEnv, map[string]string{
 				"DATABASE_IAM_AUTH_ENABLED": "true",
 				"CLOUDSQL_CONNECTION_NAME":  "overload-party-dev:asia-northeast1:overload-party-db",
@@ -114,7 +114,7 @@ func TestFromEnv(t *testing.T) {
 			assert.Equal(t, "overload-party-dev:asia-northeast1:overload-party-db", cfg.CloudSQLConnectionName)
 		})
 
-		t.Run(`STORY_BUCKET が "local:/tmp/story" のとき、ローカルパス /tmp/story として読める`, func(t *testing.T) {
+		t.Run(`STORY_BUCKETが "local:/tmp/story" のとき、ローカルパス /tmp/storyとして読める`, func(t *testing.T) {
 			setEnv(t, mergeEnv(validEnv, map[string]string{"STORY_BUCKET": "local:/tmp/story"}))
 
 			cfg, err := FromEnv()
@@ -124,7 +124,7 @@ func TestFromEnv(t *testing.T) {
 			assert.Equal(t, "/tmp/story", cfg.StoryLocalPath())
 		})
 
-		t.Run(`STORY_BUCKET が "scenario-story" のとき、ローカルパスにならない`, func(t *testing.T) {
+		t.Run(`STORY_BUCKETが "scenario-story" のとき、ローカルパスにならない`, func(t *testing.T) {
 			setEnv(t, mergeEnv(validEnv, map[string]string{"STORY_BUCKET": "scenario-story"}))
 
 			cfg, err := FromEnv()
@@ -134,7 +134,7 @@ func TestFromEnv(t *testing.T) {
 			assert.Empty(t, cfg.StoryLocalPath())
 		})
 
-		t.Run("OUTBOX_POLL_INTERVAL が 1ns のとき、その値が Config に反映される", func(t *testing.T) {
+		t.Run("OUTBOX_POLL_INTERVALが1nsのとき、その値がConfigに反映される", func(t *testing.T) {
 			setEnv(t, mergeEnv(validEnv, map[string]string{"OUTBOX_POLL_INTERVAL": "1ns"}))
 
 			cfg, err := FromEnv()
@@ -143,7 +143,7 @@ func TestFromEnv(t *testing.T) {
 			assert.Equal(t, time.Nanosecond, cfg.OutboxPollInterval)
 		})
 
-		t.Run("OUTBOX_BATCH_SIZE が 1 のとき、その値が Config に反映される", func(t *testing.T) {
+		t.Run("OUTBOX_BATCH_SIZEが1のとき、その値がConfigに反映される", func(t *testing.T) {
 			setEnv(t, mergeEnv(validEnv, map[string]string{"OUTBOX_BATCH_SIZE": "1"}))
 
 			cfg, err := FromEnv()
@@ -152,7 +152,7 @@ func TestFromEnv(t *testing.T) {
 			assert.Equal(t, 1, cfg.OutboxBatchSize)
 		})
 
-		t.Run("OUTBOX_FAILURE_THRESHOLD が 1 のとき、その値が Config に反映される", func(t *testing.T) {
+		t.Run("OUTBOX_FAILURE_THRESHOLDが1のとき、その値がConfigに反映される", func(t *testing.T) {
 			setEnv(t, mergeEnv(validEnv, map[string]string{"OUTBOX_FAILURE_THRESHOLD": "1"}))
 
 			cfg, err := FromEnv()
@@ -161,7 +161,7 @@ func TestFromEnv(t *testing.T) {
 			assert.Equal(t, 1, cfg.OutboxFailureThreshold)
 		})
 
-		t.Run("OUTBOX_VISIBILITY_TIMEOUT が 1ms のとき、その値が Config に反映される", func(t *testing.T) {
+		t.Run("OUTBOX_VISIBILITY_TIMEOUTが1msのとき、その値がConfigに反映される", func(t *testing.T) {
 			setEnv(t, mergeEnv(validEnv, map[string]string{"OUTBOX_VISIBILITY_TIMEOUT": "1ms"}))
 
 			cfg, err := FromEnv()
@@ -176,77 +176,77 @@ func TestFromEnv(t *testing.T) {
 			wantErr string
 		}{
 			{
-				name:    "PORT が未設定のとき、エラーになる",
+				name:    "PORTが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"PORT": ""}),
 				wantErr: "PORT is required",
 			},
 			{
-				name:    "PORT が数値でないとき、エラーになる",
+				name:    "PORTが数値でないとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"PORT": "not-a-number"}),
 				wantErr: "PORT",
 			},
 			{
-				name:    "ENV が未設定のとき、エラーになる",
+				name:    "ENVが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"ENV": ""}),
 				wantErr: "ENV is required",
 			},
 			{
-				name:    "DATABASE_CONN が未設定のとき、エラーになる",
+				name:    "DATABASE_CONNが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"DATABASE_CONN": ""}),
 				wantErr: "DATABASE_CONN is required",
 			},
 			{
-				name:    "STORY_BUCKET が未設定のとき、エラーになる",
+				name:    "STORY_BUCKETが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"STORY_BUCKET": ""}),
 				wantErr: "STORY_BUCKET is required",
 			},
 			{
-				name:    `STORY_BUCKET が "local:" のみでパス部分が空文字のとき、エラーになる`,
+				name:    `STORY_BUCKETが "local:" のみでパス部分が空文字のとき、エラーになる`,
 				envs:    mergeEnv(validEnv, map[string]string{"STORY_BUCKET": "local:"}),
 				wantErr: "local path must not be empty",
 			},
 			{
-				name:    "GOOGLE_CLOUD_PROJECT_ID が未設定のとき、エラーになる",
+				name:    "GOOGLE_CLOUD_PROJECT_IDが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"GOOGLE_CLOUD_PROJECT_ID": ""}),
 				wantErr: "GOOGLE_CLOUD_PROJECT_ID is required",
 			},
 			{
-				name:    "ONBOARDING_NAME_SET_TOPIC が未設定のとき、エラーになる",
+				name:    "ONBOARDING_NAME_SET_TOPICが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"ONBOARDING_NAME_SET_TOPIC": ""}),
 				wantErr: "ONBOARDING_NAME_SET_TOPIC is required",
 			},
 			{
-				name:    "ONBOARDING_FACTION_SET_TOPIC が未設定のとき、エラーになる",
+				name:    "ONBOARDING_FACTION_SET_TOPICが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"ONBOARDING_FACTION_SET_TOPIC": ""}),
 				wantErr: "ONBOARDING_FACTION_SET_TOPIC is required",
 			},
 			{
-				name:    "PLAYER_ONBOARDED_TOPIC が未設定のとき、エラーになる",
+				name:    "PLAYER_ONBOARDED_TOPICが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"PLAYER_ONBOARDED_TOPIC": ""}),
 				wantErr: "PLAYER_ONBOARDED_TOPIC is required",
 			},
 			{
-				name:    "ACCOUNT_BASE_URL が未設定のとき、エラーになる",
+				name:    "ACCOUNT_BASE_URLが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"ACCOUNT_BASE_URL": ""}),
 				wantErr: "ACCOUNT_BASE_URL is required",
 			},
 			{
-				name:    "INTERNAL_AUTH_PUBLIC_KEY が未設定のとき、エラーになる",
+				name:    "INTERNAL_AUTH_PUBLIC_KEYが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"INTERNAL_AUTH_PUBLIC_KEY": ""}),
 				wantErr: "INTERNAL_AUTH_PUBLIC_KEY is required",
 			},
 			{
-				name:    "DATABASE_IAM_AUTH_ENABLED が未設定のとき、変数名を含むエラーになる",
+				name:    "DATABASE_IAM_AUTH_ENABLEDが未設定のとき、変数名を含むエラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"DATABASE_IAM_AUTH_ENABLED": ""}),
 				wantErr: "DATABASE_IAM_AUTH_ENABLED must be",
 			},
 			{
-				name:    `DATABASE_IAM_AUTH_ENABLED が "true"/"false" 以外の "yes" のとき、変数名を含むエラーになる`,
+				name:    `DATABASE_IAM_AUTH_ENABLEDが "true"/"false" 以外の "yes" のとき、変数名を含むエラーになる`,
 				envs:    mergeEnv(validEnv, map[string]string{"DATABASE_IAM_AUTH_ENABLED": "yes"}),
 				wantErr: "DATABASE_IAM_AUTH_ENABLED must be",
 			},
 			{
-				name: "DATABASE_IAM_AUTH_ENABLED が true かつ CLOUDSQL_CONNECTION_NAME が未設定のとき、CLOUDSQL_CONNECTION_NAME を含むエラーになる",
+				name: "DATABASE_IAM_AUTH_ENABLEDがtrueかつCLOUDSQL_CONNECTION_NAMEが未設定のとき、CLOUDSQL_CONNECTION_NAMEを含むエラーになる",
 				envs: mergeEnv(validEnv, map[string]string{
 					"DATABASE_IAM_AUTH_ENABLED": "true",
 					"CLOUDSQL_CONNECTION_NAME":  "",
@@ -254,62 +254,62 @@ func TestFromEnv(t *testing.T) {
 				wantErr: "CLOUDSQL_CONNECTION_NAME is required",
 			},
 			{
-				name:    "OUTBOX_POLL_INTERVAL が未設定のとき、エラーになる",
+				name:    "OUTBOX_POLL_INTERVALが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_POLL_INTERVAL": ""}),
 				wantErr: "OUTBOX_POLL_INTERVAL is required",
 			},
 			{
-				name:    "OUTBOX_POLL_INTERVAL が duration 形式でないとき、エラーになる",
+				name:    "OUTBOX_POLL_INTERVALがduration形式でないとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_POLL_INTERVAL": "not-a-duration"}),
 				wantErr: "OUTBOX_POLL_INTERVAL",
 			},
 			{
-				name:    "OUTBOX_POLL_INTERVAL が 0 のとき、エラーになる",
+				name:    "OUTBOX_POLL_INTERVALが0のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_POLL_INTERVAL": "0s"}),
 				wantErr: "OUTBOX_POLL_INTERVAL must be positive",
 			},
 			{
-				name:    "OUTBOX_BATCH_SIZE が未設定のとき、エラーになる",
+				name:    "OUTBOX_BATCH_SIZEが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_BATCH_SIZE": ""}),
 				wantErr: "OUTBOX_BATCH_SIZE is required",
 			},
 			{
-				name:    "OUTBOX_BATCH_SIZE が数値でないとき、エラーになる",
+				name:    "OUTBOX_BATCH_SIZEが数値でないとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_BATCH_SIZE": "not-a-number"}),
 				wantErr: "OUTBOX_BATCH_SIZE",
 			},
 			{
-				name:    "OUTBOX_BATCH_SIZE が 0 のとき、エラーになる",
+				name:    "OUTBOX_BATCH_SIZEが0のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_BATCH_SIZE": "0"}),
 				wantErr: "OUTBOX_BATCH_SIZE must be positive",
 			},
 			{
-				name:    "OUTBOX_FAILURE_THRESHOLD が未設定のとき、エラーになる",
+				name:    "OUTBOX_FAILURE_THRESHOLDが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_FAILURE_THRESHOLD": ""}),
 				wantErr: "OUTBOX_FAILURE_THRESHOLD is required",
 			},
 			{
-				name:    "OUTBOX_FAILURE_THRESHOLD が数値でないとき、エラーになる",
+				name:    "OUTBOX_FAILURE_THRESHOLDが数値でないとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_FAILURE_THRESHOLD": "not-a-number"}),
 				wantErr: "OUTBOX_FAILURE_THRESHOLD",
 			},
 			{
-				name:    "OUTBOX_FAILURE_THRESHOLD が 0 のとき、エラーになる",
+				name:    "OUTBOX_FAILURE_THRESHOLDが0のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_FAILURE_THRESHOLD": "0"}),
 				wantErr: "OUTBOX_FAILURE_THRESHOLD must be positive",
 			},
 			{
-				name:    "OUTBOX_VISIBILITY_TIMEOUT が未設定のとき、エラーになる",
+				name:    "OUTBOX_VISIBILITY_TIMEOUTが未設定のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_VISIBILITY_TIMEOUT": ""}),
 				wantErr: "OUTBOX_VISIBILITY_TIMEOUT is required",
 			},
 			{
-				name:    "OUTBOX_VISIBILITY_TIMEOUT が duration 形式でないとき、エラーになる",
+				name:    "OUTBOX_VISIBILITY_TIMEOUTがduration形式でないとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_VISIBILITY_TIMEOUT": "not-a-duration"}),
 				wantErr: "OUTBOX_VISIBILITY_TIMEOUT",
 			},
 			{
-				name:    "OUTBOX_VISIBILITY_TIMEOUT が 1ms 未満のとき、エラーになる",
+				name:    "OUTBOX_VISIBILITY_TIMEOUTが1ms未満のとき、エラーになる",
 				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_VISIBILITY_TIMEOUT": "500us"}),
 				wantErr: "OUTBOX_VISIBILITY_TIMEOUT must be >= 1ms",
 			},

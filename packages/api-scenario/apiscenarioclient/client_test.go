@@ -19,8 +19,8 @@ import (
 // endpoint で十分カバーされるため省略。
 
 func TestClient_ListEpisodes_StatusMapping(t *testing.T) {
-	t.Run("ListEpisodes のステータスマッピング", func(t *testing.T) {
-		t.Run("401 を受けたとき、ErrUnauthorized になる", func(t *testing.T) {
+	t.Run("ListEpisodesのステータスマッピング", func(t *testing.T) {
+		t.Run("401を受けたとき、ErrUnauthorizedになる", func(t *testing.T) {
 			srv := apiscenarioserverfake.NewServer()
 			defer srv.Close()
 			srv.ListEpisodesFn = func(_ string) (int, any) { return http.StatusUnauthorized, nil }
@@ -33,29 +33,29 @@ func TestClient_ListEpisodes_StatusMapping(t *testing.T) {
 }
 
 func TestClient_GetEpisodeScript_StatusMapping(t *testing.T) {
-	t.Run("GetEpisodeScript のステータスマッピング", func(t *testing.T) {
+	t.Run("GetEpisodeScriptのステータスマッピング", func(t *testing.T) {
 		cases := []struct {
 			name       string
 			status     int
 			wantTarget error
 		}{
 			{
-				name:       "401 を受けたとき、ErrUnauthorized になる",
+				name:       "401を受けたとき、ErrUnauthorizedになる",
 				status:     http.StatusUnauthorized,
 				wantTarget: apiscenarioclient.ErrUnauthorized,
 			},
 			{
-				name:       "403 を受けたとき、ErrForbidden になる",
+				name:       "403を受けたとき、ErrForbiddenになる",
 				status:     http.StatusForbidden,
 				wantTarget: apiscenarioclient.ErrForbidden,
 			},
 			{
-				name:       "404 を受けたとき、ErrNotFound になる",
+				name:       "404を受けたとき、ErrNotFoundになる",
 				status:     http.StatusNotFound,
 				wantTarget: apiscenarioclient.ErrNotFound,
 			},
 			{
-				name:       "500 を受けたとき、ErrInternalServer になる",
+				name:       "500を受けたとき、ErrInternalServerになる",
 				status:     http.StatusInternalServerError,
 				wantTarget: apiscenarioclient.ErrInternalServer,
 			},
@@ -75,24 +75,24 @@ func TestClient_GetEpisodeScript_StatusMapping(t *testing.T) {
 }
 
 func TestClient_CompleteEpisode_StatusMapping(t *testing.T) {
-	t.Run("CompleteEpisode のステータスマッピング", func(t *testing.T) {
+	t.Run("CompleteEpisodeのステータスマッピング", func(t *testing.T) {
 		cases := []struct {
 			name       string
 			status     int
 			wantTarget error
 		}{
 			{
-				name:       "401 を受けたとき、ErrUnauthorized になる",
+				name:       "401を受けたとき、ErrUnauthorizedになる",
 				status:     http.StatusUnauthorized,
 				wantTarget: apiscenarioclient.ErrUnauthorized,
 			},
 			{
-				name:       "403 を受けたとき、ErrForbidden になる",
+				name:       "403を受けたとき、ErrForbiddenになる",
 				status:     http.StatusForbidden,
 				wantTarget: apiscenarioclient.ErrForbidden,
 			},
 			{
-				name:       "404 を受けたとき、ErrNotFound になる",
+				name:       "404を受けたとき、ErrNotFoundになる",
 				status:     http.StatusNotFound,
 				wantTarget: apiscenarioclient.ErrNotFound,
 			},
@@ -113,7 +113,7 @@ func TestClient_CompleteEpisode_StatusMapping(t *testing.T) {
 
 func TestClient_RequestEditor(t *testing.T) {
 	t.Run("リクエストエディタの適用", func(t *testing.T) {
-		t.Run("WithRequestEditorFn で渡した editor が全リクエストに適用される", func(t *testing.T) {
+		t.Run("WithRequestEditorFnで渡したeditorが全リクエストに適用される", func(t *testing.T) {
 			// X-Internal-Auth header 注入の接続点として SDK が機能することを担保する。
 			var gotHeader string
 			spy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

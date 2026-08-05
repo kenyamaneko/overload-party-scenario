@@ -32,7 +32,7 @@ func TestEpisodeLockReasons(t *testing.T) {
 				wantReasons: nil,
 			},
 			{
-				name: "全条件未達のとき、level・faction・episode の 3 理由を返す",
+				name: "全条件未達のとき、level・faction・episodeの3理由を返す",
 				ep: &domain.Episode{
 					RequiredLevel:    5,
 					RequiredFactions: []string{"SHE"},
@@ -50,7 +50,7 @@ func TestEpisodeLockReasons(t *testing.T) {
 				},
 			},
 			{
-				name: "level のみ未達のとき、level 理由 1 件を返す",
+				name: "levelのみ未達のとき、level理由1件を返す",
 				ep: &domain.Episode{
 					RequiredLevel:    10,
 					RequiredFactions: []string{"SHE"},
@@ -86,8 +86,8 @@ func TestEpisodeTitle(t *testing.T) {
 			lang string
 			want string
 		}{
-			{name: "lang=ja のとき、日本語タイトルを返す", lang: "ja", want: "日本語"},
-			{name: "lang=en のとき、英語タイトルを返す", lang: "en", want: "English"},
+			{name: "lang=jaのとき、日本語タイトルを返す", lang: "ja", want: "日本語"},
+			{name: "lang=enのとき、英語タイトルを返す", lang: "en", want: "English"},
 			{name: "未知の言語のとき、日本語タイトルにフォールバックする", lang: "fr", want: "日本語"},
 			{name: "空文字の言語のとき、日本語タイトルにフォールバックする", lang: "", want: "日本語"},
 		}

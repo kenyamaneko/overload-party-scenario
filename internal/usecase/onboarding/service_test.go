@@ -91,7 +91,7 @@ func writeScript(t *testing.T, root, lang, body string) {
 
 func TestGetScript(t *testing.T) {
 	t.Run("オンボーディングスクリプトの取得", func(t *testing.T) {
-		t.Run("ja 指定のとき、ja の本文が返る", func(t *testing.T) {
+		t.Run("ja指定のとき、jaの本文が返る", func(t *testing.T) {
 			root := t.TempDir()
 			writeScript(t, root, "ja", "@endofscript (ja)\n")
 			writeScript(t, root, "en", "english body")
@@ -102,7 +102,7 @@ func TestGetScript(t *testing.T) {
 			assert.Equal(t, "@endofscript (ja)\n", body)
 		})
 
-		t.Run("en 指定のとき、en の本文が返る", func(t *testing.T) {
+		t.Run("en指定のとき、enの本文が返る", func(t *testing.T) {
 			root := t.TempDir()
 			writeScript(t, root, "ja", "@endofscript (ja)\n")
 			writeScript(t, root, "en", "english body")
@@ -113,7 +113,7 @@ func TestGetScript(t *testing.T) {
 			assert.Equal(t, "english body", body)
 		})
 
-		t.Run("スクリプトが不在のとき、ErrScriptNotFound になる", func(t *testing.T) {
+		t.Run("スクリプトが不在のとき、ErrScriptNotFoundになる", func(t *testing.T) {
 			root := t.TempDir()
 			svc := New(&fakeOnboardingRepo{}, local.NewScriptStore(root), nil, nil)
 
@@ -155,13 +155,13 @@ func TestUpdateName(t *testing.T) {
 				wantErr   error
 			}{
 				{
-					name:      "名前が不正なとき、ErrInvalidName になる",
+					name:      "名前が不正なとき、ErrInvalidNameになる",
 					injectErr: port.ErrInvalidName,
 					input:     "",
 					wantErr:   ErrInvalidName,
 				},
 				{
-					name:      "プレイヤーが存在しないとき、ErrPlayerNotFound になる",
+					name:      "プレイヤーが存在しないとき、ErrPlayerNotFoundになる",
 					injectErr: port.ErrPlayerNotFound,
 					input:     "Alice",
 					wantErr:   ErrPlayerNotFound,
@@ -217,14 +217,14 @@ func TestSelectFaction(t *testing.T) {
 			assert.Equal(t, "SHE", decoded.InitialFactionID)
 		})
 
-		t.Run("選択できない陣営のとき、イベントは発行されず、ErrInvalidFaction になる", func(t *testing.T) {
+		t.Run("選択できない陣営のとき、イベントは発行されず、ErrInvalidFactionになる", func(t *testing.T) {
 			tests := []struct {
 				name             string
 				initialFactionID string
 			}{
-				{name: "Neutral のとき、ErrInvalidFaction になる", initialFactionID: "Neutral"},
-				{name: "不明な陣営のとき、ErrInvalidFaction になる", initialFactionID: "Mystery"},
-				{name: "空文字のとき、ErrInvalidFaction になる", initialFactionID: ""},
+				{name: "Neutralのとき、ErrInvalidFactionになる", initialFactionID: "Neutral"},
+				{name: "不明な陣営のとき、ErrInvalidFactionになる", initialFactionID: "Mystery"},
+				{name: "空文字のとき、ErrInvalidFactionになる", initialFactionID: ""},
 			}
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
@@ -273,13 +273,13 @@ func TestComplete(t *testing.T) {
 			assert.Equal(t, ev.EventID.String(), decoded.EventID)
 		})
 
-		t.Run("初期陣営が未選択のとき、完了せず ErrFactionNotSelected になる", func(t *testing.T) {
+		t.Run("初期陣営が未選択のとき、完了せずErrFactionNotSelectedになる", func(t *testing.T) {
 			tests := []struct {
 				name           string
 				initialFaction *string
 			}{
-				{name: "初期陣営が未設定のとき、ErrFactionNotSelected になる", initialFaction: nil},
-				{name: "初期陣営が空文字のとき、ErrFactionNotSelected になる", initialFaction: strPtr("")},
+				{name: "初期陣営が未設定のとき、ErrFactionNotSelectedになる", initialFaction: nil},
+				{name: "初期陣営が空文字のとき、ErrFactionNotSelectedになる", initialFaction: strPtr("")},
 			}
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
@@ -305,13 +305,13 @@ func TestComplete(t *testing.T) {
 				wantErr error
 			}{
 				{
-					name:    "プレイヤーが存在しないとき、ErrPlayerNotFound になる",
+					name:    "プレイヤーが存在しないとき、ErrPlayerNotFoundになる",
 					reader:  &fakePlayerReader{err: port.ErrPlayerNotFound},
 					repo:    &fakeOnboardingRepo{},
 					wantErr: ErrPlayerNotFound,
 				},
 				{
-					name:    "二度目の完了のとき、ErrAlreadyOnboarded になる",
+					name:    "二度目の完了のとき、ErrAlreadyOnboardedになる",
 					reader:  &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("SHE")}},
 					repo:    &fakeOnboardingRepo{markCompleteErr: port.ErrAlreadyOnboarded},
 					wantErr: ErrAlreadyOnboarded,
@@ -350,7 +350,7 @@ func TestBuildOnboardingEvent(t *testing.T) {
 			value    string
 		}{
 			{
-				name:     "表示名設定イベントは、プレイヤー ID が空のとき、構築できずエラーになる",
+				name:     "表示名設定イベントは、プレイヤーIDが空のとき、構築できずエラーになる",
 				build:    buildOnboardingNameSetEvent,
 				playerID: "",
 				value:    "Kenya",
@@ -362,7 +362,7 @@ func TestBuildOnboardingEvent(t *testing.T) {
 				value:    "",
 			},
 			{
-				name:     "陣営設定イベントは、プレイヤー ID が空のとき、構築できずエラーになる",
+				name:     "陣営設定イベントは、プレイヤーIDが空のとき、構築できずエラーになる",
 				build:    buildOnboardingFactionSetEvent,
 				playerID: "",
 				value:    "SHE",
@@ -374,7 +374,7 @@ func TestBuildOnboardingEvent(t *testing.T) {
 				value:    "",
 			},
 			{
-				name:     "オンボード完了イベントは、プレイヤー ID が空のとき、構築できずエラーになる",
+				name:     "オンボード完了イベントは、プレイヤーIDが空のとき、構築できずエラーになる",
 				build:    buildPlayerOnboardedEvent,
 				playerID: "",
 				value:    "SHE",

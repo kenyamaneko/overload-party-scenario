@@ -24,7 +24,7 @@ func TestToLockReason(t *testing.T) {
 			want apiscenario.LockReason
 		}{
 			{
-				name: "level 理由のとき、required_level と current_level のみ埋める",
+				name: "level理由のとき、required_levelとcurrent_levelのみ埋める",
 				in:   domain.LockReason{Type: domain.LockReasonLevel, RequiredLevel: 5, CurrentLevel: 2},
 				want: apiscenario.LockReason{
 					Type:          apiscenario.LockReasonTypeLevel,
@@ -33,7 +33,7 @@ func TestToLockReason(t *testing.T) {
 				},
 			},
 			{
-				name: "faction 理由のとき、required_faction のみ埋める",
+				name: "faction理由のとき、required_factionのみ埋める",
 				in:   domain.LockReason{Type: domain.LockReasonFaction, RequiredFaction: "SHE"},
 				want: apiscenario.LockReason{
 					Type:            apiscenario.LockReasonTypeFaction,
@@ -41,7 +41,7 @@ func TestToLockReason(t *testing.T) {
 				},
 			},
 			{
-				name: "episode 理由のとき、required_episode のみ埋める",
+				name: "episode理由のとき、required_episodeのみ埋める",
 				in:   domain.LockReason{Type: domain.LockReasonEpisode, RequiredEpisode: "she_ep1"},
 				want: apiscenario.LockReason{
 					Type:            apiscenario.LockReasonTypeEpisode,
@@ -84,7 +84,7 @@ func TestBuildEpisodeWithStatus(t *testing.T) {
 			wantReasonsLen int
 		}{
 			{
-				name: "条件充足かつ未完了のとき、IsUnlocked=true・IsCompleted=false になる",
+				name: "条件充足かつ未完了のとき、IsUnlocked=true・IsCompleted=falseになる",
 				uc: &domain.UnlockContext{
 					PlayerLevel:       5,
 					OwnedFactions:     map[string]bool{"SHE": true},
@@ -97,7 +97,7 @@ func TestBuildEpisodeWithStatus(t *testing.T) {
 				wantReasonsLen: 0,
 			},
 			{
-				name: "完了済みのとき、IsCompleted=true になる",
+				name: "完了済みのとき、IsCompleted=trueになる",
 				uc: &domain.UnlockContext{
 					PlayerLevel:       5,
 					OwnedFactions:     map[string]bool{"SHE": true},
@@ -110,7 +110,7 @@ func TestBuildEpisodeWithStatus(t *testing.T) {
 				wantReasonsLen: 0,
 			},
 			{
-				name: "条件未達のとき、IsUnlocked=false で LockReasons が入る",
+				name: "条件未達のとき、IsUnlocked=falseでLockReasonsが入る",
 				uc: &domain.UnlockContext{
 					PlayerLevel:       1,
 					OwnedFactions:     map[string]bool{},

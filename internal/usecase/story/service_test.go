@@ -89,7 +89,7 @@ func findReasonByType(reasons []apiscenario.LockReason, typ apiscenario.LockReas
 
 func TestListEpisodes(t *testing.T) {
 	t.Run("エピソード一覧の取得", func(t *testing.T) {
-		t.Run("レベル未達のとき、後続エピソードは level 理由でロックされる", func(t *testing.T) {
+		t.Run("レベル未達のとき、後続エピソードはlevel理由でロックされる", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
 			env.setPlayerProgress(5, "SHE")
@@ -102,7 +102,7 @@ func TestListEpisodes(t *testing.T) {
 			assert.NotNil(t, findReasonByType(eps[1].LockReasons, apiscenario.LockReasonTypeLevel))
 		})
 
-		t.Run("faction 未所有のとき、faction 理由を返す", func(t *testing.T) {
+		t.Run("faction未所有のとき、faction理由を返す", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
 			env.setPlayerProgress(10)
@@ -116,7 +116,7 @@ func TestListEpisodes(t *testing.T) {
 			assert.Equal(t, "SHE", *r.RequiredFaction)
 		})
 
-		t.Run("前提エピソード未完了のとき、episode 理由を返す", func(t *testing.T) {
+		t.Run("前提エピソード未完了のとき、episode理由を返す", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
 			env.setPlayerProgress(10, "SHE")
@@ -128,7 +128,7 @@ func TestListEpisodes(t *testing.T) {
 			assert.NotNil(t, findReasonByType(eps[1].LockReasons, apiscenario.LockReasonTypeEpisode))
 		})
 
-		t.Run("lang=en のとき、英語タイトルを返す", func(t *testing.T) {
+		t.Run("lang=enのとき、英語タイトルを返す", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
 			env.setPlayerProgress(10, "SHE")
@@ -138,7 +138,7 @@ func TestListEpisodes(t *testing.T) {
 			assert.Equal(t, "SHE Chapter 1", eps[0].Title)
 		})
 
-		t.Run("前提エピソード完了済みのとき、IsCompleted=true で後続をアンロックする", func(t *testing.T) {
+		t.Run("前提エピソード完了済みのとき、IsCompleted=trueで後続をアンロックする", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
 			env.setPlayerProgress(10, "SHE")
@@ -150,7 +150,7 @@ func TestListEpisodes(t *testing.T) {
 			assert.True(t, eps[1].IsUnlocked)
 		})
 
-		t.Run("account から到達状況を取得できないとき、一覧の取得はその理由付きで失敗する", func(t *testing.T) {
+		t.Run("accountから到達状況を取得できないとき、一覧の取得はその理由付きで失敗する", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
 			env.account.err = errAccountUnavailable
@@ -178,7 +178,7 @@ func TestCompleteEpisode(t *testing.T) {
 				wantErr:   nil,
 			},
 			{
-				name: "存在しないエピソードのとき、ErrEpisodeNotFound になる",
+				name: "存在しないエピソードのとき、ErrEpisodeNotFoundになる",
 				setup: func(env *testEnv) {
 					env.setPlayerProgress(5)
 				},
@@ -186,7 +186,7 @@ func TestCompleteEpisode(t *testing.T) {
 				wantErr:   ErrEpisodeNotFound,
 			},
 			{
-				name: "ロック中のエピソードのとき、ErrEpisodeLocked になる",
+				name: "ロック中のエピソードのとき、ErrEpisodeLockedになる",
 				setup: func(env *testEnv) {
 					env.setPlayerProgress(1)
 				},
@@ -194,7 +194,7 @@ func TestCompleteEpisode(t *testing.T) {
 				wantErr:   ErrEpisodeLocked,
 			},
 			{
-				name: "非アクティブエピソードのとき、ErrEpisodeNotFound になる",
+				name: "非アクティブエピソードのとき、ErrEpisodeNotFoundになる",
 				setup: func(env *testEnv) {
 					env.setPlayerProgress(99)
 				},
@@ -202,7 +202,7 @@ func TestCompleteEpisode(t *testing.T) {
 				wantErr:   ErrEpisodeNotFound,
 			},
 			{
-				name: "account から到達状況を取得できないとき、ロック扱いにせずその理由を返す",
+				name: "accountから到達状況を取得できないとき、ロック扱いにせずその理由を返す",
 				setup: func(env *testEnv) {
 					env.account.err = errAccountUnavailable
 				},
@@ -222,7 +222,7 @@ func TestCompleteEpisode(t *testing.T) {
 			})
 		}
 
-		t.Run("同じエピソードを 2 回完了しても、完了 ID は 1 件のまま (冪等)", func(t *testing.T) {
+		t.Run("同じエピソードを2回完了しても、完了IDは1件のまま (冪等)", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
 			env.setPlayerProgress(5, "SHE")
@@ -247,7 +247,7 @@ func TestGetScript(t *testing.T) {
 			wantErr   error
 		}{
 			{
-				name: "存在しないエピソードのとき、ErrEpisodeNotFound になる",
+				name: "存在しないエピソードのとき、ErrEpisodeNotFoundになる",
 				setup: func(env *testEnv) {
 					env.setPlayerProgress(10)
 				},
@@ -256,7 +256,7 @@ func TestGetScript(t *testing.T) {
 				wantErr:   ErrEpisodeNotFound,
 			},
 			{
-				name: "非アクティブエピソードのとき、ErrEpisodeNotFound になる",
+				name: "非アクティブエピソードのとき、ErrEpisodeNotFoundになる",
 				setup: func(env *testEnv) {
 					env.setPlayerProgress(99)
 				},
@@ -265,7 +265,7 @@ func TestGetScript(t *testing.T) {
 				wantErr:   ErrEpisodeNotFound,
 			},
 			{
-				name: "ロック中のエピソードのとき、ErrEpisodeLocked になる",
+				name: "ロック中のエピソードのとき、ErrEpisodeLockedになる",
 				setup: func(env *testEnv) {
 					env.setPlayerProgress(1)
 				},
@@ -274,7 +274,7 @@ func TestGetScript(t *testing.T) {
 				wantErr:   ErrEpisodeLocked,
 			},
 			{
-				name: "account から到達状況を取得できないとき、ロック扱いにせずその理由を返す",
+				name: "accountから到達状況を取得できないとき、ロック扱いにせずその理由を返す",
 				setup: func(env *testEnv) {
 					env.account.err = errAccountUnavailable
 				},
@@ -295,7 +295,7 @@ func TestGetScript(t *testing.T) {
 			})
 		}
 
-		t.Run("要求言語のスクリプトが無いとき、フォールバックせず ErrScriptNotFound になる", func(t *testing.T) {
+		t.Run("要求言語のスクリプトが無いとき、フォールバックせずErrScriptNotFoundになる", func(t *testing.T) {
 			env := newTestEnv()
 			seedTestEpisodes(env)
 			env.setPlayerProgress(10, "SHE")

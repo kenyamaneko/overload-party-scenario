@@ -57,14 +57,14 @@ func TestStoryGetScriptContract(t *testing.T) {
 			wantBody      string
 		}{
 			{
-				name:       "未シードのエピソードを要求するとき、404 になる",
+				name:       "未シードのエピソードを要求するとき、404になる",
 				level:      10,
 				setup:      func(t *testing.T, _ string) {},
 				episodeID:  "missing-ep",
 				wantStatus: http.StatusNotFound,
 			},
 			{
-				name:  "非アクティブなエピソードのとき、404 になる",
+				name:  "非アクティブなエピソードのとき、404になる",
 				level: 10,
 				setup: func(t *testing.T, _ string) {
 					seedEpisode(t, "ep-inactive", 1, "ep-inactive/{lang}.txt", false)
@@ -73,7 +73,7 @@ func TestStoryGetScriptContract(t *testing.T) {
 				wantStatus: http.StatusNotFound,
 			},
 			{
-				name:  "required_level に満たないプレイヤーのとき、403 になる",
+				name:  "required_levelに満たないプレイヤーのとき、403になる",
 				level: 4,
 				setup: func(t *testing.T, _ string) {
 					seedEpisode(t, "ep-locked", 5, "ep-locked/{lang}.txt", true)
@@ -82,7 +82,7 @@ func TestStoryGetScriptContract(t *testing.T) {
 				wantStatus: http.StatusForbidden,
 			},
 			{
-				name:  "required_level == player level のとき、アンロックされ 200 でスクリプトを返す",
+				name:  "required_level == player levelのとき、アンロックされ200でスクリプトを返す",
 				level: 5,
 				setup: func(t *testing.T, scriptRoot string) {
 					seedEpisode(t, "ep-boundary", 5, "ep-boundary/{lang}.txt", true)
@@ -93,7 +93,7 @@ func TestStoryGetScriptContract(t *testing.T) {
 				wantBody:   "シナリオ本文",
 			},
 			{
-				name:  "アンロック済みのエピソードのスクリプトファイルが無いとき、404 になる",
+				name:  "アンロック済みのエピソードのスクリプトファイルが無いとき、404になる",
 				level: 5,
 				setup: func(t *testing.T, _ string) {
 					seedEpisode(t, "ep-no-script", 5, "ep-no-script/{lang}.txt", true)
@@ -103,7 +103,7 @@ func TestStoryGetScriptContract(t *testing.T) {
 				wantBody:   "story script not found",
 			},
 			{
-				name:  "スクリプトの保存先が読み取れない状態のとき、500 になる",
+				name:  "スクリプトの保存先が読み取れない状態のとき、500になる",
 				level: 5,
 				setup: func(t *testing.T, scriptRoot string) {
 					seedEpisode(t, "ep-infra", 5, "ep-infra/{lang}.txt", true)
@@ -114,7 +114,7 @@ func TestStoryGetScriptContract(t *testing.T) {
 				wantBody:   "story script infrastructure error",
 			},
 			{
-				name:  "必須陣営を所有していないとき、スクリプト取得は 403 になる",
+				name:  "必須陣営を所有していないとき、スクリプト取得は403になる",
 				level: 5,
 				setup: func(t *testing.T, _ string) {
 					seedEpisode(t, "ep-faction-locked", 1, "ep-faction-locked/{lang}.txt", true)
@@ -125,7 +125,7 @@ func TestStoryGetScriptContract(t *testing.T) {
 				wantBody:   "episode is locked",
 			},
 			{
-				name:          "必須陣営を所有しているとき、200 でスクリプトを返す",
+				name:          "必須陣営を所有しているとき、200でスクリプトを返す",
 				level:         5,
 				ownedFactions: []string{"SHE"},
 				setup: func(t *testing.T, scriptRoot string) {
@@ -138,7 +138,7 @@ func TestStoryGetScriptContract(t *testing.T) {
 				wantBody:   "陣営本文",
 			},
 			{
-				name:  "前提エピソードが未完了のとき、スクリプト取得は 403 になる",
+				name:  "前提エピソードが未完了のとき、スクリプト取得は403になる",
 				level: 5,
 				setup: func(t *testing.T, _ string) {
 					seedEpisodeWithRequiredEpisodes(t, "ep-prereq-locked", 1, "ep-prereq-locked/{lang}.txt", true, []string{"ep-prereq"})
@@ -165,7 +165,7 @@ func TestStoryGetScriptContract(t *testing.T) {
 			})
 		}
 
-		t.Run("lang を指定しないとき、日本語のスクリプトが返る", func(t *testing.T) {
+		t.Run("langを指定しないとき、日本語のスクリプトが返る", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			scriptRoot := t.TempDir()
 			account := newAccountFake(t, 5)

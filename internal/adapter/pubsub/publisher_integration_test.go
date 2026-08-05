@@ -112,8 +112,8 @@ func buildPlayerOnboardedOutbox(t *testing.T, playerID, initialFactionID string)
 }
 
 func TestPublishIntegration(t *testing.T) {
-	t.Run("Pub/Sub への配信", func(t *testing.T) {
-		t.Run("onboarding-name-set を配信すると、購読側に送信内容がそのまま届く", func(t *testing.T) {
+	t.Run("Pub/Subへの配信", func(t *testing.T) {
+		t.Run("onboarding-name-setを配信すると、購読側に送信内容がそのまま届く", func(t *testing.T) {
 			// outbox worker 送出経路の近似。bytes がそのまま subscriber まで届くことを固定する。
 			pub, topics := setupPublisher(t)
 			sub := sharedEmulator.Subscribe(t, topics.onboardingNameSet)
@@ -135,7 +135,7 @@ func TestPublishIntegration(t *testing.T) {
 			assert.Equal(t, "Kenya", decoded.Name)
 		})
 
-		t.Run("onboarding-faction-set を配信すると、送信内容が保たれる", func(t *testing.T) {
+		t.Run("onboarding-faction-setを配信すると、送信内容が保たれる", func(t *testing.T) {
 			pub, topics := setupPublisher(t)
 			sub := sharedEmulator.Subscribe(t, topics.onboardingFactionSet)
 
@@ -155,7 +155,7 @@ func TestPublishIntegration(t *testing.T) {
 			assert.Equal(t, "SHE", decoded.InitialFactionID)
 		})
 
-		t.Run("player-onboarded を配信すると、送信内容が保たれる", func(t *testing.T) {
+		t.Run("player-onboardedを配信すると、送信内容が保たれる", func(t *testing.T) {
 			pub, topics := setupPublisher(t)
 			sub := sharedEmulator.Subscribe(t, topics.playerOnboarded)
 

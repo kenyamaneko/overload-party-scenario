@@ -13,7 +13,7 @@ import (
 
 func TestOnboardingNameSet(t *testing.T) {
 	t.Run("OnboardingNameSet typed helper", func(t *testing.T) {
-		t.Run("Expect → Publish → Wait すると、typed publish と typed 受信が一致する", func(t *testing.T) {
+		t.Run("Expect → Publish → Waitすると、typed publishとtyped受信が一致する", func(t *testing.T) {
 			broker := apiscenariofake.NewBroker()
 			pub := apiscenariofake.NewPublisher(broker)
 			sub := apiscenariofake.NewSubscriber(broker)
@@ -32,7 +32,7 @@ func TestOnboardingNameSet(t *testing.T) {
 			assert.Equal(t, "Kenya", got.Name)
 		})
 
-		t.Run("EventType / EventID / Timestamp を指定しないとき、補完される", func(t *testing.T) {
+		t.Run("EventType / EventID / Timestampを指定しないとき、補完される", func(t *testing.T) {
 			broker := apiscenariofake.NewBroker()
 			pub := apiscenariofake.NewPublisher(broker)
 			sub := apiscenariofake.NewSubscriber(broker)
@@ -52,7 +52,7 @@ func TestOnboardingNameSet(t *testing.T) {
 			assert.False(t, got.Timestamp.Before(before), "Timestamp は未指定なら現在時刻以降")
 		})
 
-		t.Run("Expect より先に Publish したとき、Wait が timeout する", func(t *testing.T) {
+		t.Run("Expectより先にPublishしたとき、Waitがtimeoutする", func(t *testing.T) {
 			broker := apiscenariofake.NewBroker()
 			pub := apiscenariofake.NewPublisher(broker)
 			sub := apiscenariofake.NewSubscriber(broker)
@@ -71,7 +71,7 @@ func TestOnboardingNameSet(t *testing.T) {
 
 func TestOnboardingFactionSet(t *testing.T) {
 	t.Run("OnboardingFactionSet typed helper", func(t *testing.T) {
-		t.Run("Expect → Publish → Wait すると、typed publish と typed 受信が一致し EventType/EventID が補完される", func(t *testing.T) {
+		t.Run("Expect → Publish → Waitすると、typed publishとtyped受信が一致しEventType/EventIDが補完される", func(t *testing.T) {
 			broker := apiscenariofake.NewBroker()
 			pub := apiscenariofake.NewPublisher(broker)
 			sub := apiscenariofake.NewSubscriber(broker)
@@ -96,7 +96,7 @@ func TestOnboardingFactionSet(t *testing.T) {
 
 func TestPlayerOnboarded(t *testing.T) {
 	t.Run("PlayerOnboarded typed helper", func(t *testing.T) {
-		t.Run("Expect → Publish → Wait すると、typed publish と typed 受信が一致し EventType/EventID が補完される", func(t *testing.T) {
+		t.Run("Expect → Publish → Waitすると、typed publishとtyped受信が一致しEventType/EventIDが補完される", func(t *testing.T) {
 			broker := apiscenariofake.NewBroker()
 			pub := apiscenariofake.NewPublisher(broker)
 			sub := apiscenariofake.NewSubscriber(broker)
@@ -120,8 +120,8 @@ func TestPlayerOnboarded(t *testing.T) {
 }
 
 func TestTyped_PublishedRecordsTopicAndPayload(t *testing.T) {
-	t.Run("typed helper 経由の publish の記録", func(t *testing.T) {
-		t.Run("3 種の typed helper で publish すると、Published() に topic 順で記録される", func(t *testing.T) {
+	t.Run("typed helper経由のpublishの記録", func(t *testing.T) {
+		t.Run("3種のtyped helperでpublishすると、Published()にtopic順で記録される", func(t *testing.T) {
 			broker := apiscenariofake.NewBroker()
 			pub := apiscenariofake.NewPublisher(broker)
 			ctx := context.Background()
