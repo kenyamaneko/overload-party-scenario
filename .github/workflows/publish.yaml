@@ -38,7 +38,7 @@ permissions:
 jobs:
   publish-api-scenario:
     if: inputs.target == 'api-scenario'
-    runs-on: ubicloud-standard-2
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -73,7 +73,7 @@ jobs:
 
   publish-api-scenario-npm:
     if: inputs.target == 'api-scenario-npm'
-    runs-on: ubicloud-standard-2
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
