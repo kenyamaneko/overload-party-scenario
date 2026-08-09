@@ -2,7 +2,7 @@
 
 本ドキュメントは **コードを読んでも一見しては分からない設計意図** だけを残す。実装詳細 (フロー順序・アンロック条件の評価順・エラー → HTTP ステータス変換・環境変数の一覧) は各ファイルの実装とコメントを一次情報とする。
 
-サービス概要・起動手順は [../README.md](../README.md)、機能仕様は [FEATURE_SPEC.md](FEATURE_SPEC.md)、REST エンドポイントは [../data/openapi.yaml](../data/openapi.yaml) (SSoT)、Pub/Sub イベントは [../data/asyncapi.yaml](../data/asyncapi.yaml) (SSoT)、テーブル定義は [DATA_DESIGN.md](DATA_DESIGN.md) を参照。
+サービス概要・起動手順は [../README.md](../README.md)、REST エンドポイントは [../data/openapi.yaml](../data/openapi.yaml) (SSoT)、Pub/Sub イベントは [../data/asyncapi.yaml](../data/asyncapi.yaml) (SSoT)、テーブル定義は [DATA_DESIGN.md](DATA_DESIGN.md) を参照。
 
 ## Scenario の責務境界 (SSoT と account への問い合わせ)
 
@@ -186,7 +186,7 @@ shop との差分は「何を積むか」だけで、インフラ側は共通化
 
 ## オンボーディングシナリオ
 
-「一度きり読了で表示名と初期 faction を集める」ユースケースは、既存 `ScenarioEpisode` 配管と **usecase 層・テーブル・API・イベントのいずれも分離** する。各ステップ完了で対応する Pub/Sub event を発行し、業務データの永続化は account 側 subscriber に委ねる ([ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md))。account への REST は表示名のバリデーションと完了 publish 用の faction 取得に限定する。詳細仕様は [FEATURE_SPEC.md](FEATURE_SPEC.md) と ADR-021 / ADR-026 を参照。
+「一度きり読了で表示名と初期 faction を集める」ユースケースは、既存 `ScenarioEpisode` 配管と **usecase 層・テーブル・API・イベントのいずれも分離** する。各ステップ完了で対応する Pub/Sub event を発行し、業務データの永続化は account 側 subscriber に委ねる ([ADR-026](../../overload-party-common/docs/adr/026-onboarding-status-as-account-responsibility.md))。account への REST は表示名のバリデーションと完了 publish 用の faction 取得に限定する。詳細仕様は ADR-021 / ADR-026 を参照。
 
 ### なぜ別ユースケースにしたか
 

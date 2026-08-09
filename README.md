@@ -2,7 +2,7 @@
 
 ストーリーエピソード・進行管理・スクリプト配信を担う内部マイクロサービス。ポート 9007 で起動する。
 
-詳細は [機能仕様書](docs/FEATURE_SPEC.md) / [サービス設計書](docs/ARCHITECTURE.md) / [REST契約 (SSoT)](data/openapi.yaml) / [Pub/Sub契約 (SSoT)](data/asyncapi.yaml) / [データ設計書](docs/DATA_DESIGN.md) を参照。
+詳細は [サービス設計書](docs/ARCHITECTURE.md) / [REST契約 (SSoT)](data/openapi.yaml) / [Pub/Sub契約 (SSoT)](data/asyncapi.yaml) / [データ設計書](docs/DATA_DESIGN.md) を参照。
 
 [テスト観点カタログ](https://kenyamaneko.github.io/overload-party-scenario/): テスト名から生成した、テスト済みの観点の一覧。
 
