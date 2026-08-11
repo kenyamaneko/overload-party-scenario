@@ -1,6 +1,6 @@
 -- overload-party-scenario - PostgreSQL DDL (service-owned)
 --
--- Scope (ADR-014):
+-- Scope:
 --   scenario.scenario_episodes        - エピソードマスター
 --   scenario.episode_required_factions - エピソード必須ファクション
 --   scenario.player_story_progress    - プレイヤーのストーリー完了履歴
