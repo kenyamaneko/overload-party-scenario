@@ -83,10 +83,9 @@ CREATE TABLE scenario.player_onboarding (
 -- outbox。ビジネス行の INSERT と同一トランザクションで 1 行 INSERT され、
 -- 別 goroutine の worker が未 publish 行を claim して Pub/Sub に送出する。
 -- これにより「DB commit は成功したが publish が失敗してイベントが失われる」
--- dual-write 問題を構造的に排除する (ADR-021)。
+-- dual-write 問題を構造的に排除する。
 --
--- 参照: ARCHITECTURE.md §「scenario が Outbox を持つ理由」 (ADR-021 で更新)
---      shop.outbox_events と同一スキーマ (shop が先行採用済み)。
+-- shop.outbox_events と同一スキーマ (shop が先行採用済み)。
 --
 -- event_id は payload 内 eventId と一致し、再試行しても同じ値。subscriber 側の
 -- 冪等性キー (processed_events / 複合 PK) と協調して at-least-once を担保する。
