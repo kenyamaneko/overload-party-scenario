@@ -101,6 +101,7 @@ func (s *Service) validateUnlock(ctx context.Context, ep *domain.Episode, player
 func (s *Service) loadUnlockContext(ctx context.Context, playerID string) (*domain.UnlockContext, error) {
 	progress, err := s.account.GetPlayerProgress(ctx)
 	if err != nil {
+		// Why: ここでロック扱いに丸めると、プレイヤーの到達状況が分からない状態と条件未達を区別できなくなるため、エラーはそのまま呼び出し元に伝播させる。
 		return nil, fmt.Errorf("get player progress: %w", err)
 	}
 	completed, err := s.storyRepo.GetCompletedEpisodeIDs(ctx, playerID)

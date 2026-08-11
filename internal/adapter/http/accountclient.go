@@ -1,4 +1,6 @@
 // Package http は account が所有するデータを読み書きするための REST クライアントを提供する。
+//
+// Why: 他リポからの import を構造的に禁じ、account への呼び出し経路を scenario 内に閉じ込めるため。
 package http
 
 import (

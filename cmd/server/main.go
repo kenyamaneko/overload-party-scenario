@@ -180,6 +180,8 @@ func run() error {
 }
 
 // buildScriptStore は StoryBucket の形式に応じて GCS / local ScriptStore を構築する (GCS 選択時は close 用の client も返す)。
+//
+// Why: リクエスト単位で GCS / local を切り替えると、本番で設定ミスによりローカルデータを読む事故を構造的に防げなくなるため、起動時に一度だけ決定する。
 func buildScriptStore(ctx context.Context, cfg *config.Config) (port.ScriptStore, *storage.Client, error) {
 	if cfg.IsLocalStory() {
 		root := cfg.StoryLocalPath()
