@@ -1,6 +1,8 @@
 package presenter
 
 import (
+	"fmt"
+
 	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
@@ -30,7 +32,7 @@ func ToLockReason(r domain.LockReason) apiscenario.LockReason {
 			RequiredEpisode: &episode,
 		}
 	default:
-		return apiscenario.LockReason{Type: apiscenario.LockReasonType(r.Type)}
+		panic(fmt.Sprintf("presenter: 未知の LockReasonType %q", r.Type))
 	}
 }
 
