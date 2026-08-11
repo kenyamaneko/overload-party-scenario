@@ -40,11 +40,3 @@ make test     # Testcontainers でテスト実行（Docker 必須）
 
 onboarding フローは account の internal REST を呼ぶため、単体スタックでは story 系のみ動作する
 (onboarding を通すには e2e スタックで account を含めて起動する)。
-
-## 公開パッケージ
-
-[packages/api-scenario/](packages/api-scenario/) に REST / Pub/Sub 契約型を公開している。[data/openapi.yaml](data/openapi.yaml) または [data/asyncapi.yaml](data/asyncapi.yaml) を編集後に以下で再生成する。
-
-```bash
-make generate-types   # oapi-codegen + asyncapi-codegen を呼ぶ薄い wrapper
-```
