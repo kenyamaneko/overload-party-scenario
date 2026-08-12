@@ -46,7 +46,7 @@ func TestOutboxRepository_ClaimUnpublished(t *testing.T) {
 	repo := postgres.NewOutboxRepository(sharedPg.Pool)
 	ctx := context.Background()
 
-	t.Run("未配信行の取得", func(t *testing.T) {
+	t.Run("[配信]未配信行の取得", func(t *testing.T) {
 		withinVisibility := 5 * time.Second
 		beyondVisibility := 60 * time.Second
 
@@ -184,7 +184,7 @@ func TestOutboxRepository_MarkPublished(t *testing.T) {
 	repo := postgres.NewOutboxRepository(sharedPg.Pool)
 	ctx := context.Background()
 
-	t.Run("配信済みの記録", func(t *testing.T) {
+	t.Run("[配信]配信済みの記録", func(t *testing.T) {
 		t.Run("対象行が存在するとき、MarkPublishedを呼ぶとpublish済みとして記録され、以降claim対象から外れる", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			id := seedClaimCandidate(t, 0, nil)
@@ -218,7 +218,7 @@ func TestOutboxRepository_RecordFailure(t *testing.T) {
 	repo := postgres.NewOutboxRepository(sharedPg.Pool)
 	ctx := context.Background()
 
-	t.Run("失敗の記録", func(t *testing.T) {
+	t.Run("[配信]失敗の記録", func(t *testing.T) {
 		t.Run("対象行が存在するとき、RecordFailureを呼ぶと失敗回数が1増加する", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			id := seedClaimCandidate(t, 0, nil)

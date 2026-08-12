@@ -12,7 +12,7 @@ import (
 )
 
 func TestLockReasonTypeAgainstOpenAPISpec(t *testing.T) {
-	t.Run("LockReasonTypeとdata/openapi.yamlの整合", func(t *testing.T) {
+	t.Run("[シナリオ]LockReasonTypeとdata/openapi.yamlの整合", func(t *testing.T) {
 		t.Run("LockReasonTypeの値集合がdata/openapi.yamlのLockReasonType enumの値集合と一致する", func(t *testing.T) {
 			spec := loadOpenAPISpec(t)
 			want := []string{

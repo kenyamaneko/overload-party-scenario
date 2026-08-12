@@ -31,7 +31,7 @@ func TestGameConfigRepository(t *testing.T) {
 
 	repo := scenariofirestore.NewGameConfigRepository(client)
 
-	t.Run("ゲーム設定値の取得", func(t *testing.T) {
+	t.Run("[ゲーム設定]ゲーム設定値の取得", func(t *testing.T) {
 		t.Run("設定が存在するキーを指定したとき、保存された値が返る", func(t *testing.T) {
 			_, err := client.Collection("game_config").Doc("TST-0001").Set(ctx, map[string]any{"value": int64(40)})
 			require.NoError(t, err)

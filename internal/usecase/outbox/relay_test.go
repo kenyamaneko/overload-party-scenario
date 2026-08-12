@@ -59,7 +59,7 @@ func (f *fakeRawEventPublisher) Publish(ctx context.Context, eventType string, p
 }
 
 func TestNew(t *testing.T) {
-	t.Run("Relayの構築", func(t *testing.T) {
+	t.Run("[配信]Relayの構築", func(t *testing.T) {
 		validStore := &fakeOutboxStore{}
 		validPub := &fakeRawEventPublisher{}
 		validCfg := Config{BatchSize: 10, FailureThreshold: 3, VisibilityTimeout: time.Minute}
@@ -127,7 +127,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestRunOnce(t *testing.T) {
-	t.Run("1バッチ分のclaim結果に対するpublish振り分け", func(t *testing.T) {
+	t.Run("[配信]1バッチ分のclaim結果に対するpublish振り分け", func(t *testing.T) {
 		validCfg := Config{BatchSize: 10, FailureThreshold: 3, VisibilityTimeout: time.Minute}
 
 		t.Run("claim結果が0件のとき、エラーなく完了する", func(t *testing.T) {

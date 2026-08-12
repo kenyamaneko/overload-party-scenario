@@ -18,7 +18,7 @@ func TestOnboardingRepository_MarkComplete(t *testing.T) {
 	repo := postgres.NewOnboardingRepository(sharedPg.Pool)
 	ctx := context.Background()
 
-	t.Run("オンボーディング完了の記録", func(t *testing.T) {
+	t.Run("[オンボーディング]オンボーディング完了の記録", func(t *testing.T) {
 		t.Run("対象プレイヤーが未オンボードのとき、オンボード完了記録が作成され、渡したイベントがoutboxに記録される", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			playerID := uuid.New().String()
@@ -71,7 +71,7 @@ func TestOnboardingRepository_PublishEvents(t *testing.T) {
 	repo := postgres.NewOnboardingRepository(sharedPg.Pool)
 	ctx := context.Background()
 
-	t.Run("outboxイベントの発行", func(t *testing.T) {
+	t.Run("[オンボーディング]outboxイベントの発行", func(t *testing.T) {
 		t.Run("イベントが1件以上あるとき、全てoutboxに記録される", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			ev1 := port.OutboxEvent{EventID: uuid.New(), EventType: "TST_EVENT_A", Payload: []byte(`{"k":"a"}`)}

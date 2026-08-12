@@ -13,7 +13,7 @@ import (
 )
 
 func TestListEpisodes(t *testing.T) {
-	t.Run("エピソード一覧取得", func(t *testing.T) {
+	t.Run("[シナリオ]エピソード一覧取得", func(t *testing.T) {
 		t.Run("要求レベルを満たすエピソードと満たさないエピソードがあるとき、アンロック状態がそれぞれ正しく付与された一覧が返る", func(t *testing.T) {
 			unlockedEp := &domain.Episode{EpisodeID: "TST-EP01", RequiredLevel: 3, IsActive: true}
 			lockedEp := &domain.Episode{EpisodeID: "TST-EP02", RequiredLevel: 10, IsActive: true}
@@ -78,7 +78,7 @@ func TestListEpisodes(t *testing.T) {
 }
 
 func TestGetScript(t *testing.T) {
-	t.Run("エピソードスクリプト取得", func(t *testing.T) {
+	t.Run("[シナリオ]エピソードスクリプト取得", func(t *testing.T) {
 		t.Run("指定エピソードが存在しないとき、エピソード未検出を表すエラーになる", func(t *testing.T) {
 			repo := &fakeStoryRepo{findErr: port.ErrNotFound}
 			svc := New(repo, &fakeScriptStore{}, &fakePlayerProgressReader{})
@@ -162,7 +162,7 @@ func TestGetScript(t *testing.T) {
 }
 
 func TestCompleteEpisode(t *testing.T) {
-	t.Run("エピソード完了記録", func(t *testing.T) {
+	t.Run("[シナリオ]エピソード完了記録", func(t *testing.T) {
 		t.Run("指定エピソードが存在しないとき、エピソード未検出を表すエラーになる", func(t *testing.T) {
 			repo := &fakeStoryRepo{findErr: port.ErrNotFound}
 			svc := New(repo, &fakeScriptStore{}, &fakePlayerProgressReader{})

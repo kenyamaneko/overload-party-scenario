@@ -37,7 +37,7 @@ func setValidEnv(t *testing.T) {
 }
 
 func TestFromEnv(t *testing.T) {
-	t.Run("環境変数からの設定構築", func(t *testing.T) {
+	t.Run("[設定]環境変数からの設定構築", func(t *testing.T) {
 		t.Run("必須環境変数の欠落", func(t *testing.T) {
 			cases := []struct {
 				name            string

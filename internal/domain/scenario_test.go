@@ -9,7 +9,7 @@ import (
 )
 
 func TestEpisodeLockReasons(t *testing.T) {
-	t.Run("エピソードのロック理由判定", func(t *testing.T) {
+	t.Run("[シナリオ]エピソードのロック理由判定", func(t *testing.T) {
 		cases := []struct {
 			name    string
 			episode domain.Episode
@@ -143,7 +143,7 @@ func TestEpisodeLockReasons(t *testing.T) {
 }
 
 func TestEpisodeTitle(t *testing.T) {
-	t.Run("表示タイトルの言語切り替え", func(t *testing.T) {
+	t.Run("[シナリオ]表示タイトルの言語切り替え", func(t *testing.T) {
 		ep := domain.Episode{TitleJa: "日本語タイトル", TitleEn: "English Title"}
 
 		cases := []struct {

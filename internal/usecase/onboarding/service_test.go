@@ -14,7 +14,7 @@ import (
 )
 
 func TestGetScript(t *testing.T) {
-	t.Run("オンボーディングスクリプト取得", func(t *testing.T) {
+	t.Run("[オンボーディング]オンボーディングスクリプト取得", func(t *testing.T) {
 		t.Run("要求言語のスクリプトが存在するとき、その本文が返る", func(t *testing.T) {
 			svc := New(&fakeOnboardingRepo{}, &fakeScriptStore{body: "dummy onboarding script body"}, &fakeNameValidator{}, &fakePlayerReader{})
 
@@ -44,7 +44,7 @@ func TestGetScript(t *testing.T) {
 }
 
 func TestUpdateName(t *testing.T) {
-	t.Run("name入力ステップの更新", func(t *testing.T) {
+	t.Run("[オンボーディング]name入力ステップの更新", func(t *testing.T) {
 		t.Run("表示名が有効なとき、name入力ステップ完了イベントがpublishされ、エラーなく完了する", func(t *testing.T) {
 			repo := &fakeOnboardingRepo{}
 			svc := New(repo, &fakeScriptStore{}, &fakeNameValidator{}, &fakePlayerReader{})
@@ -101,7 +101,7 @@ func TestUpdateName(t *testing.T) {
 }
 
 func TestSelectFaction(t *testing.T) {
-	t.Run("faction選択ステップの更新", func(t *testing.T) {
+	t.Run("[オンボーディング]faction選択ステップの更新", func(t *testing.T) {
 		t.Run("選択可能な陣営IDを渡すと、faction選択ステップ完了イベントがpublishされ、陣営が入力値と一致する", func(t *testing.T) {
 			cases := []struct {
 				name      string
@@ -164,7 +164,7 @@ func TestSelectFaction(t *testing.T) {
 }
 
 func TestComplete(t *testing.T) {
-	t.Run("オンボーディング完了", func(t *testing.T) {
+	t.Run("[オンボーディング]オンボーディング完了", func(t *testing.T) {
 		t.Run("プレイヤーがまだ陣営未選択のとき、陣営未選択を表すエラーになる", func(t *testing.T) {
 			cases := []struct {
 				name           string

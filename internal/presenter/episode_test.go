@@ -15,7 +15,7 @@ func int64Ptr(v int64) *int64    { return &v }
 func stringPtr(v string) *string { return &v }
 
 func TestToLockReason(t *testing.T) {
-	t.Run("ロック理由のwire変換", func(t *testing.T) {
+	t.Run("[シナリオ]ロック理由のwire変換", func(t *testing.T) {
 		cases := []struct {
 			name  string
 			input domain.LockReason
@@ -66,7 +66,7 @@ func TestToLockReason(t *testing.T) {
 }
 
 func TestToLockReasons(t *testing.T) {
-	t.Run("複数理由のwire変換", func(t *testing.T) {
+	t.Run("[シナリオ]複数理由のwire変換", func(t *testing.T) {
 		t.Run("理由が0件のとき、変換結果は空配列になり、JSONシリアライズしたときnullでなく[]になる", func(t *testing.T) {
 			got := presenter.ToLockReasons(nil)
 			require.Len(t, got, 0)
@@ -95,7 +95,7 @@ func TestToLockReasons(t *testing.T) {
 }
 
 func TestBuildEpisodeWithStatus(t *testing.T) {
-	t.Run("エピソードの状態組み立て", func(t *testing.T) {
+	t.Run("[シナリオ]エピソードの状態組み立て", func(t *testing.T) {
 		t.Run("ロック理由が1件以上あるとき、アンロック済みフラグはfalseになる", func(t *testing.T) {
 			ep := &domain.Episode{EpisodeID: "TST-0001", RequiredLevel: 5}
 			uc := &domain.UnlockContext{PlayerLevel: 1}
@@ -173,7 +173,7 @@ func TestBuildEpisodeWithStatus(t *testing.T) {
 }
 
 func TestBuildEpisodesWithStatus(t *testing.T) {
-	t.Run("複数エピソードの一括状態組み立て", func(t *testing.T) {
+	t.Run("[シナリオ]複数エピソードの一括状態組み立て", func(t *testing.T) {
 		t.Run("複数のエピソードを渡すと、それぞれが個別に変換され、件数と順序が保たれる", func(t *testing.T) {
 			ep1 := &domain.Episode{EpisodeID: "TST-0001", RequiredLevel: 1}
 			ep2 := &domain.Episode{EpisodeID: "TST-0002", RequiredLevel: 10}

@@ -15,7 +15,7 @@ import (
 )
 
 func TestScriptStore(t *testing.T) {
-	t.Run("スクリプト読み込み", func(t *testing.T) {
+	t.Run("[シナリオ]スクリプト読み込み", func(t *testing.T) {
 		t.Run("指定キーのファイルが存在するとき、その本文が返る", func(t *testing.T) {
 			root := t.TempDir()
 			key := "sample/script.ks"

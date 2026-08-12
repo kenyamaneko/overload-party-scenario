@@ -25,7 +25,7 @@ func newTestAccountServer(t *testing.T) *apiaccountserverfake.Server {
 }
 
 func TestAccountClient_ValidateOnboardingName(t *testing.T) {
-	t.Run("表示名バリデーション", func(t *testing.T) {
+	t.Run("[オンボーディング]表示名バリデーション", func(t *testing.T) {
 		t.Run("accountが成功を返すとき、エラーなく完了する", func(t *testing.T) {
 			srv := newTestAccountServer(t)
 			srv.ValidateNameForOnboardingFn = func(apiaccount.ValidateNameForOnboardingRequest) (int, any) {
@@ -76,7 +76,7 @@ func TestAccountClient_ValidateOnboardingName(t *testing.T) {
 }
 
 func TestAccountClient_GetOnboardingPlayer(t *testing.T) {
-	t.Run("オンボード用プレイヤー取得", func(t *testing.T) {
+	t.Run("[オンボーディング]オンボード用プレイヤー取得", func(t *testing.T) {
 		faction := "TST-FACTION-1"
 		cases := []struct {
 			name               string
@@ -152,7 +152,7 @@ func TestAccountClient_GetOnboardingPlayer(t *testing.T) {
 }
 
 func TestAccountClient_GetPlayerProgress(t *testing.T) {
-	t.Run("到達状況取得", func(t *testing.T) {
+	t.Run("[シナリオ]到達状況取得", func(t *testing.T) {
 		t.Run("accountがプレイヤー情報と陣営一覧をともに返すとき、レベルと所持陣営を含む到達状況が返る", func(t *testing.T) {
 			srv := newTestAccountServer(t)
 			srv.GetPlayerFn = func() (int, any) {

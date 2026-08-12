@@ -18,7 +18,7 @@ func TestStoryRepository_ListActiveEpisodes(t *testing.T) {
 	repo := postgres.NewStoryRepository(sharedPg.Pool)
 	ctx := context.Background()
 
-	t.Run("アクティブなエピソード一覧の取得", func(t *testing.T) {
+	t.Run("[シナリオ]アクティブなエピソード一覧の取得", func(t *testing.T) {
 		t.Run("アクティブなエピソードが存在するとき、表示順で一覧が返る", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			seedEpisode(t, "TST-EP-0002", nil, 2, "second", "Second", 1, nil, "path/{lang}", 2, true)
@@ -79,7 +79,7 @@ func TestStoryRepository_FindEpisodeByID(t *testing.T) {
 	repo := postgres.NewStoryRepository(sharedPg.Pool)
 	ctx := context.Background()
 
-	t.Run("IDによるエピソード取得", func(t *testing.T) {
+	t.Run("[シナリオ]IDによるエピソード取得", func(t *testing.T) {
 		t.Run("指定IDのエピソードが存在するとき、そのエピソードが返る", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			seedEpisode(t, "TST-EP-0001", strPtr("SHE"), 1, "タイトル", "Title", 5, nil, "path/{lang}", 1, true)
@@ -113,7 +113,7 @@ func TestStoryRepository_GetCompletedEpisodeIDs(t *testing.T) {
 	repo := postgres.NewStoryRepository(sharedPg.Pool)
 	ctx := context.Background()
 
-	t.Run("完了済みエピソードID一覧の取得", func(t *testing.T) {
+	t.Run("[シナリオ]完了済みエピソードID一覧の取得", func(t *testing.T) {
 		t.Run("対象プレイヤーの完了記録が存在するとき、そのエピソードID一覧が返る", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			playerID := uuid.New().String()
@@ -142,7 +142,7 @@ func TestStoryRepository_MarkComplete(t *testing.T) {
 	repo := postgres.NewStoryRepository(sharedPg.Pool)
 	ctx := context.Background()
 
-	t.Run("エピソード完了の記録", func(t *testing.T) {
+	t.Run("[シナリオ]エピソード完了の記録", func(t *testing.T) {
 		t.Run("未完了のエピソードを完了にすると、完了記録が作成される", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			playerID := uuid.New().String()
