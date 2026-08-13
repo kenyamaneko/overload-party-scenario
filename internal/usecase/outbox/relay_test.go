@@ -108,7 +108,7 @@ func TestNew(t *testing.T) {
 				wantErrContains: "FailureThreshold",
 			},
 			{
-				name:            "再claimまでの猶予期間が0のとき、エラーになる",
+				name:            "他のワーカーから隠蔽される期間が0のとき、エラーになる",
 				store:           validStore,
 				pub:             validPub,
 				cfg:             Config{BatchSize: 10, FailureThreshold: 3, VisibilityTimeout: 0},
@@ -125,7 +125,7 @@ func TestNew(t *testing.T) {
 			})
 		}
 
-		t.Run("未配信イベントの保存先と配信先が設定され、1回に取得する最大件数・連続失敗の閾値・再claimまでの猶予期間が全て正の値のとき、構築が成功する", func(t *testing.T) {
+		t.Run("未配信イベントの保存先と配信先が設定され、1回に取得する最大件数・連続失敗の閾値・他のワーカーから隠蔽される期間が全て正の値のとき、構築が成功する", func(t *testing.T) {
 			relay, err := New(validStore, validPub, validCfg)
 
 			require.NoError(t, err)
@@ -135,10 +135,10 @@ func TestNew(t *testing.T) {
 }
 
 func TestRunOnce(t *testing.T) {
-	t.Run("[配信]1バッチ分のclaim結果に対するpublish振り分け", func(t *testing.T) {
+	t.Run("[配信]1バッチ分の取得結果に対する配信振り分け", func(t *testing.T) {
 		validCfg := Config{BatchSize: 1, FailureThreshold: 1, VisibilityTimeout: time.Nanosecond}
 
-		t.Run("claim結果が0件のとき、エラーなく完了する", func(t *testing.T) {
+		t.Run("未配信イベントの取得結果が0件のとき、エラーなく完了する", func(t *testing.T) {
 			store := &fakeOutboxStore{claimResult: []port.ClaimedOutboxEvent{}}
 			pub := &fakeRawEventPublisher{}
 			relay, err := New(store, pub, validCfg)
@@ -151,7 +151,7 @@ func TestRunOnce(t *testing.T) {
 			assert.Empty(t, store.recordFailureCalls)
 		})
 
-		t.Run("構築時に指定した1回に取得する最大件数・再claimまでの猶予期間・連続失敗の閾値が、そのまま未配信イベント取得の呼び出しに渡る", func(t *testing.T) {
+		t.Run("構築時に指定した1回に取得する最大件数・他のワーカーから隠蔽される期間・連続失敗の閾値が、そのまま未配信イベント取得の呼び出しに渡る", func(t *testing.T) {
 			store := &fakeOutboxStore{claimResult: []port.ClaimedOutboxEvent{}}
 			pub := &fakeRawEventPublisher{}
 			relay, err := New(store, pub, validCfg)
@@ -176,7 +176,7 @@ func TestRunOnce(t *testing.T) {
 			require.ErrorIs(t, err, errBoom)
 		})
 
-		t.Run("claimされた行のpublishが成功するとき、その行の publish 済み記録が呼ばれる", func(t *testing.T) {
+		t.Run("取得された行の配信が成功するとき、その行の配信済み記録が呼ばれる", func(t *testing.T) {
 			eventID := uuid.New()
 			store := &fakeOutboxStore{claimResult: []port.ClaimedOutboxEvent{
 				{EventID: eventID, EventType: "onboarding_name_set", Payload: []byte(`{}`)},
@@ -196,7 +196,7 @@ func TestRunOnce(t *testing.T) {
 			assert.Equal(t, []byte(`{}`), pub.publishCalls[0].payload)
 		})
 
-		t.Run("claimされた行のpublishが失敗するとき、その行の失敗記録が呼ばれ、エラーにならない", func(t *testing.T) {
+		t.Run("取得された行の配信が失敗するとき、その行の失敗記録が呼ばれ、エラーにならない", func(t *testing.T) {
 			eventID := uuid.New()
 			publishErr := errors.New("publish boom")
 			store := &fakeOutboxStore{claimResult: []port.ClaimedOutboxEvent{
