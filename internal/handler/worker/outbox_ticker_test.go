@@ -40,20 +40,20 @@ func (r *fakeOutboxRunner) callCount() int {
 
 func TestNewOutboxTicker(t *testing.T) {
 	t.Run("[配信]定期実行の構築", func(t *testing.T) {
-		t.Run("runnerがnilのとき、エラーになる", func(t *testing.T) {
+		t.Run("実行対象がnilのとき、エラーになる", func(t *testing.T) {
 			ticker, err := worker.NewOutboxTicker(nil, tickInterval)
 
 			assert.Error(t, err)
 			assert.Nil(t, ticker)
 		})
 
-		t.Run("intervalが0以下のとき、エラーになる", func(t *testing.T) {
+		t.Run("実行間隔が0以下のとき、エラーになる", func(t *testing.T) {
 			cases := []struct {
 				name     string
 				interval time.Duration
 			}{
-				{name: "intervalが0のとき", interval: 0},
-				{name: "intervalが負のとき", interval: -1 * time.Second},
+				{name: "実行間隔が0のとき", interval: 0},
+				{name: "実行間隔が負のとき", interval: -1 * time.Second},
 			}
 
 			for _, tc := range cases {
@@ -66,7 +66,7 @@ func TestNewOutboxTicker(t *testing.T) {
 			}
 		})
 
-		t.Run("runnerとintervalが両方有効なとき、構築が成功する", func(t *testing.T) {
+		t.Run("実行対象と実行間隔が両方有効なとき、構築が成功する", func(t *testing.T) {
 			ticker, err := worker.NewOutboxTicker(&fakeOutboxRunner{}, tickInterval)
 
 			require.NoError(t, err)
@@ -117,7 +117,7 @@ func TestOutboxTickerRun(t *testing.T) {
 			}
 		})
 
-		t.Run("ctxがキャンセルされると、Runはエラーなく終了する", func(t *testing.T) {
+		t.Run("コンテキストがキャンセルされると、エラーなく終了する", func(t *testing.T) {
 			runner := &fakeOutboxRunner{}
 			ticker, err := worker.NewOutboxTicker(runner, time.Hour)
 			require.NoError(t, err)

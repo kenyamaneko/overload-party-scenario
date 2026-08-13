@@ -80,35 +80,35 @@ func TestNew(t *testing.T) {
 			wantErrContains string
 		}{
 			{
-				name:            "storeがnilのとき、エラーになる",
+				name:            "未配信イベントの保存先が未設定(nil)のとき、エラーになる",
 				store:           nil,
 				pub:             validPub,
 				cfg:             validCfg,
 				wantErrContains: "store",
 			},
 			{
-				name:            "publisherがnilのとき、エラーになる",
+				name:            "配信先が未設定(nil)のとき、エラーになる",
 				store:           validStore,
 				pub:             nil,
 				cfg:             validCfg,
 				wantErrContains: "publisher",
 			},
 			{
-				name:            "BatchSizeが0のとき、エラーになる",
+				name:            "1回に取得する最大件数が0のとき、エラーになる",
 				store:           validStore,
 				pub:             validPub,
 				cfg:             Config{BatchSize: 0, FailureThreshold: 3, VisibilityTimeout: time.Minute},
 				wantErrContains: "BatchSize",
 			},
 			{
-				name:            "FailureThresholdが0のとき、エラーになる",
+				name:            "連続失敗の閾値が0のとき、エラーになる",
 				store:           validStore,
 				pub:             validPub,
 				cfg:             Config{BatchSize: 10, FailureThreshold: 0, VisibilityTimeout: time.Minute},
 				wantErrContains: "FailureThreshold",
 			},
 			{
-				name:            "VisibilityTimeoutが0のとき、エラーになる",
+				name:            "再claimまでの猶予期間が0のとき、エラーになる",
 				store:           validStore,
 				pub:             validPub,
 				cfg:             Config{BatchSize: 10, FailureThreshold: 3, VisibilityTimeout: 0},
@@ -125,7 +125,7 @@ func TestNew(t *testing.T) {
 			})
 		}
 
-		t.Run("storeとpublisherが設定され、BatchSize・FailureThreshold・VisibilityTimeoutが全て正の値のとき、構築が成功する", func(t *testing.T) {
+		t.Run("未配信イベントの保存先と配信先が設定され、1回に取得する最大件数・連続失敗の閾値・再claimまでの猶予期間が全て正の値のとき、構築が成功する", func(t *testing.T) {
 			relay, err := New(validStore, validPub, validCfg)
 
 			require.NoError(t, err)
@@ -138,7 +138,7 @@ func TestRunOnce(t *testing.T) {
 	t.Run("[配信]1バッチ分のclaim結果に対するpublish振り分け", func(t *testing.T) {
 		validCfg := Config{BatchSize: 1, FailureThreshold: 1, VisibilityTimeout: time.Nanosecond}
 
-		t.Run("claim結果が0件のとき、エラーなく完了し、構築時に指定したBatchSize・VisibilityTimeout・FailureThresholdがそのまま未配信取得に渡る", func(t *testing.T) {
+		t.Run("claim結果が0件のとき、エラーなく完了する", func(t *testing.T) {
 			store := &fakeOutboxStore{claimResult: []port.ClaimedOutboxEvent{}}
 			pub := &fakeRawEventPublisher{}
 			relay, err := New(store, pub, validCfg)
@@ -149,6 +149,17 @@ func TestRunOnce(t *testing.T) {
 			require.NoError(t, err)
 			assert.Empty(t, store.markPublishedIDs)
 			assert.Empty(t, store.recordFailureCalls)
+		})
+
+		t.Run("構築時に指定した1回に取得する最大件数・再claimまでの猶予期間・連続失敗の閾値が、そのまま未配信イベント取得の呼び出しに渡る", func(t *testing.T) {
+			store := &fakeOutboxStore{claimResult: []port.ClaimedOutboxEvent{}}
+			pub := &fakeRawEventPublisher{}
+			relay, err := New(store, pub, validCfg)
+			require.NoError(t, err)
+
+			err = relay.RunOnce(context.Background())
+
+			require.NoError(t, err)
 			require.Len(t, store.claimCalls, 1)
 			assert.Equal(t, claimCall{limit: 1, visibilityTimeout: time.Nanosecond, failureThreshold: 1}, store.claimCalls[0])
 		})
