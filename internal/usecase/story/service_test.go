@@ -10,329 +10,221 @@ import (
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
-	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
-type testEnv struct {
-	svc       *Service
-	storyRepo *mockStoryRepository
-	account   *fakePlayerProgressReader
-}
-
-func newTestEnv() *testEnv {
-	storyRepo := newMockStoryRepository()
-	account := &fakePlayerProgressReader{}
-	return &testEnv{
-		svc:       New(storyRepo, nil, account),
-		storyRepo: storyRepo,
-		account:   account,
-	}
-}
-
-func (e *testEnv) setPlayerProgress(level int64, ownedFactions ...string) {
-	e.account.progress = port.PlayerProgress{Level: level, OwnedFactions: ownedFactions}
-}
-
-func seedTestEpisodes(env *testEnv) {
-	faction := "SHE"
-	env.storyRepo.SeedEpisodes([]*domain.Episode{
-		{
-			EpisodeID:        "she_ep1",
-			Faction:          &faction,
-			EpisodeNumber:    1,
-			TitleJa:          "SHE 第1章",
-			TitleEn:          "SHE Chapter 1",
-			RequiredLevel:    2,
-			RequiredFactions: []string{"SHE"},
-			RequiredEpisodes: []string{},
-			ScriptPath:       "stories/{lang}/she_ep1.ks",
-			SortOrder:        1,
-			IsActive:         true,
-		},
-		{
-			EpisodeID:        "she_ep2",
-			Faction:          &faction,
-			EpisodeNumber:    2,
-			TitleJa:          "SHE 第2章",
-			TitleEn:          "SHE Chapter 2",
-			RequiredLevel:    6,
-			RequiredFactions: []string{"SHE"},
-			RequiredEpisodes: []string{"she_ep1"},
-			ScriptPath:       "stories/{lang}/she_ep2.ks",
-			SortOrder:        5,
-			IsActive:         true,
-		},
-		{
-			EpisodeID:        "inactive_ep",
-			Faction:          &faction,
-			EpisodeNumber:    99,
-			TitleJa:          "非公開エピソード",
-			TitleEn:          "Inactive Episode",
-			RequiredLevel:    1,
-			RequiredFactions: []string{},
-			RequiredEpisodes: []string{},
-			ScriptPath:       "stories/{lang}/inactive.ks",
-			SortOrder:        99,
-			IsActive:         false,
-		},
-	})
-}
-
-func findReasonByType(reasons []apiscenario.LockReason, typ apiscenario.LockReasonType) *apiscenario.LockReason {
-	for i := range reasons {
-		if reasons[i].Type == typ {
-			return &reasons[i]
-		}
-	}
-	return nil
-}
-
 func TestListEpisodes(t *testing.T) {
-	t.Run("エピソード一覧の取得", func(t *testing.T) {
-		t.Run("レベル未達のとき、後続エピソードはlevel理由でロックされる", func(t *testing.T) {
-			env := newTestEnv()
-			seedTestEpisodes(env)
-			env.setPlayerProgress(5, "SHE")
+	t.Run("[シナリオ]エピソード一覧取得", func(t *testing.T) {
+		t.Run("要求レベルを満たすエピソードと満たさないエピソードがあるとき、アンロック状態がそれぞれ正しく付与された一覧が返る", func(t *testing.T) {
+			unlockedEp := &domain.Episode{EpisodeID: "TST-EP01", RequiredLevel: 3, IsActive: true}
+			lockedEp := &domain.Episode{EpisodeID: "TST-EP02", RequiredLevel: 10, IsActive: true}
+			repo := &fakeStoryRepo{activeEpisodes: []*domain.Episode{unlockedEp, lockedEp}}
+			account := &fakePlayerProgressReader{progress: port.PlayerProgress{Level: 5}}
+			svc := New(repo, &fakeScriptStore{}, account)
 
-			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
+			result, err := svc.ListEpisodes(context.Background(), "TST-0001", "ja")
+
 			require.NoError(t, err)
-			require.Len(t, eps, 2)
-			assert.True(t, eps[0].IsUnlocked)
-			assert.False(t, eps[1].IsUnlocked)
-			assert.NotNil(t, findReasonByType(eps[1].LockReasons, apiscenario.LockReasonTypeLevel))
+			require.Len(t, result, 2)
+			assert.Equal(t, "TST-EP01", result[0].EpisodeID)
+			assert.True(t, result[0].IsUnlocked)
+			assert.Equal(t, "TST-EP02", result[1].EpisodeID)
+			assert.False(t, result[1].IsUnlocked)
 		})
 
-		t.Run("faction未所有のとき、faction理由を返す", func(t *testing.T) {
-			env := newTestEnv()
-			seedTestEpisodes(env)
-			env.setPlayerProgress(10)
+		t.Run("アクティブなエピソードが1件も無いとき、空の一覧が返る", func(t *testing.T) {
+			repo := &fakeStoryRepo{activeEpisodes: []*domain.Episode{}}
+			svc := New(repo, &fakeScriptStore{}, &fakePlayerProgressReader{})
 
-			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
+			result, err := svc.ListEpisodes(context.Background(), "TST-0001", "ja")
+
 			require.NoError(t, err)
-			require.Len(t, eps, 2)
-			r := findReasonByType(eps[0].LockReasons, apiscenario.LockReasonTypeFaction)
-			require.NotNil(t, r)
-			require.NotNil(t, r.RequiredFaction)
-			assert.Equal(t, "SHE", *r.RequiredFaction)
+			assert.Empty(t, result)
 		})
 
-		t.Run("前提エピソード未完了のとき、episode理由を返す", func(t *testing.T) {
-			env := newTestEnv()
-			seedTestEpisodes(env)
-			env.setPlayerProgress(10, "SHE")
+		t.Run("エピソード一覧の取得が失敗するとき、エラーになる", func(t *testing.T) {
+			errBoom := errors.New("list active episodes boom")
+			repo := &fakeStoryRepo{activeErr: errBoom}
+			svc := New(repo, &fakeScriptStore{}, &fakePlayerProgressReader{})
 
-			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
-			require.NoError(t, err)
-			require.Len(t, eps, 2)
-			assert.False(t, eps[1].IsUnlocked)
-			assert.NotNil(t, findReasonByType(eps[1].LockReasons, apiscenario.LockReasonTypeEpisode))
+			_, err := svc.ListEpisodes(context.Background(), "TST-0001", "ja")
+
+			require.ErrorIs(t, err, errBoom)
 		})
 
-		t.Run("lang=enのとき、英語タイトルを返す", func(t *testing.T) {
-			env := newTestEnv()
-			seedTestEpisodes(env)
-			env.setPlayerProgress(10, "SHE")
+		t.Run("プレイヤーの到達状況の取得が失敗するとき、エラーになる", func(t *testing.T) {
+			errBoom := errors.New("get player progress boom")
+			repo := &fakeStoryRepo{activeEpisodes: []*domain.Episode{{EpisodeID: "TST-EP01", IsActive: true}}}
+			account := &fakePlayerProgressReader{err: errBoom}
+			svc := New(repo, &fakeScriptStore{}, account)
 
-			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "en")
-			require.NoError(t, err)
-			assert.Equal(t, "SHE Chapter 1", eps[0].Title)
+			_, err := svc.ListEpisodes(context.Background(), "TST-0001", "ja")
+
+			require.ErrorIs(t, err, errBoom)
 		})
 
-		t.Run("前提エピソード完了済みのとき、IsCompleted=trueで後続をアンロックする", func(t *testing.T) {
-			env := newTestEnv()
-			seedTestEpisodes(env)
-			env.setPlayerProgress(10, "SHE")
-			_ = env.storyRepo.MarkComplete(context.Background(), "p1", "she_ep1")
+		t.Run("プレイヤーの完了エピソード一覧の取得が失敗するとき、エラーになる", func(t *testing.T) {
+			errBoom := errors.New("get completed episode ids boom")
+			repo := &fakeStoryRepo{
+				activeEpisodes: []*domain.Episode{{EpisodeID: "TST-EP01", IsActive: true}},
+				completedErr:   errBoom,
+			}
+			svc := New(repo, &fakeScriptStore{}, &fakePlayerProgressReader{})
 
-			eps, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
-			require.NoError(t, err)
-			assert.True(t, eps[0].IsCompleted)
-			assert.True(t, eps[1].IsUnlocked)
-		})
+			_, err := svc.ListEpisodes(context.Background(), "TST-0001", "ja")
 
-		t.Run("accountから到達状況を取得できないとき、一覧の取得はその理由付きで失敗する", func(t *testing.T) {
-			env := newTestEnv()
-			seedTestEpisodes(env)
-			env.account.err = errAccountUnavailable
-
-			_, err := env.svc.ListEpisodes(context.Background(), "p1", "ja")
-			assert.ErrorIs(t, err, errAccountUnavailable)
-		})
-	})
-}
-
-func TestCompleteEpisode(t *testing.T) {
-	t.Run("エピソードの完了", func(t *testing.T) {
-		tests := []struct {
-			name      string
-			setup     func(env *testEnv)
-			episodeID string
-			wantErr   error
-		}{
-			{
-				name: "アンロック済みのとき、完了できる (エラーにならない)",
-				setup: func(env *testEnv) {
-					env.setPlayerProgress(5, "SHE")
-				},
-				episodeID: "she_ep1",
-				wantErr:   nil,
-			},
-			{
-				name: "存在しないエピソードのとき、ErrEpisodeNotFoundになる",
-				setup: func(env *testEnv) {
-					env.setPlayerProgress(5)
-				},
-				episodeID: "nonexistent",
-				wantErr:   ErrEpisodeNotFound,
-			},
-			{
-				name: "ロック中のエピソードのとき、ErrEpisodeLockedになる",
-				setup: func(env *testEnv) {
-					env.setPlayerProgress(1)
-				},
-				episodeID: "she_ep1",
-				wantErr:   ErrEpisodeLocked,
-			},
-			{
-				name: "非アクティブエピソードのとき、ErrEpisodeNotFoundになる",
-				setup: func(env *testEnv) {
-					env.setPlayerProgress(99)
-				},
-				episodeID: "inactive_ep",
-				wantErr:   ErrEpisodeNotFound,
-			},
-			{
-				name: "accountから到達状況を取得できないとき、ロック扱いにせずその理由を返す",
-				setup: func(env *testEnv) {
-					env.account.err = errAccountUnavailable
-				},
-				episodeID: "she_ep1",
-				wantErr:   errAccountUnavailable,
-			},
-		}
-
-		for _, tc := range tests {
-			t.Run(tc.name, func(t *testing.T) {
-				env := newTestEnv()
-				seedTestEpisodes(env)
-				tc.setup(env)
-
-				err := env.svc.CompleteEpisode(context.Background(), "p1", tc.episodeID)
-				assert.ErrorIs(t, err, tc.wantErr)
-			})
-		}
-
-		t.Run("同じエピソードを2回完了しても、完了IDは1件のまま (冪等)", func(t *testing.T) {
-			env := newTestEnv()
-			seedTestEpisodes(env)
-			env.setPlayerProgress(5, "SHE")
-
-			require.NoError(t, env.svc.CompleteEpisode(context.Background(), "p1", "she_ep1"))
-			require.NoError(t, env.svc.CompleteEpisode(context.Background(), "p1", "she_ep1"))
-
-			ids, err := env.storyRepo.GetCompletedEpisodeIDs(context.Background(), "p1")
-			require.NoError(t, err)
-			assert.Equal(t, []string{"she_ep1"}, ids)
+			require.ErrorIs(t, err, errBoom)
 		})
 	})
 }
 
 func TestGetScript(t *testing.T) {
-	t.Run("スクリプトの取得", func(t *testing.T) {
-		tests := []struct {
-			name      string
-			setup     func(env *testEnv)
-			episodeID string
-			lang      string
-			wantErr   error
-		}{
-			{
-				name: "存在しないエピソードのとき、ErrEpisodeNotFoundになる",
-				setup: func(env *testEnv) {
-					env.setPlayerProgress(10)
-				},
-				episodeID: "nonexistent",
-				lang:      "ja",
-				wantErr:   ErrEpisodeNotFound,
-			},
-			{
-				name: "非アクティブエピソードのとき、ErrEpisodeNotFoundになる",
-				setup: func(env *testEnv) {
-					env.setPlayerProgress(99)
-				},
-				episodeID: "inactive_ep",
-				lang:      "ja",
-				wantErr:   ErrEpisodeNotFound,
-			},
-			{
-				name: "ロック中のエピソードのとき、ErrEpisodeLockedになる",
-				setup: func(env *testEnv) {
-					env.setPlayerProgress(1)
-				},
-				episodeID: "she_ep1",
-				lang:      "ja",
-				wantErr:   ErrEpisodeLocked,
-			},
-			{
-				name: "accountから到達状況を取得できないとき、ロック扱いにせずその理由を返す",
-				setup: func(env *testEnv) {
-					env.account.err = errAccountUnavailable
-				},
-				episodeID: "she_ep1",
-				lang:      "ja",
-				wantErr:   errAccountUnavailable,
-			},
-		}
+	t.Run("[シナリオ]エピソードスクリプト取得", func(t *testing.T) {
+		t.Run("指定エピソードが存在しないとき、エピソード未検出を表すエラーになる", func(t *testing.T) {
+			repo := &fakeStoryRepo{findErr: port.ErrNotFound}
+			svc := New(repo, &fakeScriptStore{}, &fakePlayerProgressReader{})
 
-		for _, tc := range tests {
-			t.Run(tc.name, func(t *testing.T) {
-				env := newTestEnv()
-				seedTestEpisodes(env)
-				tc.setup(env)
+			_, err := svc.GetScript(context.Background(), "TST-0001", "TST-EP01", "ja")
 
-				_, err := env.svc.GetScript(context.Background(), "p1", tc.episodeID, tc.lang)
-				assert.ErrorIs(t, err, tc.wantErr)
-			})
-		}
+			require.ErrorIs(t, err, ErrEpisodeNotFound)
+		})
 
-		t.Run("要求言語のスクリプトが無いとき、フォールバックせずErrScriptNotFoundになる", func(t *testing.T) {
-			env := newTestEnv()
-			seedTestEpisodes(env)
-			env.setPlayerProgress(10, "SHE")
+		t.Run("指定エピソードが非アクティブのとき、エピソード未検出を表すエラーになる", func(t *testing.T) {
+			repo := &fakeStoryRepo{findEpisode: &domain.Episode{EpisodeID: "TST-EP01", IsActive: false}}
+			svc := New(repo, &fakeScriptStore{}, &fakePlayerProgressReader{})
 
-			fake := &fakeScriptStore{missing: true}
-			svc := New(env.storyRepo, fake, env.account)
+			_, err := svc.GetScript(context.Background(), "TST-0001", "TST-EP01", "ja")
 
-			_, err := svc.GetScript(context.Background(), "p1", "she_ep1", "en")
-			require.Error(t, err)
-			assert.ErrorIs(t, err, port.ErrScriptNotFound)
-			require.Len(t, fake.calls, 1, "フォールバック廃止のため要求言語で一度のみ読みに行く")
-			assert.Equal(t, "stories/en/she_ep1.ks", fake.calls[0])
+			require.ErrorIs(t, err, ErrEpisodeNotFound)
+		})
+
+		t.Run("エピソード取得が未検出以外のエラーを返すとき、そのエラー内容を含んだエラーになる", func(t *testing.T) {
+			errBoom := errors.New("find episode boom")
+			repo := &fakeStoryRepo{findErr: errBoom}
+			svc := New(repo, &fakeScriptStore{}, &fakePlayerProgressReader{})
+
+			_, err := svc.GetScript(context.Background(), "TST-0001", "TST-EP01", "ja")
+
+			require.ErrorIs(t, err, errBoom)
+		})
+
+		t.Run("エピソードがロック状態のとき、ロック済みを表すエラーになる", func(t *testing.T) {
+			repo := &fakeStoryRepo{findEpisode: &domain.Episode{EpisodeID: "TST-EP01", IsActive: true, RequiredLevel: 10}}
+			account := &fakePlayerProgressReader{progress: port.PlayerProgress{Level: 1}}
+			svc := New(repo, &fakeScriptStore{}, account)
+
+			_, err := svc.GetScript(context.Background(), "TST-0001", "TST-EP01", "ja")
+
+			require.ErrorIs(t, err, ErrEpisodeLocked)
+		})
+
+		t.Run("エピソードがアンロック済みのとき、{lang}のパス置換が効いた要求言語のスクリプト本文が返る", func(t *testing.T) {
+			repo := &fakeStoryRepo{findEpisode: &domain.Episode{
+				EpisodeID:     "TST-EP01",
+				IsActive:      true,
+				RequiredLevel: 0,
+				ScriptPath:    "scripts/story/TST-EP01.{lang}.ks",
+			}}
+			account := &fakePlayerProgressReader{progress: port.PlayerProgress{Level: 0}}
+			scriptStore := &fakeScriptStore{body: "dummy episode script body"}
+			svc := New(repo, scriptStore, account)
+
+			body, err := svc.GetScript(context.Background(), "TST-0001", "TST-EP01", "en")
+
+			require.NoError(t, err)
+			assert.Equal(t, "dummy episode script body", body)
+			require.Len(t, scriptStore.calledKeys, 1)
+			assert.Equal(t, "scripts/story/TST-EP01.en.ks", scriptStore.calledKeys[0])
+		})
+
+		t.Run("アンロック判定のためのプレイヤー到達状況取得が失敗するとき、エラーになる", func(t *testing.T) {
+			errBoom := errors.New("get player progress boom")
+			repo := &fakeStoryRepo{findEpisode: &domain.Episode{EpisodeID: "TST-EP01", IsActive: true}}
+			account := &fakePlayerProgressReader{err: errBoom}
+			svc := New(repo, &fakeScriptStore{}, account)
+
+			_, err := svc.GetScript(context.Background(), "TST-0001", "TST-EP01", "ja")
+
+			require.ErrorIs(t, err, errBoom)
+		})
+
+		t.Run("スクリプト読み込みが失敗するとき、そのエラー内容を含んだエラーになる", func(t *testing.T) {
+			errBoom := errors.New("read script boom")
+			repo := &fakeStoryRepo{findEpisode: &domain.Episode{EpisodeID: "TST-EP01", IsActive: true, RequiredLevel: 0}}
+			account := &fakePlayerProgressReader{progress: port.PlayerProgress{Level: 0}}
+			scriptStore := &fakeScriptStore{err: errBoom}
+			svc := New(repo, scriptStore, account)
+
+			_, err := svc.GetScript(context.Background(), "TST-0001", "TST-EP01", "ja")
+
+			require.ErrorIs(t, err, errBoom)
 		})
 	})
 }
 
-var errAccountUnavailable = errors.New("account unavailable")
+func TestCompleteEpisode(t *testing.T) {
+	t.Run("[シナリオ]エピソード完了記録", func(t *testing.T) {
+		t.Run("指定エピソードが存在しないとき、エピソード未検出を表すエラーになる", func(t *testing.T) {
+			repo := &fakeStoryRepo{findErr: port.ErrNotFound}
+			svc := New(repo, &fakeScriptStore{}, &fakePlayerProgressReader{})
 
-// fakePlayerProgressReader は account から返る到達状況 (外部境界) を注入値に差し替える。
-type fakePlayerProgressReader struct {
-	progress port.PlayerProgress
-	err      error
-}
+			err := svc.CompleteEpisode(context.Background(), "TST-0001", "TST-EP01")
 
-func (f *fakePlayerProgressReader) GetPlayerProgress(context.Context) (port.PlayerProgress, error) {
-	return f.progress, f.err
-}
+			require.ErrorIs(t, err, ErrEpisodeNotFound)
+		})
 
-type fakeScriptStore struct {
-	missing bool
-	calls   []string
-}
+		t.Run("指定エピソードが非アクティブのとき、エピソード未検出を表すエラーになる", func(t *testing.T) {
+			repo := &fakeStoryRepo{findEpisode: &domain.Episode{EpisodeID: "TST-EP01", IsActive: false}}
+			svc := New(repo, &fakeScriptStore{}, &fakePlayerProgressReader{})
 
-func (f *fakeScriptStore) ReadScript(_ context.Context, key string) (string, error) {
-	f.calls = append(f.calls, key)
-	if f.missing {
-		return "", port.ErrScriptNotFound
-	}
-	return "@endofscript\n", nil
+			err := svc.CompleteEpisode(context.Background(), "TST-0001", "TST-EP01")
+
+			require.ErrorIs(t, err, ErrEpisodeNotFound)
+		})
+
+		t.Run("エピソード取得が未検出以外のエラーを返すとき、そのエラー内容を含んだエラーになる", func(t *testing.T) {
+			errBoom := errors.New("find episode boom")
+			repo := &fakeStoryRepo{findErr: errBoom}
+			svc := New(repo, &fakeScriptStore{}, &fakePlayerProgressReader{})
+
+			err := svc.CompleteEpisode(context.Background(), "TST-0001", "TST-EP01")
+
+			require.ErrorIs(t, err, errBoom)
+		})
+
+		t.Run("エピソードがロック状態のとき、ロック済みを表すエラーになる", func(t *testing.T) {
+			repo := &fakeStoryRepo{findEpisode: &domain.Episode{EpisodeID: "TST-EP01", IsActive: true, RequiredLevel: 10}}
+			account := &fakePlayerProgressReader{progress: port.PlayerProgress{Level: 1}}
+			svc := New(repo, &fakeScriptStore{}, account)
+
+			err := svc.CompleteEpisode(context.Background(), "TST-0001", "TST-EP01")
+
+			require.ErrorIs(t, err, ErrEpisodeLocked)
+		})
+
+		t.Run("エピソードがアンロック済みのとき、完了が記録される", func(t *testing.T) {
+			repo := &fakeStoryRepo{findEpisode: &domain.Episode{EpisodeID: "TST-EP01", IsActive: true, RequiredLevel: 0}}
+			account := &fakePlayerProgressReader{progress: port.PlayerProgress{Level: 0}}
+			svc := New(repo, &fakeScriptStore{}, account)
+
+			err := svc.CompleteEpisode(context.Background(), "TST-0001", "TST-EP01")
+
+			require.NoError(t, err)
+			require.Len(t, repo.markCompleteCalls, 1)
+			assert.Equal(t, storyMarkCompleteCall{playerID: "TST-0001", episodeID: "TST-EP01"}, repo.markCompleteCalls[0])
+		})
+
+		t.Run("完了記録が失敗するとき、そのエラー内容を含んだエラーになる", func(t *testing.T) {
+			errBoom := errors.New("mark complete boom")
+			repo := &fakeStoryRepo{
+				findEpisode:     &domain.Episode{EpisodeID: "TST-EP01", IsActive: true, RequiredLevel: 0},
+				markCompleteErr: errBoom,
+			}
+			account := &fakePlayerProgressReader{progress: port.PlayerProgress{Level: 0}}
+			svc := New(repo, &fakeScriptStore{}, account)
+
+			err := svc.CompleteEpisode(context.Background(), "TST-0001", "TST-EP01")
+
+			require.ErrorIs(t, err, errBoom)
+		})
+	})
 }

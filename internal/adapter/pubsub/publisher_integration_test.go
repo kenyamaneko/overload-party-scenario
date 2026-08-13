@@ -4,24 +4,24 @@ package pubsub
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/adapter/pubsub/pubsubtest"
-	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
+const emulatorMessageTimeout = 5 * time.Second
+
 var sharedEmulator *pubsubtest.Emulator
 
-// TestMain は package 共有で emulator を 1 回だけ起動する。
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 	em, err := pubsubtest.StartEmulator(ctx, "scenario-test")
@@ -34,165 +34,169 @@ func TestMain(m *testing.M) {
 
 	if cerr := em.Close(ctx); cerr != nil {
 		log.Printf("close emulator: %v", cerr)
+		if code == 0 {
+			code = 1
+		}
 	}
 	os.Exit(code)
 }
 
-// setupPublisher は事前作成した topic に紐付く Publisher を emulator 向けに構築する。
-// 物理 topic 名は infra (Terraform) が SSoT であり、test は production と同じ env 由来で解決する。
-func setupPublisher(t *testing.T) (*Publisher, publisherTopics) {
+func newTestPublisher(t *testing.T) (*Publisher, map[string]string) {
 	t.Helper()
-	envTopics := loadTopicsFromEnv(t)
-	topics := publisherTopics{
-		onboardingNameSet:    sharedEmulator.CreateTopic(t, envTopics.onboardingNameSet),
-		onboardingFactionSet: sharedEmulator.CreateTopic(t, envTopics.onboardingFactionSet),
-		playerOnboarded:      sharedEmulator.CreateTopic(t, envTopics.playerOnboarded),
-	}
+	nameSetTopic := sharedEmulator.CreateTopic(t, "TST-ONBOARDING-NAME-SET")
+	factionSetTopic := sharedEmulator.CreateTopic(t, "TST-ONBOARDING-FACTION-SET")
+	onboardedTopic := sharedEmulator.CreateTopic(t, "TST-PLAYER-ONBOARDED")
 
-	ctx := context.Background()
-	pub, err := New(ctx, sharedEmulator.ProjectID(), topics.onboardingNameSet, topics.onboardingFactionSet, topics.playerOnboarded)
+	p, err := New(context.Background(), sharedEmulator.ProjectID(), nameSetTopic, factionSetTopic, onboardedTopic)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = pub.Close() })
+	t.Cleanup(func() { _ = p.Close() })
 
-	return pub, topics
-}
-
-func buildOnboardingNameSetOutbox(t *testing.T, playerID, name string) port.OutboxEvent {
-	t.Helper()
-	id := uuid.New()
-	payload, err := json.Marshal(apiscenario.OnboardingNameSetEvent{
-		EventType: apiscenario.EventTypeOnboardingNameSet,
-		EventID:   id.String(),
-		Timestamp: time.Now().UTC(),
-		PlayerID:  playerID,
-		Name:      name,
-	})
-	require.NoError(t, err)
-	return port.OutboxEvent{
-		EventID:   id,
-		EventType: apiscenario.EventTypeOnboardingNameSet,
-		Payload:   payload,
+	return p, map[string]string{
+		apiscenario.EventTypeOnboardingNameSet:    nameSetTopic,
+		apiscenario.EventTypeOnboardingFactionSet: factionSetTopic,
+		apiscenario.EventTypePlayerOnboarded:      onboardedTopic,
 	}
 }
 
-func buildOnboardingFactionSetOutbox(t *testing.T, playerID, initialFactionID string) port.OutboxEvent {
-	t.Helper()
-	id := uuid.New()
-	payload, err := json.Marshal(apiscenario.OnboardingFactionSetEvent{
-		EventType:        apiscenario.EventTypeOnboardingFactionSet,
-		EventID:          id.String(),
-		Timestamp:        time.Now().UTC(),
-		PlayerID:         playerID,
-		InitialFactionID: initialFactionID,
-	})
-	require.NoError(t, err)
-	return port.OutboxEvent{
-		EventID:   id,
-		EventType: apiscenario.EventTypeOnboardingFactionSet,
-		Payload:   payload,
-	}
-}
+func TestNewIntegration(t *testing.T) {
+	t.Run("[配信]Publisher の構築", func(t *testing.T) {
+		cases := []struct {
+			name                      string
+			projectID                 string
+			onboardingNameSetTopic    string
+			onboardingFactionSetTopic string
+			playerOnboardedTopic      string
+			wantErrSubstring          string
+		}{
+			{
+				name:                      "プロジェクトIDが空文字のとき、エラーになる",
+				projectID:                 "",
+				onboardingNameSetTopic:    "TST-ONBOARDING-NAME-SET",
+				onboardingFactionSetTopic: "TST-ONBOARDING-FACTION-SET",
+				playerOnboardedTopic:      "TST-PLAYER-ONBOARDED",
+				wantErrSubstring:          "projectID",
+			},
+			{
+				name:                      "名前入力ステップ完了イベントのtopicが空文字のとき、エラーになる",
+				projectID:                 "tst-project",
+				onboardingNameSetTopic:    "",
+				onboardingFactionSetTopic: "TST-ONBOARDING-FACTION-SET",
+				playerOnboardedTopic:      "TST-PLAYER-ONBOARDED",
+				wantErrSubstring:          "topic",
+			},
+			{
+				name:                      "陣営選択ステップ完了イベントのtopicが空文字のとき、エラーになる",
+				projectID:                 "tst-project",
+				onboardingNameSetTopic:    "TST-ONBOARDING-NAME-SET",
+				onboardingFactionSetTopic: "",
+				playerOnboardedTopic:      "TST-PLAYER-ONBOARDED",
+				wantErrSubstring:          "topic",
+			},
+			{
+				name:                      "プレイヤーオンボード完了イベントのtopicが空文字のとき、エラーになる",
+				projectID:                 "tst-project",
+				onboardingNameSetTopic:    "TST-ONBOARDING-NAME-SET",
+				onboardingFactionSetTopic: "TST-ONBOARDING-FACTION-SET",
+				playerOnboardedTopic:      "",
+				wantErrSubstring:          "topic",
+			},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				p, err := New(context.Background(), tc.projectID, tc.onboardingNameSetTopic, tc.onboardingFactionSetTopic, tc.playerOnboardedTopic)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErrSubstring)
+				assert.Nil(t, p)
+			})
+		}
 
-func buildPlayerOnboardedOutbox(t *testing.T, playerID, initialFactionID string) port.OutboxEvent {
-	t.Helper()
-	id := uuid.New()
-	payload, err := json.Marshal(apiscenario.PlayerOnboardedEvent{
-		EventType:        apiscenario.EventTypePlayerOnboarded,
-		EventID:          id.String(),
-		Timestamp:        time.Now().UTC(),
-		PlayerID:         playerID,
-		InitialFactionID: initialFactionID,
-	})
-	require.NoError(t, err)
-	return port.OutboxEvent{
-		EventID:   id,
-		EventType: apiscenario.EventTypePlayerOnboarded,
-		Payload:   payload,
-	}
-}
-
-func TestPublishIntegration(t *testing.T) {
-	t.Run("Pub/Subへの配信", func(t *testing.T) {
-		t.Run("onboarding-name-setを配信すると、購読側に送信内容がそのまま届く", func(t *testing.T) {
-			// outbox worker 送出経路の近似。bytes がそのまま subscriber まで届くことを固定する。
-			pub, topics := setupPublisher(t)
-			sub := sharedEmulator.Subscribe(t, topics.onboardingNameSet)
-
-			ctx := context.Background()
-			ev := buildOnboardingNameSetOutbox(t, "player-123", "Kenya")
-			require.NoError(t, pub.Publish(ctx, ev.EventType, ev.Payload))
-
-			msg, err := sub.WaitForMessage(ctx, 5*time.Second)
-			require.NoError(t, err)
-
-			var decoded apiscenario.OnboardingNameSetEvent
-			require.NoError(t, json.Unmarshal(msg.Data, &decoded))
-
-			assert.Equal(t, apiscenario.EventTypeOnboardingNameSet, decoded.EventType)
-			assert.Equal(t, ev.EventID.String(), decoded.EventID, "payload の event_id は outbox 行の PK と一致する")
-			assert.WithinDuration(t, time.Now(), decoded.Timestamp, 5*time.Second)
-			assert.Equal(t, "player-123", decoded.PlayerID)
-			assert.Equal(t, "Kenya", decoded.Name)
+		t.Run("全て有効な値のとき、構築が成功する", func(t *testing.T) {
+			p, _ := newTestPublisher(t)
+			assert.NotNil(t, p)
 		})
 
-		t.Run("onboarding-faction-setを配信すると、送信内容が保たれる", func(t *testing.T) {
-			pub, topics := setupPublisher(t)
-			sub := sharedEmulator.Subscribe(t, topics.onboardingFactionSet)
+		t.Run("認証情報が解決できないとき、エラーになる", func(t *testing.T) {
+			t.Setenv("PUBSUB_EMULATOR_HOST", "")
+			t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", filepath.Join(t.TempDir(), "does-not-exist.json"))
 
-			ctx := context.Background()
-			ev := buildOnboardingFactionSetOutbox(t, "player-456", "SHE")
-			require.NoError(t, pub.Publish(ctx, ev.EventType, ev.Payload))
+			p, err := New(context.Background(), "tst-project", "TST-ONBOARDING-NAME-SET", "TST-ONBOARDING-FACTION-SET", "TST-PLAYER-ONBOARDED")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "pubsub: new pubsub client")
+			assert.Nil(t, p)
+		})
+	})
+}
 
-			msg, err := sub.WaitForMessage(ctx, 5*time.Second)
+func TestPublisherClose(t *testing.T) {
+	t.Run("[配信]Publisherのクローズ", func(t *testing.T) {
+		t.Run("構築済みのPublisherを閉じると、エラーにならない", func(t *testing.T) {
+			nameSetTopic := sharedEmulator.CreateTopic(t, "TST-ONBOARDING-NAME-SET")
+			factionSetTopic := sharedEmulator.CreateTopic(t, "TST-ONBOARDING-FACTION-SET")
+			onboardedTopic := sharedEmulator.CreateTopic(t, "TST-PLAYER-ONBOARDED")
+			p, err := New(context.Background(), sharedEmulator.ProjectID(), nameSetTopic, factionSetTopic, onboardedTopic)
 			require.NoError(t, err)
 
-			var decoded apiscenario.OnboardingFactionSetEvent
-			require.NoError(t, json.Unmarshal(msg.Data, &decoded))
+			err = p.Close()
 
-			assert.Equal(t, apiscenario.EventTypeOnboardingFactionSet, decoded.EventType)
-			assert.Equal(t, ev.EventID.String(), decoded.EventID)
-			assert.Equal(t, "player-456", decoded.PlayerID)
-			assert.Equal(t, "SHE", decoded.InitialFactionID)
+			assert.NoError(t, err)
 		})
+	})
+}
 
-		t.Run("player-onboardedを配信すると、送信内容が保たれる", func(t *testing.T) {
-			pub, topics := setupPublisher(t)
-			sub := sharedEmulator.Subscribe(t, topics.playerOnboarded)
+func TestPublish(t *testing.T) {
+	t.Run("[配信]イベントの配信", func(t *testing.T) {
+		cases := []string{
+			apiscenario.EventTypeOnboardingNameSet,
+			apiscenario.EventTypeOnboardingFactionSet,
+			apiscenario.EventTypePlayerOnboarded,
+		}
+		for _, eventType := range cases {
+			t.Run(fmt.Sprintf("イベント種別が%sのとき、対応するtopicにメッセージが送出される", eventType), func(t *testing.T) {
+				p, topicsByEventType := newTestPublisher(t)
+				sub := sharedEmulator.Subscribe(t, topicsByEventType[eventType])
 
-			ctx := context.Background()
-			ev := buildPlayerOnboardedOutbox(t, "player-789", "Tenki")
-			require.NoError(t, pub.Publish(ctx, ev.EventType, ev.Payload))
+				ctx := context.Background()
+				payload := []byte(eventType)
+				require.NoError(t, p.Publish(ctx, eventType, payload))
 
-			msg, err := sub.WaitForMessage(ctx, 5*time.Second)
-			require.NoError(t, err)
+				msg, err := sub.WaitForMessage(ctx, emulatorMessageTimeout)
+				require.NoError(t, err)
+				assert.Equal(t, payload, msg.Data)
+			})
+		}
 
-			var decoded apiscenario.PlayerOnboardedEvent
-			require.NoError(t, json.Unmarshal(msg.Data, &decoded))
+		t.Run("未登録のイベント種別で配信しようとすると、エラーになり、その後の有効なイベント種別での配信は成功する", func(t *testing.T) {
+			p, topicsByEventType := newTestPublisher(t)
 
-			assert.Equal(t, apiscenario.EventTypePlayerOnboarded, decoded.EventType)
-			assert.Equal(t, ev.EventID.String(), decoded.EventID)
-			assert.WithinDuration(t, time.Now(), decoded.Timestamp, 5*time.Second)
-			assert.Equal(t, "player-789", decoded.PlayerID)
-			assert.Equal(t, "Tenki", decoded.InitialFactionID)
-		})
-
-		t.Run("未登録のイベント種別を配信すると、エラーになる", func(t *testing.T) {
-			// outbox 行の eventType 設定ミスを worker の failure_count に積ませるため、
-			// 未登録 eventType は Pub/Sub SDK 到達前に adapter 側で弾く。
-			pub, _ := setupPublisher(t)
-
-			err := pub.Publish(context.Background(), "not-registered-event-type", []byte(`{}`))
+			err := p.Publish(context.Background(), "TST-UNKNOWN-EVENT-TYPE", []byte(`{}`))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "unknown event type")
+
+			sub := sharedEmulator.Subscribe(t, topicsByEventType[apiscenario.EventTypeOnboardingNameSet])
+			payload := []byte("payload-after-unknown-event-type")
+			require.NoError(t, p.Publish(context.Background(), apiscenario.EventTypeOnboardingNameSet, payload))
+			msg, err := sub.WaitForMessage(context.Background(), emulatorMessageTimeout)
+			require.NoError(t, err)
+			assert.Equal(t, payload, msg.Data)
 		})
 
-		t.Run("配信しなければ、購読側はタイムアウトする", func(t *testing.T) {
-			// 正例テストの偽陽性除け。
-			_, topics := setupPublisher(t)
-			sub := sharedEmulator.Subscribe(t, topics.playerOnboarded)
+		t.Run("存在しないtopicへ配信しようとすると、エラーになり、その後の他の有効なtopicへの配信は成功する", func(t *testing.T) {
+			factionSetTopic := sharedEmulator.CreateTopic(t, "TST-ONBOARDING-FACTION-SET")
+			onboardedTopic := sharedEmulator.CreateTopic(t, "TST-PLAYER-ONBOARDED")
+			p, err := New(context.Background(), sharedEmulator.ProjectID(), "TST-NONEXISTENT-TOPIC", factionSetTopic, onboardedTopic)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = p.Close() })
 
-			_, err := sub.WaitForMessage(context.Background(), 500*time.Millisecond)
-			assert.ErrorIs(t, err, pubsubtest.ErrTimeout)
+			err = p.Publish(context.Background(), apiscenario.EventTypeOnboardingNameSet, []byte("payload"))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "publish event_type=")
+
+			sub := sharedEmulator.Subscribe(t, factionSetTopic)
+			payload := []byte("payload-after-nonexistent-topic")
+			require.NoError(t, p.Publish(context.Background(), apiscenario.EventTypeOnboardingFactionSet, payload))
+			msg, err := sub.WaitForMessage(context.Background(), emulatorMessageTimeout)
+			require.NoError(t, err)
+			assert.Equal(t, payload, msg.Data)
 		})
 	})
 }

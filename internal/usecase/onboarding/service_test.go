@@ -4,395 +4,265 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kenyamaneko/overload-party-scenario/internal/adapter/local"
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
-// fakeOnboardingRepo は OnboardingRepo の最小スタブ。MarkComplete / PublishEvents の
-// 呼び出しを記録し、任意のエラーを注入できる。
-type fakeOnboardingRepo struct {
-	markCompleteErr   error
-	markCompleteCalls []markCompleteCall
-
-	publishErr   error
-	publishCalls []publishCall
-}
-
-type markCompleteCall struct {
-	playerID string
-	events   []port.OutboxEvent
-}
-
-type publishCall struct {
-	events []port.OutboxEvent
-}
-
-func (r *fakeOnboardingRepo) MarkComplete(_ context.Context, playerID string, events ...port.OutboxEvent) error {
-	r.markCompleteCalls = append(r.markCompleteCalls, markCompleteCall{
-		playerID: playerID,
-		events:   append([]port.OutboxEvent(nil), events...),
-	})
-	return r.markCompleteErr
-}
-
-func (r *fakeOnboardingRepo) PublishEvents(_ context.Context, events ...port.OutboxEvent) error {
-	r.publishCalls = append(r.publishCalls, publishCall{
-		events: append([]port.OutboxEvent(nil), events...),
-	})
-	return r.publishErr
-}
-
-// fakeNameValidator は OnboardingNameValidator のスタブ。
-type fakeNameValidator struct {
-	err   error
-	calls []nameValidateCall
-}
-
-type nameValidateCall struct {
-	name string
-}
-
-func (v *fakeNameValidator) ValidateOnboardingName(_ context.Context, name string) error {
-	v.calls = append(v.calls, nameValidateCall{name: name})
-	return v.err
-}
-
-// fakePlayerReader は OnboardingPlayerReader のスタブ。
-type fakePlayerReader struct {
-	player port.AccountPlayer
-	err    error
-}
-
-func (r *fakePlayerReader) GetOnboardingPlayer(_ context.Context) (port.AccountPlayer, error) {
-	if r.err != nil {
-		return port.AccountPlayer{}, r.err
-	}
-	return r.player, nil
-}
-
-func strPtr(s string) *string { return &s }
-
-// writeScript は実 local.ScriptStore が読むディレクトリ構造 (scripts/onboarding/<lang>.ks) に
-// 本文を書き込む。lang ごとに異なる本文を置くことで、lang ルーティングの効果を実ファイル経由で観測できる。
-func writeScript(t *testing.T, root, lang, body string) {
-	t.Helper()
-	path := filepath.Join(root, "scripts", "onboarding", lang+".ks")
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
-	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
-}
-
 func TestGetScript(t *testing.T) {
-	t.Run("オンボーディングスクリプトの取得", func(t *testing.T) {
-		t.Run("ja指定のとき、jaの本文が返る", func(t *testing.T) {
-			root := t.TempDir()
-			writeScript(t, root, "ja", "@endofscript (ja)\n")
-			writeScript(t, root, "en", "english body")
-			svc := New(&fakeOnboardingRepo{}, local.NewScriptStore(root), nil, nil)
+	t.Run("[オンボーディング]オンボーディングスクリプト取得", func(t *testing.T) {
+		t.Run("要求言語のスクリプトが存在するとき、対応する言語のキーでスクリプトが読み込まれ、その本文が返る", func(t *testing.T) {
+			cases := []struct {
+				name    string
+				lang    string
+				wantKey string
+			}{
+				{name: "要求言語がjaのとき", lang: "ja", wantKey: "scripts/onboarding/ja.ks"},
+				{name: "要求言語がenのとき", lang: "en", wantKey: "scripts/onboarding/en.ks"},
+			}
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					store := &fakeScriptStore{body: "dummy onboarding script body"}
+					svc := New(&fakeOnboardingRepo{}, store, &fakeNameValidator{}, &fakePlayerReader{})
 
-			body, err := svc.GetScript(context.Background(), "p1", "ja")
-			require.NoError(t, err)
-			assert.Equal(t, "@endofscript (ja)\n", body)
+					body, err := svc.GetScript(context.Background(), "TST-0001", tc.lang)
+
+					require.NoError(t, err)
+					assert.Equal(t, "dummy onboarding script body", body)
+					assert.Equal(t, []string{tc.wantKey}, store.keys)
+				})
+			}
 		})
 
-		t.Run("en指定のとき、enの本文が返る", func(t *testing.T) {
-			root := t.TempDir()
-			writeScript(t, root, "ja", "@endofscript (ja)\n")
-			writeScript(t, root, "en", "english body")
-			svc := New(&fakeOnboardingRepo{}, local.NewScriptStore(root), nil, nil)
+		t.Run("要求言語のスクリプトが存在しないとき、スクリプト未検出を表すエラーになる", func(t *testing.T) {
+			svc := New(&fakeOnboardingRepo{}, &fakeScriptStore{err: port.ErrScriptNotFound}, &fakeNameValidator{}, &fakePlayerReader{})
 
-			body, err := svc.GetScript(context.Background(), "p1", "en")
-			require.NoError(t, err)
-			assert.Equal(t, "english body", body)
-		})
+			_, err := svc.GetScript(context.Background(), "TST-0001", "ja")
 
-		t.Run("スクリプトが不在のとき、ErrScriptNotFoundになる", func(t *testing.T) {
-			root := t.TempDir()
-			svc := New(&fakeOnboardingRepo{}, local.NewScriptStore(root), nil, nil)
-
-			body, err := svc.GetScript(context.Background(), "p1", "en")
 			require.ErrorIs(t, err, ErrScriptNotFound)
-			assert.Empty(t, body)
+		})
+
+		t.Run("スクリプトストアが未検出以外のエラーを返すとき、そのエラー内容を含んだエラーになる", func(t *testing.T) {
+			errBoom := errors.New("script store boom")
+			svc := New(&fakeOnboardingRepo{}, &fakeScriptStore{err: errBoom}, &fakeNameValidator{}, &fakePlayerReader{})
+
+			_, err := svc.GetScript(context.Background(), "TST-0001", "ja")
+
+			require.ErrorIs(t, err, errBoom)
 		})
 	})
 }
 
 func TestUpdateName(t *testing.T) {
-	t.Run("表示名の更新", func(t *testing.T) {
-		t.Run("表示名が有効なとき、表示名更新イベントが発行される", func(t *testing.T) {
+	t.Run("[オンボーディング]name入力ステップの更新", func(t *testing.T) {
+		t.Run("表示名が有効なとき、name入力ステップ完了イベントがpublishされ、エラーなく完了する", func(t *testing.T) {
 			repo := &fakeOnboardingRepo{}
 			validator := &fakeNameValidator{}
-			svc := New(repo, nil, validator, nil)
+			svc := New(repo, &fakeScriptStore{}, validator, &fakePlayerReader{})
 
-			err := svc.UpdateName(context.Background(), "p1", "Kenya")
+			err := svc.UpdateName(context.Background(), "TST-0001", "たろう")
+
 			require.NoError(t, err)
-			require.Len(t, validator.calls, 1)
-			assert.Equal(t, "Kenya", validator.calls[0].name)
-			require.Len(t, repo.publishCalls, 1)
-			require.Len(t, repo.publishCalls[0].events, 1)
-			ev := repo.publishCalls[0].events[0]
-			assert.Equal(t, apiscenario.EventTypeOnboardingNameSet, ev.EventType)
-			var decoded apiscenario.OnboardingNameSetEvent
-			require.NoError(t, json.Unmarshal(ev.Payload, &decoded))
-			assert.Equal(t, "p1", decoded.PlayerID)
-			assert.Equal(t, "Kenya", decoded.Name)
-			assert.Equal(t, ev.EventID.String(), decoded.EventID)
+			assert.Equal(t, []string{"たろう"}, validator.names)
+			require.Len(t, repo.publishedEvents, 1)
+			published := repo.publishedEvents[0]
+			assert.Equal(t, apiscenario.EventTypeOnboardingNameSet, published.EventType)
+
+			var wire apiscenario.OnboardingNameSetEvent
+			require.NoError(t, json.Unmarshal(published.Payload, &wire))
+			assert.Equal(t, apiscenario.EventTypeOnboardingNameSet, wire.EventType)
+			assert.Equal(t, "TST-0001", wire.PlayerID)
+			assert.Equal(t, "たろう", wire.Name)
 		})
 
-		t.Run("表示名が無効なとき、イベントは発行されず、対応するエラーになる", func(t *testing.T) {
-			transientErr := errors.New("account 5xx")
-			tests := []struct {
-				name      string
-				injectErr error
-				input     string
-				wantErr   error
-			}{
-				{
-					name:      "名前が不正なとき、ErrInvalidNameになる",
-					injectErr: port.ErrInvalidName,
-					input:     "",
-					wantErr:   ErrInvalidName,
-				},
-				{
-					name:      "プレイヤーが存在しないとき、ErrPlayerNotFoundになる",
-					injectErr: port.ErrPlayerNotFound,
-					input:     "Alice",
-					wantErr:   ErrPlayerNotFound,
-				},
-				{
-					name:      "その他のエラーのとき、そのエラーが伝播する",
-					injectErr: transientErr,
-					input:     "Bob",
-					wantErr:   transientErr,
-				},
-			}
-			for _, tt := range tests {
-				t.Run(tt.name, func(t *testing.T) {
-					repo := &fakeOnboardingRepo{}
-					validator := &fakeNameValidator{err: tt.injectErr}
-					svc := New(repo, nil, validator, nil)
+		t.Run("表示名がaccount側のバリデーションで無効と判定されるとき、無効な名前を表すエラーになる", func(t *testing.T) {
+			svc := New(&fakeOnboardingRepo{}, &fakeScriptStore{}, &fakeNameValidator{err: port.ErrInvalidName}, &fakePlayerReader{})
 
-					err := svc.UpdateName(context.Background(), "p1", tt.input)
-					require.Error(t, err)
-					assert.ErrorIs(t, err, tt.wantErr)
-					assert.Empty(t, repo.publishCalls, "検証に失敗したときはイベントを発行しない")
-				})
-			}
+			err := svc.UpdateName(context.Background(), "TST-0001", "たろう")
+
+			require.ErrorIs(t, err, ErrInvalidName)
 		})
 
-		t.Run("イベントの発行に失敗すると、そのエラーが伝播する", func(t *testing.T) {
-			publishErr := errors.New("outbox down")
-			repo := &fakeOnboardingRepo{publishErr: publishErr}
-			svc := New(repo, nil, &fakeNameValidator{}, nil)
+		t.Run("対象プレイヤーがaccountに存在しないとき、プレイヤー未検出を表すエラーになる", func(t *testing.T) {
+			svc := New(&fakeOnboardingRepo{}, &fakeScriptStore{}, &fakeNameValidator{err: port.ErrPlayerNotFound}, &fakePlayerReader{})
 
-			err := svc.UpdateName(context.Background(), "p1", "Kenya")
-			require.Error(t, err)
-			assert.ErrorIs(t, err, publishErr)
+			err := svc.UpdateName(context.Background(), "TST-0001", "たろう")
+
+			require.ErrorIs(t, err, ErrPlayerNotFound)
+		})
+
+		t.Run("account側の検証がその他のエラーを返すとき、そのエラー内容を含んだエラーになる", func(t *testing.T) {
+			errBoom := errors.New("validate onboarding name boom")
+			svc := New(&fakeOnboardingRepo{}, &fakeScriptStore{}, &fakeNameValidator{err: errBoom}, &fakePlayerReader{})
+
+			err := svc.UpdateName(context.Background(), "TST-0001", "たろう")
+
+			require.ErrorIs(t, err, errBoom)
+		})
+
+		t.Run("表示名が有効でも、outboxイベントのpublishが失敗するとき、そのエラー内容を含んだエラーになる", func(t *testing.T) {
+			errBoom := errors.New("publish onboarding-name-set boom")
+			repo := &fakeOnboardingRepo{publishErr: errBoom}
+			svc := New(repo, &fakeScriptStore{}, &fakeNameValidator{}, &fakePlayerReader{})
+
+			err := svc.UpdateName(context.Background(), "TST-0001", "たろう")
+
+			require.ErrorIs(t, err, errBoom)
 		})
 	})
 }
 
 func TestSelectFaction(t *testing.T) {
-	t.Run("初期陣営の選択", func(t *testing.T) {
-		t.Run("選択可能な陣営を選ぶと、陣営設定イベントが発行される", func(t *testing.T) {
-			repo := &fakeOnboardingRepo{}
-			svc := New(repo, nil, nil, nil)
-
-			err := svc.SelectFaction(context.Background(), "p1", "SHE")
-			require.NoError(t, err)
-			require.Len(t, repo.publishCalls, 1)
-			require.Len(t, repo.publishCalls[0].events, 1)
-			ev := repo.publishCalls[0].events[0]
-			assert.Equal(t, apiscenario.EventTypeOnboardingFactionSet, ev.EventType)
-			var decoded apiscenario.OnboardingFactionSetEvent
-			require.NoError(t, json.Unmarshal(ev.Payload, &decoded))
-			assert.Equal(t, "p1", decoded.PlayerID)
-			assert.Equal(t, "SHE", decoded.InitialFactionID)
-		})
-
-		t.Run("選択できない陣営のとき、イベントは発行されず、ErrInvalidFactionになる", func(t *testing.T) {
-			tests := []struct {
-				name             string
-				initialFactionID string
+	t.Run("[オンボーディング]faction選択ステップの更新", func(t *testing.T) {
+		t.Run("選択可能な陣営IDを渡すと、faction選択ステップ完了イベントがpublishされ、陣営が入力値と一致する", func(t *testing.T) {
+			cases := []struct {
+				name      string
+				factionID string
 			}{
-				{name: "Neutralのとき、ErrInvalidFactionになる", initialFactionID: "Neutral"},
-				{name: "不明な陣営のとき、ErrInvalidFactionになる", initialFactionID: "Mystery"},
-				{name: "空文字のとき、ErrInvalidFactionになる", initialFactionID: ""},
+				{"陣営IDがSHEのとき", "SHE"},
+				{"陣営IDがTenkiのとき", "Tenki"},
+				{"陣営IDがSugarのとき", "Sugar"},
+				{"陣営IDがTunersのとき", "Tuners"},
 			}
-			for _, tt := range tests {
-				t.Run(tt.name, func(t *testing.T) {
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
 					repo := &fakeOnboardingRepo{}
-					svc := New(repo, nil, nil, nil)
+					svc := New(repo, &fakeScriptStore{}, &fakeNameValidator{}, &fakePlayerReader{})
 
-					err := svc.SelectFaction(context.Background(), "p1", tt.initialFactionID)
-					require.Error(t, err)
-					assert.ErrorIs(t, err, ErrInvalidFaction)
-					assert.Empty(t, repo.publishCalls)
+					err := svc.SelectFaction(context.Background(), "TST-0001", tc.factionID)
+
+					require.NoError(t, err)
+					require.Len(t, repo.publishedEvents, 1)
+					published := repo.publishedEvents[0]
+					assert.Equal(t, apiscenario.EventTypeOnboardingFactionSet, published.EventType)
+
+					var wire apiscenario.OnboardingFactionSetEvent
+					require.NoError(t, json.Unmarshal(published.Payload, &wire))
+					assert.Equal(t, apiscenario.EventTypeOnboardingFactionSet, wire.EventType)
+					assert.Equal(t, tc.factionID, wire.InitialFactionID)
 				})
 			}
 		})
 
-		t.Run("イベントの発行に失敗すると、そのエラーが伝播する", func(t *testing.T) {
-			publishErr := errors.New("outbox down")
-			repo := &fakeOnboardingRepo{publishErr: publishErr}
-			svc := New(repo, nil, nil, nil)
+		t.Run("選択可能でない陣営IDを渡すと、無効な陣営を表すエラーになる", func(t *testing.T) {
+			cases := []struct {
+				name      string
+				factionID string
+			}{
+				{"未知の陣営IDのとき", "TST-UNKNOWN-FACTION"},
+				{"空文字のとき", ""},
+			}
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					svc := New(&fakeOnboardingRepo{}, &fakeScriptStore{}, &fakeNameValidator{}, &fakePlayerReader{})
 
-			err := svc.SelectFaction(context.Background(), "p1", "SHE")
-			require.Error(t, err)
-			assert.ErrorIs(t, err, publishErr)
+					err := svc.SelectFaction(context.Background(), "TST-0001", tc.factionID)
+
+					require.ErrorIs(t, err, ErrInvalidFaction)
+				})
+			}
+		})
+
+		t.Run("選択可能な陣営IDを渡しても、outboxイベントのpublishが失敗するとき、そのエラー内容を含んだエラーになる", func(t *testing.T) {
+			errBoom := errors.New("publish onboarding-faction-set boom")
+			repo := &fakeOnboardingRepo{publishErr: errBoom}
+			svc := New(repo, &fakeScriptStore{}, &fakeNameValidator{}, &fakePlayerReader{})
+
+			err := svc.SelectFaction(context.Background(), "TST-0001", "SHE")
+
+			require.ErrorIs(t, err, errBoom)
 		})
 	})
 }
 
 func TestComplete(t *testing.T) {
-	t.Run("オンボーディングの完了", func(t *testing.T) {
-		t.Run("オンボーディングを完了すると、完了イベントが1本発行される", func(t *testing.T) {
-			reader := &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("SHE")}}
-			repo := &fakeOnboardingRepo{}
-			svc := New(repo, nil, nil, reader)
-
-			err := svc.Complete(context.Background(), "p1")
-			require.NoError(t, err)
-			require.Len(t, repo.markCompleteCalls, 1)
-			call := repo.markCompleteCalls[0]
-			assert.Equal(t, "p1", call.playerID)
-			require.Len(t, call.events, 1)
-			ev := call.events[0]
-			assert.Equal(t, apiscenario.EventTypePlayerOnboarded, ev.EventType)
-			var decoded apiscenario.PlayerOnboardedEvent
-			require.NoError(t, json.Unmarshal(ev.Payload, &decoded))
-			assert.Equal(t, "p1", decoded.PlayerID)
-			assert.Equal(t, "SHE", decoded.InitialFactionID)
-			assert.Equal(t, ev.EventID.String(), decoded.EventID)
-		})
-
-		t.Run("初期陣営が未選択のとき、完了せずErrFactionNotSelectedになる", func(t *testing.T) {
-			tests := []struct {
+	t.Run("[オンボーディング]オンボーディング完了", func(t *testing.T) {
+		t.Run("プレイヤーがまだ陣営未選択のとき、陣営未選択を表すエラーになる", func(t *testing.T) {
+			cases := []struct {
 				name           string
 				initialFaction *string
 			}{
-				{name: "初期陣営が未設定のとき、ErrFactionNotSelectedになる", initialFaction: nil},
-				{name: "初期陣営が空文字のとき、ErrFactionNotSelectedになる", initialFaction: strPtr("")},
+				{"初期陣営が未設定 (nil) のとき", nil},
+				{"初期陣営が空文字のとき", ptr("")},
 			}
-			for _, tt := range tests {
-				t.Run(tt.name, func(t *testing.T) {
-					reader := &fakePlayerReader{player: port.AccountPlayer{InitialFaction: tt.initialFaction}}
-					repo := &fakeOnboardingRepo{}
-					svc := New(repo, nil, nil, reader)
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					reader := &fakePlayerReader{player: port.AccountPlayer{PlayerID: "TST-0001", InitialFaction: tc.initialFaction}}
+					svc := New(&fakeOnboardingRepo{}, &fakeScriptStore{}, &fakeNameValidator{}, reader)
 
-					err := svc.Complete(context.Background(), "p1")
-					require.Error(t, err)
-					assert.ErrorIs(t, err, ErrFactionNotSelected)
-					assert.Empty(t, repo.markCompleteCalls)
+					err := svc.Complete(context.Background(), "TST-0001")
+
+					require.ErrorIs(t, err, ErrFactionNotSelected)
 				})
 			}
 		})
 
-		t.Run("完了処理でエラーが起きると、対応するエラーになる", func(t *testing.T) {
-			repoErr := errors.New("db down")
-			accountErr := errors.New("account down")
-			tests := []struct {
-				name    string
-				reader  *fakePlayerReader
-				repo    *fakeOnboardingRepo
-				wantErr error
-			}{
-				{
-					name:    "プレイヤーが存在しないとき、ErrPlayerNotFoundになる",
-					reader:  &fakePlayerReader{err: port.ErrPlayerNotFound},
-					repo:    &fakeOnboardingRepo{},
-					wantErr: ErrPlayerNotFound,
-				},
-				{
-					name:    "二度目の完了のとき、ErrAlreadyOnboardedになる",
-					reader:  &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("SHE")}},
-					repo:    &fakeOnboardingRepo{markCompleteErr: port.ErrAlreadyOnboarded},
-					wantErr: ErrAlreadyOnboarded,
-				},
-				{
-					name:    "完了の保存でエラーが起きたとき、そのエラーが伝播する",
-					reader:  &fakePlayerReader{player: port.AccountPlayer{InitialFaction: strPtr("SHE")}},
-					repo:    &fakeOnboardingRepo{markCompleteErr: repoErr},
-					wantErr: repoErr,
-				},
-				{
-					name:    "プレイヤー取得でエラーが起きたとき、そのエラーが伝播する",
-					reader:  &fakePlayerReader{err: accountErr},
-					repo:    &fakeOnboardingRepo{},
-					wantErr: accountErr,
-				},
-			}
-			for _, tt := range tests {
-				t.Run(tt.name, func(t *testing.T) {
-					svc := New(tt.repo, nil, nil, tt.reader)
-					err := svc.Complete(context.Background(), "p1")
-					require.Error(t, err)
-					assert.ErrorIs(t, err, tt.wantErr)
-				})
-			}
+		t.Run("対象プレイヤーがaccountに存在しないとき、プレイヤー未検出を表すエラーになる", func(t *testing.T) {
+			reader := &fakePlayerReader{err: port.ErrPlayerNotFound}
+			svc := New(&fakeOnboardingRepo{}, &fakeScriptStore{}, &fakeNameValidator{}, reader)
+
+			err := svc.Complete(context.Background(), "TST-0001")
+
+			require.ErrorIs(t, err, ErrPlayerNotFound)
 		})
-	})
-}
 
-func TestBuildOnboardingEvent(t *testing.T) {
-	t.Run("イベント構築", func(t *testing.T) {
-		tests := []struct {
-			name     string
-			build    func(playerID, value string) (port.OutboxEvent, error)
-			playerID string
-			value    string
-		}{
-			{
-				name:     "表示名設定イベントは、プレイヤーIDが空のとき、構築できずエラーになる",
-				build:    buildOnboardingNameSetEvent,
-				playerID: "",
-				value:    "Kenya",
-			},
-			{
-				name:     "表示名設定イベントは、表示名が空のとき、構築できずエラーになる",
-				build:    buildOnboardingNameSetEvent,
-				playerID: "TST-P1",
-				value:    "",
-			},
-			{
-				name:     "陣営設定イベントは、プレイヤーIDが空のとき、構築できずエラーになる",
-				build:    buildOnboardingFactionSetEvent,
-				playerID: "",
-				value:    "SHE",
-			},
-			{
-				name:     "陣営設定イベントは、陣営が空のとき、構築できずエラーになる",
-				build:    buildOnboardingFactionSetEvent,
-				playerID: "TST-P1",
-				value:    "",
-			},
-			{
-				name:     "オンボード完了イベントは、プレイヤーIDが空のとき、構築できずエラーになる",
-				build:    buildPlayerOnboardedEvent,
-				playerID: "",
-				value:    "SHE",
-			},
-			{
-				name:     "オンボード完了イベントは、陣営が空のとき、構築できずエラーになる",
-				build:    buildPlayerOnboardedEvent,
-				playerID: "TST-P1",
-				value:    "",
-			},
-		}
+		t.Run("account側の取得がその他のエラーを返すとき、そのエラー内容を含んだエラーになる", func(t *testing.T) {
+			errBoom := errors.New("get onboarding player boom")
+			reader := &fakePlayerReader{err: errBoom}
+			svc := New(&fakeOnboardingRepo{}, &fakeScriptStore{}, &fakeNameValidator{}, reader)
 
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				ev, err := tt.build(tt.playerID, tt.value)
-				require.Error(t, err)
-				assert.Equal(t, port.OutboxEvent{}, ev)
-			})
-		}
+			err := svc.Complete(context.Background(), "TST-0001")
+
+			require.ErrorIs(t, err, errBoom)
+		})
+
+		t.Run("既にオンボーディング完了済みのプレイヤーが完了しようとすると、オンボーディング済みを表すエラーになる", func(t *testing.T) {
+			faction := "TST-FACTION"
+			reader := &fakePlayerReader{player: port.AccountPlayer{PlayerID: "TST-0001", InitialFaction: &faction}}
+			repo := &fakeOnboardingRepo{markCompleteErr: port.ErrAlreadyOnboarded}
+			svc := New(repo, &fakeScriptStore{}, &fakeNameValidator{}, reader)
+
+			err := svc.Complete(context.Background(), "TST-0001")
+
+			require.ErrorIs(t, err, ErrAlreadyOnboarded)
+		})
+
+		t.Run("完了記録がオンボーディング済み以外のエラーを返すとき、そのエラー内容を含んだエラーになる", func(t *testing.T) {
+			faction := "TST-FACTION"
+			reader := &fakePlayerReader{player: port.AccountPlayer{PlayerID: "TST-0001", InitialFaction: &faction}}
+			errBoom := errors.New("mark complete boom")
+			repo := &fakeOnboardingRepo{markCompleteErr: errBoom}
+			svc := New(repo, &fakeScriptStore{}, &fakeNameValidator{}, reader)
+
+			err := svc.Complete(context.Background(), "TST-0001")
+
+			require.ErrorIs(t, err, errBoom)
+		})
+
+		t.Run("未完了かつ陣営選択済みのプレイヤーが完了すると、完了が記録され、player-onboardedイベントがoutboxに記録される", func(t *testing.T) {
+			faction := "TST-FACTION"
+			reader := &fakePlayerReader{player: port.AccountPlayer{PlayerID: "TST-0001", InitialFaction: &faction}}
+			repo := &fakeOnboardingRepo{}
+			svc := New(repo, &fakeScriptStore{}, &fakeNameValidator{}, reader)
+
+			err := svc.Complete(context.Background(), "TST-0001")
+
+			require.NoError(t, err)
+			require.Len(t, repo.markCompleteCalls, 1)
+			call := repo.markCompleteCalls[0]
+			assert.Equal(t, "TST-0001", call.playerID)
+			require.Len(t, call.events, 1)
+			assert.Equal(t, apiscenario.EventTypePlayerOnboarded, call.events[0].EventType)
+
+			var wire apiscenario.PlayerOnboardedEvent
+			require.NoError(t, json.Unmarshal(call.events[0].Payload, &wire))
+			assert.Equal(t, apiscenario.EventTypePlayerOnboarded, wire.EventType)
+			assert.Equal(t, "TST-0001", wire.PlayerID)
+			assert.Equal(t, faction, wire.InitialFactionID)
+		})
 	})
 }

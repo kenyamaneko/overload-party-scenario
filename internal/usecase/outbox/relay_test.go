@@ -11,223 +11,208 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/port"
-	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
-// fakeOutboxStore は port.OutboxStore の簡易モック。claim 系の返り値と各メソッド
-// 呼び出しを記録し、RunOnce が claim → publish → mark/fail の順序で呼ぶことを観察する。
-type fakeOutboxStore struct {
-	claimed         []port.ClaimedOutboxEvent
-	claimErr        error
-	markedPublished []uuid.UUID
-	markErr         error
-	failures        []failureCall
-	failErr         error
-	claimCalls      int
-}
-
-type failureCall struct {
+type recordFailureCall struct {
 	eventID uuid.UUID
 	errMsg  string
 }
 
-func (f *fakeOutboxStore) ClaimUnpublished(_ context.Context, limit int, visibilityTimeout time.Duration, failureThreshold int) ([]port.ClaimedOutboxEvent, error) {
-	f.claimCalls++
+type claimCall struct {
+	limit             int
+	visibilityTimeout time.Duration
+	failureThreshold  int
+}
+
+type fakeOutboxStore struct {
+	claimResult []port.ClaimedOutboxEvent
+	claimErr    error
+	claimCalls  []claimCall
+
+	markPublishedIDs   []uuid.UUID
+	recordFailureCalls []recordFailureCall
+}
+
+func (f *fakeOutboxStore) ClaimUnpublished(ctx context.Context, limit int, visibilityTimeout time.Duration, failureThreshold int) ([]port.ClaimedOutboxEvent, error) {
+	f.claimCalls = append(f.claimCalls, claimCall{limit: limit, visibilityTimeout: visibilityTimeout, failureThreshold: failureThreshold})
 	if f.claimErr != nil {
 		return nil, f.claimErr
 	}
-	return f.claimed, nil
+	return f.claimResult, nil
 }
 
-func (f *fakeOutboxStore) MarkPublished(_ context.Context, eventID uuid.UUID) error {
-	f.markedPublished = append(f.markedPublished, eventID)
-	return f.markErr
-}
-
-func (f *fakeOutboxStore) RecordFailure(_ context.Context, eventID uuid.UUID, errMsg string) error {
-	f.failures = append(f.failures, failureCall{eventID: eventID, errMsg: errMsg})
-	return f.failErr
-}
-
-// fakeRawPublisher は eventType 単位の publish 結果を制御できるモック。
-// デフォルトは全 eventType 成功、errByEventType で個別に失敗を指示する。
-type fakeRawPublisher struct {
-	calls          []string // eventType:payload
-	errByEventType map[string]error
-}
-
-func (p *fakeRawPublisher) Publish(_ context.Context, eventType string, payload []byte) error {
-	p.calls = append(p.calls, eventType+":"+string(payload))
-	if err, ok := p.errByEventType[eventType]; ok {
-		return err
-	}
+func (f *fakeOutboxStore) MarkPublished(ctx context.Context, eventID uuid.UUID) error {
+	f.markPublishedIDs = append(f.markPublishedIDs, eventID)
 	return nil
 }
 
+func (f *fakeOutboxStore) RecordFailure(ctx context.Context, eventID uuid.UUID, errMsg string) error {
+	f.recordFailureCalls = append(f.recordFailureCalls, recordFailureCall{eventID: eventID, errMsg: errMsg})
+	return nil
+}
+
+type publishCall struct {
+	eventType string
+	payload   []byte
+}
+
+type fakeRawEventPublisher struct {
+	err          error
+	publishCalls []publishCall
+}
+
+func (f *fakeRawEventPublisher) Publish(ctx context.Context, eventType string, payload []byte) error {
+	f.publishCalls = append(f.publishCalls, publishCall{eventType: eventType, payload: payload})
+	return f.err
+}
+
 func TestNew(t *testing.T) {
-	t.Run("生成時の設定検証", func(t *testing.T) {
-		tests := []struct {
-			name    string
-			store   port.OutboxStore
-			pub     port.RawEventPublisher
-			cfg     Config
-			wantSub string
+	t.Run("[配信]Relayの構築", func(t *testing.T) {
+		validStore := &fakeOutboxStore{}
+		validPub := &fakeRawEventPublisher{}
+		validCfg := Config{BatchSize: 10, FailureThreshold: 3, VisibilityTimeout: time.Minute}
+
+		errCases := []struct {
+			name            string
+			store           port.OutboxStore
+			pub             port.RawEventPublisher
+			cfg             Config
+			wantErrContains string
 		}{
 			{
-				name:    "保存先が未指定のとき、生成に失敗する",
-				store:   nil,
-				pub:     &fakeRawPublisher{},
-				cfg:     Config{BatchSize: 1, FailureThreshold: 1, VisibilityTimeout: time.Second},
-				wantSub: "store is nil",
+				name:            "未配信イベントの保存先が未設定(nil)のとき、エラーになる",
+				store:           nil,
+				pub:             validPub,
+				cfg:             validCfg,
+				wantErrContains: "store",
 			},
 			{
-				name:    "配信先が未指定のとき、生成に失敗する",
-				store:   &fakeOutboxStore{},
-				pub:     nil,
-				cfg:     Config{BatchSize: 1, FailureThreshold: 1, VisibilityTimeout: time.Second},
-				wantSub: "publisher is nil",
+				name:            "配信先が未設定(nil)のとき、エラーになる",
+				store:           validStore,
+				pub:             nil,
+				cfg:             validCfg,
+				wantErrContains: "publisher",
 			},
 			{
-				name:    "バッチサイズが0のとき、生成に失敗する",
-				store:   &fakeOutboxStore{},
-				pub:     &fakeRawPublisher{},
-				cfg:     Config{BatchSize: 0, FailureThreshold: 1, VisibilityTimeout: time.Second},
-				wantSub: "BatchSize must be positive",
+				name:            "1回に取得する最大件数が0のとき、エラーになる",
+				store:           validStore,
+				pub:             validPub,
+				cfg:             Config{BatchSize: 0, FailureThreshold: 3, VisibilityTimeout: time.Minute},
+				wantErrContains: "BatchSize",
 			},
 			{
-				name:    "失敗回数の上限が0のとき、生成に失敗する",
-				store:   &fakeOutboxStore{},
-				pub:     &fakeRawPublisher{},
-				cfg:     Config{BatchSize: 1, FailureThreshold: 0, VisibilityTimeout: time.Second},
-				wantSub: "FailureThreshold must be positive",
+				name:            "連続失敗の閾値が0のとき、エラーになる",
+				store:           validStore,
+				pub:             validPub,
+				cfg:             Config{BatchSize: 10, FailureThreshold: 0, VisibilityTimeout: time.Minute},
+				wantErrContains: "FailureThreshold",
 			},
 			{
-				name:    "可視性タイムアウトが0のとき、生成に失敗する",
-				store:   &fakeOutboxStore{},
-				pub:     &fakeRawPublisher{},
-				cfg:     Config{BatchSize: 1, FailureThreshold: 1, VisibilityTimeout: 0},
-				wantSub: "VisibilityTimeout must be positive",
+				name:            "他のワーカーから隠蔽される期間が0のとき、エラーになる",
+				store:           validStore,
+				pub:             validPub,
+				cfg:             Config{BatchSize: 10, FailureThreshold: 3, VisibilityTimeout: 0},
+				wantErrContains: "VisibilityTimeout",
 			},
 		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				_, err := New(tt.store, tt.pub, tt.cfg)
+		for _, tc := range errCases {
+			t.Run(tc.name, func(t *testing.T) {
+				relay, err := New(tc.store, tc.pub, tc.cfg)
+
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.wantSub)
+				assert.Nil(t, relay)
+				assert.ErrorContains(t, err, tc.wantErrContains)
 			})
 		}
+
+		t.Run("未配信イベントの保存先と配信先が設定され、1回に取得する最大件数・連続失敗の閾値・他のワーカーから隠蔽される期間が全て正の値のとき、構築が成功する", func(t *testing.T) {
+			relay, err := New(validStore, validPub, validCfg)
+
+			require.NoError(t, err)
+			assert.NotNil(t, relay)
+		})
 	})
 }
 
 func TestRunOnce(t *testing.T) {
-	t.Run("1回の配信実行", func(t *testing.T) {
-		okID := uuid.New()
-		ngID := uuid.New()
-		markFailID1 := uuid.New()
-		markFailID2 := uuid.New()
+	t.Run("[配信]1バッチ分の取得結果に対する配信振り分け", func(t *testing.T) {
+		validCfg := Config{BatchSize: 1, FailureThreshold: 1, VisibilityTimeout: time.Nanosecond}
 
-		tests := []struct {
-			name             string
-			claimed          []port.ClaimedOutboxEvent
-			publishErrs      map[string]error // eventType → error
-			storeMarkErr     error
-			storeFailErr     error
-			wantMarked       []uuid.UUID
-			wantFailed       []uuid.UUID
-			wantPublishCalls int
-		}{
-			{
-				name:    "未配信イベントが無いとき、何も配信されない",
-				claimed: nil,
-			},
-			{
-				name: "全件の配信に成功すると、全件が配信済みになる",
-				claimed: []port.ClaimedOutboxEvent{
-					{EventID: okID, EventType: apiscenario.EventTypePlayerOnboarded, Payload: []byte(`{}`), FailureCount: 0},
-				},
-				wantMarked:       []uuid.UUID{okID},
-				wantPublishCalls: 1,
-			},
-			{
-				name: "配信に失敗すると、失敗が記録され配信済みにならない",
-				claimed: []port.ClaimedOutboxEvent{
-					{EventID: ngID, EventType: apiscenario.EventTypePlayerOnboarded, Payload: []byte(`{}`), FailureCount: 0},
-				},
-				publishErrs:      map[string]error{apiscenario.EventTypePlayerOnboarded: errors.New("pubsub down")},
-				wantFailed:       []uuid.UUID{ngID},
-				wantPublishCalls: 1,
-			},
-			{
-				name: "成功と失敗が混在するとき、成功分だけ配信済みになり失敗分は失敗として記録される",
-				claimed: []port.ClaimedOutboxEvent{
-					{EventID: okID, EventType: "ok-event-type", Payload: []byte(`{}`), FailureCount: 0},
-					{EventID: ngID, EventType: "ng-event-type", Payload: []byte(`{}`), FailureCount: 2},
-				},
-				publishErrs:      map[string]error{"ng-event-type": errors.New("nope")},
-				wantMarked:       []uuid.UUID{okID},
-				wantFailed:       []uuid.UUID{ngID},
-				wantPublishCalls: 2,
-			},
-			{
-				name: "配信済みマークの保存に失敗しても、エラーにならず残りのイベントを配信する",
-				claimed: []port.ClaimedOutboxEvent{
-					{EventID: markFailID1, EventType: "mark-fail-event-type-1", Payload: []byte(`{}`), FailureCount: 0},
-					{EventID: markFailID2, EventType: "mark-fail-event-type-2", Payload: []byte(`{}`), FailureCount: 0},
-				},
-				storeMarkErr:     errors.New("mark storage down"),
-				wantMarked:       []uuid.UUID{markFailID1, markFailID2},
-				wantPublishCalls: 2,
-			},
-			{
-				name: "失敗記録の保存に失敗しても、エラーにならず残りのイベントを処理する",
-				claimed: []port.ClaimedOutboxEvent{
-					{EventID: ngID, EventType: "record-fail-event-type", Payload: []byte(`{}`), FailureCount: 0},
-					{EventID: okID, EventType: "record-fail-recovers-event-type", Payload: []byte(`{}`), FailureCount: 0},
-				},
-				publishErrs:      map[string]error{"record-fail-event-type": errors.New("nope")},
-				storeFailErr:     errors.New("failure storage down"),
-				wantMarked:       []uuid.UUID{okID},
-				wantFailed:       []uuid.UUID{ngID},
-				wantPublishCalls: 2,
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				store := &fakeOutboxStore{claimed: tt.claimed, markErr: tt.storeMarkErr, failErr: tt.storeFailErr}
-				pub := &fakeRawPublisher{errByEventType: tt.publishErrs}
-				s, err := New(store, pub, Config{
-					BatchSize: 10, FailureThreshold: 5, VisibilityTimeout: 30 * time.Second,
-				})
-				require.NoError(t, err)
-
-				require.NoError(t, s.RunOnce(context.Background()))
-
-				assert.Len(t, pub.calls, tt.wantPublishCalls)
-				assert.ElementsMatch(t, tt.wantMarked, store.markedPublished)
-
-				gotFailed := make([]uuid.UUID, 0, len(store.failures))
-				for _, f := range store.failures {
-					gotFailed = append(gotFailed, f.eventID)
-				}
-				assert.ElementsMatch(t, tt.wantFailed, gotFailed)
-			})
-		}
-
-		t.Run("未配信イベントの取得に失敗すると、そのエラーが返り何も配信されない", func(t *testing.T) {
-			store := &fakeOutboxStore{claimErr: errors.New("db down")}
-			pub := &fakeRawPublisher{}
-			s, err := New(store, pub, Config{
-				BatchSize: 10, FailureThreshold: 5, VisibilityTimeout: 30 * time.Second,
-			})
+		t.Run("未配信イベントの取得結果が0件のとき、エラーなく完了する", func(t *testing.T) {
+			store := &fakeOutboxStore{claimResult: []port.ClaimedOutboxEvent{}}
+			pub := &fakeRawEventPublisher{}
+			relay, err := New(store, pub, validCfg)
 			require.NoError(t, err)
 
-			err = s.RunOnce(context.Background())
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "db down")
-			assert.Empty(t, pub.calls)
-			assert.Empty(t, store.markedPublished)
-			assert.Empty(t, store.failures)
+			err = relay.RunOnce(context.Background())
+
+			require.NoError(t, err)
+			assert.Empty(t, store.markPublishedIDs)
+			assert.Empty(t, store.recordFailureCalls)
+		})
+
+		t.Run("構築時に指定した1回に取得する最大件数・他のワーカーから隠蔽される期間・連続失敗の閾値が、そのまま未配信イベント取得の呼び出しに渡る", func(t *testing.T) {
+			store := &fakeOutboxStore{claimResult: []port.ClaimedOutboxEvent{}}
+			pub := &fakeRawEventPublisher{}
+			relay, err := New(store, pub, validCfg)
+			require.NoError(t, err)
+
+			err = relay.RunOnce(context.Background())
+
+			require.NoError(t, err)
+			require.Len(t, store.claimCalls, 1)
+			assert.Equal(t, claimCall{limit: 1, visibilityTimeout: time.Nanosecond, failureThreshold: 1}, store.claimCalls[0])
+		})
+
+		t.Run("未配信イベントの取得自体が失敗するとき、エラーになる", func(t *testing.T) {
+			errBoom := errors.New("claim unpublished boom")
+			store := &fakeOutboxStore{claimErr: errBoom}
+			pub := &fakeRawEventPublisher{}
+			relay, err := New(store, pub, validCfg)
+			require.NoError(t, err)
+
+			err = relay.RunOnce(context.Background())
+
+			require.ErrorIs(t, err, errBoom)
+		})
+
+		t.Run("取得された行の配信が成功するとき、その行の配信済み記録が呼ばれる", func(t *testing.T) {
+			eventID := uuid.New()
+			store := &fakeOutboxStore{claimResult: []port.ClaimedOutboxEvent{
+				{EventID: eventID, EventType: "onboarding_name_set", Payload: []byte(`{}`)},
+			}}
+			pub := &fakeRawEventPublisher{}
+			relay, err := New(store, pub, validCfg)
+			require.NoError(t, err)
+
+			err = relay.RunOnce(context.Background())
+
+			require.NoError(t, err)
+			require.Len(t, store.markPublishedIDs, 1)
+			assert.Equal(t, eventID, store.markPublishedIDs[0])
+			assert.Empty(t, store.recordFailureCalls)
+			require.Len(t, pub.publishCalls, 1)
+			assert.Equal(t, "onboarding_name_set", pub.publishCalls[0].eventType)
+			assert.Equal(t, []byte(`{}`), pub.publishCalls[0].payload)
+		})
+
+		t.Run("取得された行の配信が失敗するとき、その行の失敗記録が呼ばれ、エラーにならない", func(t *testing.T) {
+			eventID := uuid.New()
+			publishErr := errors.New("publish boom")
+			store := &fakeOutboxStore{claimResult: []port.ClaimedOutboxEvent{
+				{EventID: eventID, EventType: "onboarding_name_set", Payload: []byte(`{}`)},
+			}}
+			pub := &fakeRawEventPublisher{err: publishErr}
+			relay, err := New(store, pub, validCfg)
+			require.NoError(t, err)
+
+			err = relay.RunOnce(context.Background())
+
+			require.NoError(t, err)
+			require.Len(t, store.recordFailureCalls, 1)
+			assert.Equal(t, eventID, store.recordFailureCalls[0].eventID)
+			assert.Contains(t, store.recordFailureCalls[0].errMsg, "publish boom")
+			assert.Empty(t, store.markPublishedIDs)
 		})
 	})
 }

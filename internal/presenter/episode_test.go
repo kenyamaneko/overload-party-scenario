@@ -1,9 +1,9 @@
 package presenter_test
 
 import (
+	"encoding/json"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
@@ -11,130 +11,223 @@ import (
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
 
-func TestToLockReason(t *testing.T) {
-	t.Run("ロック理由の変換", func(t *testing.T) {
-		requiredLv5 := int64(5)
-		currentLv2 := int64(2)
-		factionSHE := "SHE"
-		episodeSheEp1 := "she_ep1"
+func int64Ptr(v int64) *int64    { return &v }
+func stringPtr(v string) *string { return &v }
 
-		tests := []struct {
-			name string
-			in   domain.LockReason
-			want apiscenario.LockReason
+func TestToLockReason(t *testing.T) {
+	t.Run("[シナリオ]ロック理由のwire変換", func(t *testing.T) {
+		cases := []struct {
+			name  string
+			input domain.LockReason
+			want  apiscenario.LockReason
 		}{
 			{
-				name: "level理由のとき、required_levelとcurrent_levelのみ埋める",
-				in:   domain.LockReason{Type: domain.LockReasonLevel, RequiredLevel: 5, CurrentLevel: 2},
+				name: "必要レベル種別の理由のとき、変換後の理由にも必要レベルと現在レベルの値が引き継がれ、必要陣営・必要エピソードのフィールドは埋まらない",
+				input: domain.LockReason{
+					Type:          domain.LockReasonLevel,
+					RequiredLevel: 5,
+					CurrentLevel:  3,
+				},
 				want: apiscenario.LockReason{
 					Type:          apiscenario.LockReasonTypeLevel,
-					RequiredLevel: &requiredLv5,
-					CurrentLevel:  &currentLv2,
+					RequiredLevel: int64Ptr(5),
+					CurrentLevel:  int64Ptr(3),
 				},
 			},
 			{
-				name: "faction理由のとき、required_factionのみ埋める",
-				in:   domain.LockReason{Type: domain.LockReasonFaction, RequiredFaction: "SHE"},
+				name: "陣営種別の理由のとき、変換後の理由に必要陣営の値が引き継がれ、必要レベル・必要エピソードのフィールドは埋まらない",
+				input: domain.LockReason{
+					Type:            domain.LockReasonFaction,
+					RequiredFaction: "faction-a",
+				},
 				want: apiscenario.LockReason{
 					Type:            apiscenario.LockReasonTypeFaction,
-					RequiredFaction: &factionSHE,
+					RequiredFaction: stringPtr("faction-a"),
 				},
 			},
 			{
-				name: "episode理由のとき、required_episodeのみ埋める",
-				in:   domain.LockReason{Type: domain.LockReasonEpisode, RequiredEpisode: "she_ep1"},
+				name: "エピソード種別の理由のとき、変換後の理由に必要エピソードの値が引き継がれ、必要レベル・必要陣営のフィールドは埋まらない",
+				input: domain.LockReason{
+					Type:            domain.LockReasonEpisode,
+					RequiredEpisode: "TST-0001",
+				},
 				want: apiscenario.LockReason{
 					Type:            apiscenario.LockReasonTypeEpisode,
-					RequiredEpisode: &episodeSheEp1,
+					RequiredEpisode: stringPtr("TST-0001"),
 				},
 			},
 		}
-
-		for _, tc := range tests {
+		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				got := presenter.ToLockReason(tc.in)
-				assert.Equal(t, tc.want, got)
+				require.Equal(t, tc.want, presenter.ToLockReason(tc.input))
 			})
 		}
 	})
 }
 
+func TestToLockReasons(t *testing.T) {
+	t.Run("[シナリオ]複数理由のwire変換", func(t *testing.T) {
+		t.Run("理由が0件のとき、変換結果は空配列になり、JSONシリアライズしたときnullでなく[]になる", func(t *testing.T) {
+			got := presenter.ToLockReasons(nil)
+			require.Len(t, got, 0)
+
+			b, err := json.Marshal(got)
+			require.NoError(t, err)
+			require.Equal(t, "[]", string(b))
+		})
+
+		t.Run("理由が複数件のとき、それぞれの理由が変換され、件数と順序が保たれる", func(t *testing.T) {
+			input := []domain.LockReason{
+				{Type: domain.LockReasonLevel, RequiredLevel: 5, CurrentLevel: 3},
+				{Type: domain.LockReasonFaction, RequiredFaction: "faction-a"},
+				{Type: domain.LockReasonEpisode, RequiredEpisode: "TST-0001"},
+			}
+			want := []apiscenario.LockReason{
+				{Type: apiscenario.LockReasonTypeLevel, RequiredLevel: int64Ptr(5), CurrentLevel: int64Ptr(3)},
+				{Type: apiscenario.LockReasonTypeFaction, RequiredFaction: stringPtr("faction-a")},
+				{Type: apiscenario.LockReasonTypeEpisode, RequiredEpisode: stringPtr("TST-0001")},
+			}
+
+			got := presenter.ToLockReasons(input)
+			require.Equal(t, want, got)
+		})
+	})
+}
+
 func TestBuildEpisodeWithStatus(t *testing.T) {
-	t.Run("エピソード状態の組み立て", func(t *testing.T) {
-		faction := "SHE"
-		thumbnail := "thumbnails/she_ep1.png"
-		ep := &domain.Episode{
-			EpisodeID:        "she_ep1",
-			Faction:          &faction,
-			EpisodeNumber:    1,
-			TitleJa:          "SHE 第1章",
-			TitleEn:          "SHE Chapter 1",
-			RequiredLevel:    2,
-			RequiredFactions: []string{"SHE"},
-			ThumbnailPath:    &thumbnail,
-		}
+	t.Run("[シナリオ]エピソードの状態組み立て", func(t *testing.T) {
+		t.Run("ロック理由が1件以上あるとき、アンロック済みフラグはfalseになる", func(t *testing.T) {
+			ep := &domain.Episode{EpisodeID: "TST-0001", RequiredLevel: 5}
+			uc := &domain.UnlockContext{PlayerLevel: 1}
 
-		tests := []struct {
-			name           string
-			uc             *domain.UnlockContext
-			lang           string
-			wantUnlocked   bool
-			wantCompleted  bool
-			wantTitle      string
-			wantReasonsLen int
-		}{
-			{
-				name: "条件充足かつ未完了のとき、IsUnlocked=true・IsCompleted=falseになる",
-				uc: &domain.UnlockContext{
-					PlayerLevel:       5,
-					OwnedFactions:     map[string]bool{"SHE": true},
-					CompletedEpisodes: map[string]bool{},
-				},
-				lang:           "ja",
-				wantUnlocked:   true,
-				wantCompleted:  false,
-				wantTitle:      "SHE 第1章",
-				wantReasonsLen: 0,
-			},
-			{
-				name: "完了済みのとき、IsCompleted=trueになる",
-				uc: &domain.UnlockContext{
-					PlayerLevel:       5,
-					OwnedFactions:     map[string]bool{"SHE": true},
-					CompletedEpisodes: map[string]bool{"she_ep1": true},
-				},
-				lang:           "en",
-				wantUnlocked:   true,
-				wantCompleted:  true,
-				wantTitle:      "SHE Chapter 1",
-				wantReasonsLen: 0,
-			},
-			{
-				name: "条件未達のとき、IsUnlocked=falseでLockReasonsが入る",
-				uc: &domain.UnlockContext{
-					PlayerLevel:       1,
-					OwnedFactions:     map[string]bool{},
-					CompletedEpisodes: map[string]bool{},
-				},
-				lang:           "ja",
-				wantUnlocked:   false,
-				wantCompleted:  false,
-				wantTitle:      "SHE 第1章",
-				wantReasonsLen: 2,
-			},
-		}
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
 
-		for _, tc := range tests {
-			t.Run(tc.name, func(t *testing.T) {
-				got := presenter.BuildEpisodeWithStatus(ep, tc.uc, tc.lang)
-				assert.Equal(t, "she_ep1", got.EpisodeID)
-				assert.Equal(t, tc.wantTitle, got.Title)
-				assert.Equal(t, tc.wantUnlocked, got.IsUnlocked)
-				assert.Equal(t, tc.wantCompleted, got.IsCompleted)
-				require.Len(t, got.LockReasons, tc.wantReasonsLen)
-				require.NotNil(t, got.ThumbnailURL)
-				assert.Equal(t, thumbnail, *got.ThumbnailURL)
-			})
-		}
+			require.False(t, got.IsUnlocked)
+		})
+
+		t.Run("ロック理由が0件のとき、アンロック済みフラグはtrueになる", func(t *testing.T) {
+			ep := &domain.Episode{EpisodeID: "TST-0001", RequiredLevel: 1}
+			uc := &domain.UnlockContext{PlayerLevel: 5}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.True(t, got.IsUnlocked)
+		})
+
+		t.Run("対象エピソードがプレイヤーの完了済みエピソードに含まれるとき、完了済みフラグはtrueになる", func(t *testing.T) {
+			ep := &domain.Episode{EpisodeID: "TST-0001"}
+			uc := &domain.UnlockContext{CompletedEpisodes: map[string]bool{"TST-0001": true}}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.True(t, got.IsCompleted)
+		})
+
+		t.Run("対象エピソードがプレイヤーの完了済みエピソードに含まれないとき、完了済みフラグはfalseになる", func(t *testing.T) {
+			ep := &domain.Episode{EpisodeID: "TST-0001"}
+			uc := &domain.UnlockContext{CompletedEpisodes: map[string]bool{"TST-0002": true}}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.False(t, got.IsCompleted)
+		})
+
+		t.Run("サムネイルパスが設定されているとき、応答のサムネイルURLにその値が入る", func(t *testing.T) {
+			path := "https://example.com/thumbnail.png"
+			ep := &domain.Episode{EpisodeID: "TST-0001", ThumbnailPath: &path}
+			uc := &domain.UnlockContext{}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.NotNil(t, got.ThumbnailURL)
+			require.Equal(t, path, *got.ThumbnailURL)
+		})
+
+		t.Run("サムネイルパスが未設定(nil)のとき、応答のサムネイルURLも未設定になる", func(t *testing.T) {
+			ep := &domain.Episode{EpisodeID: "TST-0001", ThumbnailPath: nil}
+			uc := &domain.UnlockContext{}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.Nil(t, got.ThumbnailURL)
+		})
+
+		t.Run("要求言語がenのとき、応答のタイトルは英語タイトルになる", func(t *testing.T) {
+			ep := &domain.Episode{EpisodeID: "TST-0001", TitleJa: "日本語タイトル", TitleEn: "English Title"}
+			uc := &domain.UnlockContext{}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "en")
+
+			require.Equal(t, "English Title", got.Title)
+		})
+
+		t.Run("要求言語がen以外のとき、応答のタイトルは日本語タイトルになる", func(t *testing.T) {
+			ep := &domain.Episode{EpisodeID: "TST-0001", TitleJa: "日本語タイトル", TitleEn: "English Title"}
+			uc := &domain.UnlockContext{}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.Equal(t, "日本語タイトル", got.Title)
+		})
+
+		t.Run("陣営が設定されているとき、応答の陣営にその値が入る", func(t *testing.T) {
+			faction := "faction-a"
+			ep := &domain.Episode{EpisodeID: "TST-0001", Faction: &faction}
+			uc := &domain.UnlockContext{}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.NotNil(t, got.Faction)
+			require.Equal(t, faction, *got.Faction)
+		})
+
+		t.Run("陣営が未設定(nil)のとき、応答の陣営も未設定になる", func(t *testing.T) {
+			ep := &domain.Episode{EpisodeID: "TST-0001", Faction: nil}
+			uc := &domain.UnlockContext{}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.Nil(t, got.Faction)
+		})
+
+		t.Run("エピソード話数が設定されているとき、応答のエピソード話数にその値が入る", func(t *testing.T) {
+			ep := &domain.Episode{EpisodeID: "TST-0001", EpisodeNumber: 3}
+			uc := &domain.UnlockContext{}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.Equal(t, int64(3), got.EpisodeNumber)
+		})
+
+		t.Run("ロック理由が複数種別にわたるとき、応答のロック理由にそれぞれの理由が含まれる", func(t *testing.T) {
+			ep := &domain.Episode{
+				EpisodeID:        "TST-0001",
+				RequiredLevel:    5,
+				RequiredFactions: []string{"faction-a"},
+			}
+			uc := &domain.UnlockContext{PlayerLevel: 1}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.Len(t, got.LockReasons, 2)
+		})
+	})
+}
+
+func TestBuildEpisodesWithStatus(t *testing.T) {
+	t.Run("[シナリオ]複数エピソードの一括状態組み立て", func(t *testing.T) {
+		t.Run("複数のエピソードを渡すと、それぞれが個別に変換され、件数と順序が保たれる", func(t *testing.T) {
+			ep1 := &domain.Episode{EpisodeID: "TST-0001", RequiredLevel: 1}
+			ep2 := &domain.Episode{EpisodeID: "TST-0002", RequiredLevel: 10}
+			uc := &domain.UnlockContext{PlayerLevel: 5}
+
+			got := presenter.BuildEpisodesWithStatus([]*domain.Episode{ep1, ep2}, uc, "ja")
+
+			require.Len(t, got, 2)
+			require.Equal(t, "TST-0001", got[0].EpisodeID)
+			require.True(t, got[0].IsUnlocked)
+			require.Equal(t, "TST-0002", got[1].EpisodeID)
+			require.False(t, got[1].IsUnlocked)
+		})
 	})
 }

@@ -11,20 +11,17 @@ import (
 	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
 )
 
-func TestEnumDriftAgainstOpenAPISpec(t *testing.T) {
-	t.Run("domainとopenapi.yamlのenum整合", func(t *testing.T) {
-		// SSoT は domain 側。openapi.yaml は外部公開ドキュメントとして同じ値集合を持つ必要があり、
-		// 値の追加・削除・rename が片方だけで起きれば本テストが失敗する。
-		spec := loadOpenAPISpec(t)
-
-		t.Run("LockReasonType enumがdomainとopenapi.yamlで一致する", func(t *testing.T) {
+func TestLockReasonTypeAgainstOpenAPISpec(t *testing.T) {
+	t.Run("[シナリオ]LockReasonTypeとdata/openapi.yamlの整合", func(t *testing.T) {
+		t.Run("LockReasonTypeの値集合がdata/openapi.yamlのLockReasonType enumの値集合と一致する", func(t *testing.T) {
+			spec := loadOpenAPISpec(t)
 			want := []string{
 				string(domain.LockReasonLevel),
 				string(domain.LockReasonFaction),
 				string(domain.LockReasonEpisode),
 			}
 			got := specEnumValues(t, spec, "LockReasonType")
-			require.ElementsMatch(t, want, got, "domain と openapi.yaml の LockReasonType enum が drift している")
+			require.ElementsMatch(t, want, got)
 		})
 	})
 }

@@ -4,7 +4,6 @@ package postgres_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
@@ -15,149 +14,88 @@ import (
 	"github.com/kenyamaneko/overload-party-scenario/internal/repository/postgres"
 )
 
-// newPlayerID は UUID 形式の一意な player_id を組み立てる。
-// player_id は scenario.player_onboarding の UUID 型カラムへ入るため、形式が重要。
-// テスト間で一意になるよう testIdx / seedIdx を埋め込む。
-func newPlayerID(testIdx, seedIdx int) string {
-	return fmt.Sprintf("%08d-%04d-%04d-0000-000000000000", testIdx+1, seedIdx, seedIdx)
-}
-
-// insertOnboardingRow は scenario.player_onboarding に既完了レコードを直接 INSERT する
-// (MarkComplete を通らずに状態だけ作る seed)。
-func insertOnboardingRow(t *testing.T, playerID string) {
-	t.Helper()
-	_, err := sharedPg.Pool.Exec(context.Background(),
-		`INSERT INTO scenario.player_onboarding (player_id) VALUES ($1)`,
-		playerID)
-	require.NoError(t, err)
-}
-
-func TestPublishEvents(t *testing.T) {
-	repo := postgres.NewOnboardingRepository(sharedPg.Pool)
-	ctx := context.Background()
-
-	makeEvents := func(n int) []port.OutboxEvent {
-		out := make([]port.OutboxEvent, 0, n)
-		for i := range n {
-			out = append(out, port.OutboxEvent{
-				EventID:   uuid.New(),
-				EventType: fmt.Sprintf("publish-test-event-%d", i),
-				Payload:   []byte(fmt.Sprintf(`{"i":%d}`, i)),
-			})
-		}
-		return out
-	}
-
-	t.Run("outboxへの複数イベント投入", func(t *testing.T) {
-		tests := []struct {
-			name            string
-			events          []port.OutboxEvent
-			wantOutboxCount int
-		}{
-			{
-				name:            "eventsが複数のとき、単一txで全行がoutboxに積まれる",
-				events:          makeEvents(2),
-				wantOutboxCount: 2,
-			},
-			{
-				name:            "eventsが1件のとき、outboxに1行積む",
-				events:          makeEvents(1),
-				wantOutboxCount: 1,
-			},
-			{
-				name:            "eventsが0件のとき、outboxに何も積まない",
-				events:          nil,
-				wantOutboxCount: 0,
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				sharedPg.Truncate(t)
-
-				require.NoError(t, repo.PublishEvents(ctx, tt.events...))
-
-				var outboxCount int
-				require.NoError(t, sharedPg.Pool.QueryRow(ctx,
-					`SELECT COUNT(*) FROM scenario.outbox_events`).Scan(&outboxCount))
-				assert.Equal(t, tt.wantOutboxCount, outboxCount)
-			})
-		}
-	})
-}
-
 func TestOnboardingRepository_MarkComplete(t *testing.T) {
 	repo := postgres.NewOnboardingRepository(sharedPg.Pool)
 	ctx := context.Background()
 
-	// makeEvents は任意件数の OutboxEvent を作るヘルパ。event_type / payload は任意で良い
-	// (scenario.outbox_events に CHECK 制約は無い)。
-	makeEvents := func(n int) []port.OutboxEvent {
-		out := make([]port.OutboxEvent, 0, n)
-		for i := range n {
-			out = append(out, port.OutboxEvent{
-				EventID:   uuid.New(),
-				EventType: fmt.Sprintf("test-event-type-%d", i),
-				Payload:   []byte(fmt.Sprintf(`{"i":%d}`, i)),
-			})
-		}
-		return out
-	}
+	t.Run("[オンボーディング]オンボーディング完了の記録", func(t *testing.T) {
+		t.Run("対象プレイヤーが未オンボードのとき、オンボード完了記録が作成され、渡したイベントがoutboxに記録される", func(t *testing.T) {
+			sharedPg.Truncate(t)
+			playerID := uuid.New().String()
+			ev := port.OutboxEvent{EventID: uuid.New(), EventType: "TST_PLAYER_ONBOARDED", Payload: []byte(`{"playerId":"p1"}`)}
 
-	t.Run("オンボーディング完了の記録", func(t *testing.T) {
-		tests := []struct {
-			name                string
-			seed                func(t *testing.T, playerID string)
-			events              []port.OutboxEvent
-			wantErr             error
-			wantOutboxCount     int
-			wantOnboardingCount int
-		}{
-			{
-				name:                "eventsが複数でも、player_onboardingとoutboxへatomicに書き込む",
-				seed:                func(t *testing.T, playerID string) {},
-				events:              makeEvents(3),
-				wantOutboxCount:     3,
-				wantOnboardingCount: 1,
-			},
-			{
-				name:                "eventsが0件でも、player_onboardingへのINSERTは成功する",
-				seed:                func(t *testing.T, playerID string) {},
-				events:              nil,
-				wantOutboxCount:     0,
-				wantOnboardingCount: 1,
-			},
-			{
-				name:   "既に完了済みのとき、ErrAlreadyOnboardedになりoutboxは積まれない",
-				seed:   func(t *testing.T, playerID string) { insertOnboardingRow(t, playerID) },
-				events: makeEvents(1),
-				// 一意違反で rollback されるため outbox には 1 行も積まれない。onboarding は事前 INSERT 分だけ残る。
-				wantErr:             port.ErrAlreadyOnboarded,
-				wantOutboxCount:     0,
-				wantOnboardingCount: 1,
-			},
-		}
+			require.NoError(t, repo.MarkComplete(ctx, playerID, ev))
 
-		for i, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				sharedPg.Truncate(t)
-				playerID := newPlayerID(i, 0)
-				tt.seed(t, playerID)
+			assert.True(t, isOnboarded(t, playerID))
+			row, found := findOutboxEvent(t, ev.EventID)
+			require.True(t, found)
+			assert.Equal(t, ev.EventType, row.EventType)
+			assert.JSONEq(t, string(ev.Payload), string(row.Payload))
+		})
 
-				err := repo.MarkComplete(ctx, playerID, tt.events...)
-				require.ErrorIs(t, err, tt.wantErr)
+		t.Run("対象プレイヤーが既にオンボード済みのとき、オンボーディング済みを表すエラーになる", func(t *testing.T) {
+			sharedPg.Truncate(t)
+			playerID := uuid.New().String()
+			require.NoError(t, repo.MarkComplete(ctx, playerID,
+				port.OutboxEvent{EventID: uuid.New(), EventType: "TST_PLAYER_ONBOARDED", Payload: []byte(`{}`)}))
 
-				var onboardingCount int
-				require.NoError(t, sharedPg.Pool.QueryRow(ctx,
-					`SELECT COUNT(*) FROM scenario.player_onboarding WHERE player_id = $1`,
-					playerID).Scan(&onboardingCount))
-				assert.Equal(t, tt.wantOnboardingCount, onboardingCount)
+			err := repo.MarkComplete(ctx, playerID,
+				port.OutboxEvent{EventID: uuid.New(), EventType: "TST_PLAYER_ONBOARDED", Payload: []byte(`{}`)})
 
-				var outboxCount int
-				require.NoError(t, sharedPg.Pool.QueryRow(ctx,
-					`SELECT COUNT(*) FROM scenario.outbox_events`).Scan(&outboxCount))
-				assert.Equal(t, tt.wantOutboxCount, outboxCount, "outbox の行数が期待どおり")
-			})
-		}
+			require.ErrorIs(t, err, port.ErrAlreadyOnboarded)
+			assert.Equal(t, 1, countOutboxEvents(t))
+		})
+
+		t.Run("複数のイベントを渡すと、全て同一トランザクションでoutboxに記録される", func(t *testing.T) {
+			sharedPg.Truncate(t)
+			playerID := uuid.New().String()
+			ev1 := port.OutboxEvent{EventID: uuid.New(), EventType: "TST_NAME_SET", Payload: []byte(`{"k":"name"}`)}
+			ev2 := port.OutboxEvent{EventID: uuid.New(), EventType: "TST_FACTION_SET", Payload: []byte(`{"k":"faction"}`)}
+
+			require.NoError(t, repo.MarkComplete(ctx, playerID, ev1, ev2))
+
+			row1, found1 := findOutboxEvent(t, ev1.EventID)
+			require.True(t, found1)
+			assert.Equal(t, ev1.EventType, row1.EventType)
+			assert.JSONEq(t, string(ev1.Payload), string(row1.Payload))
+
+			row2, found2 := findOutboxEvent(t, ev2.EventID)
+			require.True(t, found2)
+			assert.Equal(t, ev2.EventType, row2.EventType)
+			assert.JSONEq(t, string(ev2.Payload), string(row2.Payload))
+		})
+	})
+}
+
+func TestOnboardingRepository_PublishEvents(t *testing.T) {
+	repo := postgres.NewOnboardingRepository(sharedPg.Pool)
+	ctx := context.Background()
+
+	t.Run("[オンボーディング]outboxイベントの発行", func(t *testing.T) {
+		t.Run("イベントが1件以上あるとき、全てoutboxに記録される", func(t *testing.T) {
+			sharedPg.Truncate(t)
+			ev1 := port.OutboxEvent{EventID: uuid.New(), EventType: "TST_EVENT_A", Payload: []byte(`{"k":"a"}`)}
+			ev2 := port.OutboxEvent{EventID: uuid.New(), EventType: "TST_EVENT_B", Payload: []byte(`{"k":"b"}`)}
+
+			require.NoError(t, repo.PublishEvents(ctx, ev1, ev2))
+
+			row1, found1 := findOutboxEvent(t, ev1.EventID)
+			require.True(t, found1)
+			assert.Equal(t, ev1.EventType, row1.EventType)
+			assert.JSONEq(t, string(ev1.Payload), string(row1.Payload))
+
+			row2, found2 := findOutboxEvent(t, ev2.EventID)
+			require.True(t, found2)
+			assert.Equal(t, ev2.EventType, row2.EventType)
+			assert.JSONEq(t, string(ev2.Payload), string(row2.Payload))
+		})
+
+		t.Run("イベントが0件のとき、何も記録されずエラーにならない", func(t *testing.T) {
+			sharedPg.Truncate(t)
+
+			require.NoError(t, repo.PublishEvents(ctx))
+
+			assert.Equal(t, 0, countOutboxEvents(t))
+		})
 	})
 }

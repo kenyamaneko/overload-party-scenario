@@ -1,6 +1,8 @@
 package presenter
 
 import (
+	"fmt"
+
 	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
 	apiscenario "github.com/kenyamaneko/overload-party-scenario/packages/api-scenario"
 )
@@ -30,13 +32,13 @@ func ToLockReason(r domain.LockReason) apiscenario.LockReason {
 			RequiredEpisode: &episode,
 		}
 	default:
-		return apiscenario.LockReason{Type: apiscenario.LockReasonType(r.Type)}
+		panic(fmt.Sprintf("presenter: 未知の LockReasonType %q", r.Type))
 	}
 }
 
 // ToLockReasons は domain.LockReason slice を wire LockReason slice に詰め替える。
-// 0 件のときは nil を返す (wire 側の lock_reasons 配列としては nil でも JSON 上は null になるが、
-// EpisodeWithStatus の lock_reasons 自体は required 配列なので呼び出し側で空 slice を保証する)。
+// 0 件のときも空 slice を返す (EpisodeWithStatus.lock_reasons は required 配列であり、
+// JSON シリアライズ時に null でなく [] になる必要があるため)。
 func ToLockReasons(reasons []domain.LockReason) []apiscenario.LockReason {
 	result := make([]apiscenario.LockReason, len(reasons))
 	for i, r := range reasons {

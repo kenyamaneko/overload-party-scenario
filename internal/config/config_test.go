@@ -1,328 +1,273 @@
-package config
+package config_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kenyamaneko/overload-party-scenario/internal/config"
 )
 
-// testPublicKeyPEM は config が値をそのまま保持することの確認にだけ使うダミー。
-// 鍵としての妥当性は検証しないため、PEM の体裁だけ揃えている。
-const testPublicKeyPEM = "-----BEGIN PUBLIC KEY-----\ndummy-not-a-real-key\n-----END PUBLIC KEY-----\n"
-
-var allEnvKeys = []string{
-	"PORT",
-	"ENV",
-	"DATABASE_CONN",
-	"STORY_BUCKET",
-	"GOOGLE_CLOUD_PROJECT_ID",
-	"ONBOARDING_NAME_SET_TOPIC",
-	"ONBOARDING_FACTION_SET_TOPIC",
-	"PLAYER_ONBOARDED_TOPIC",
-	"ACCOUNT_BASE_URL",
-	"INTERNAL_AUTH_PUBLIC_KEY",
-	"DATABASE_IAM_AUTH_ENABLED",
-	"CLOUDSQL_CONNECTION_NAME",
-	"OUTBOX_POLL_INTERVAL",
-	"OUTBOX_BATCH_SIZE",
-	"OUTBOX_FAILURE_THRESHOLD",
-	"OUTBOX_VISIBILITY_TIMEOUT",
+func newValidEnv() map[string]string {
+	return map[string]string{
+		"PORT":                         "8080",
+		"ENV":                          "production",
+		"DATABASE_CONN":                "postgres://localhost:5432/scenario",
+		"STORY_BUCKET":                 "scenario-stories-bucket",
+		"GOOGLE_CLOUD_PROJECT_ID":      "test-project",
+		"ONBOARDING_NAME_SET_TOPIC":    "onboarding-name-set",
+		"ONBOARDING_FACTION_SET_TOPIC": "onboarding-faction-set",
+		"PLAYER_ONBOARDED_TOPIC":       "player-onboarded",
+		"ACCOUNT_BASE_URL":             "https://account.internal.example.com",
+		"INTERNAL_AUTH_PUBLIC_KEY":     "test-public-key",
+		"DATABASE_IAM_AUTH_ENABLED":    "false",
+		"OUTBOX_POLL_INTERVAL":         "5s",
+		"OUTBOX_BATCH_SIZE":            "10",
+		"OUTBOX_FAILURE_THRESHOLD":     "3",
+		"OUTBOX_VISIBILITY_TIMEOUT":    "30s",
+	}
 }
 
-// setEnv は os.Getenv が "" と unset を区別しない性質を使い、未指定キーに "" を渡して未設定を再現する。
-func setEnv(t *testing.T, envs map[string]string) {
+func setValidEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range allEnvKeys {
-		t.Setenv(k, envs[k])
+	for k, v := range newValidEnv() {
+		t.Setenv(k, v)
 	}
-}
-
-func mergeEnv(maps ...map[string]string) map[string]string {
-	out := map[string]string{}
-	for _, m := range maps {
-		for k, v := range m {
-			out[k] = v
-		}
-	}
-	return out
-}
-
-var validEnv = map[string]string{
-	"PORT":                         "9007",
-	"ENV":                          "dev",
-	"DATABASE_CONN":                "host=localhost port=5432 dbname=scenario user=scenario password=scenario sslmode=disable",
-	"STORY_BUCKET":                 "local:./testdata/stories",
-	"GOOGLE_CLOUD_PROJECT_ID":      "scenario-local",
-	"ONBOARDING_NAME_SET_TOPIC":    "onboarding-name-set",
-	"ONBOARDING_FACTION_SET_TOPIC": "onboarding-faction-set",
-	"PLAYER_ONBOARDED_TOPIC":       "player-onboarded",
-	"ACCOUNT_BASE_URL":             "http://localhost:9001",
-	"INTERNAL_AUTH_PUBLIC_KEY":     testPublicKeyPEM,
-	"DATABASE_IAM_AUTH_ENABLED":    "false",
-	"OUTBOX_POLL_INTERVAL":         "1s",
-	"OUTBOX_BATCH_SIZE":            "100",
-	"OUTBOX_FAILURE_THRESHOLD":     "5",
-	"OUTBOX_VISIBILITY_TIMEOUT":    "30s",
 }
 
 func TestFromEnv(t *testing.T) {
-	t.Run("環境変数からのConfig構築", func(t *testing.T) {
-		t.Run("必須envが揃うとき、全フィールドがConfigに伝搬する", func(t *testing.T) {
-			setEnv(t, validEnv)
+	t.Run("[設定]環境変数からの設定構築", func(t *testing.T) {
+		t.Run("必須環境変数の欠落", func(t *testing.T) {
+			cases := []struct {
+				name            string
+				envVar          string
+				wantErrContains string
+			}{
+				{"PORT が未設定のとき、エラーになる", "PORT", "PORT is required"},
+				{"ENV が未設定のとき、エラーになる", "ENV", "ENV is required"},
+				{"DATABASE_CONN が未設定のとき、エラーになる", "DATABASE_CONN", "DATABASE_CONN is required"},
+				{"STORY_BUCKET が未設定のとき、エラーになる", "STORY_BUCKET", "STORY_BUCKET is required"},
+				{"GOOGLE_CLOUD_PROJECT_ID が未設定のとき、エラーになる", "GOOGLE_CLOUD_PROJECT_ID", "GOOGLE_CLOUD_PROJECT_ID is required"},
+				{"ONBOARDING_NAME_SET_TOPIC が未設定のとき、エラーになる", "ONBOARDING_NAME_SET_TOPIC", "ONBOARDING_NAME_SET_TOPIC is required"},
+				{"ONBOARDING_FACTION_SET_TOPIC が未設定のとき、エラーになる", "ONBOARDING_FACTION_SET_TOPIC", "ONBOARDING_FACTION_SET_TOPIC is required"},
+				{"PLAYER_ONBOARDED_TOPIC が未設定のとき、エラーになる", "PLAYER_ONBOARDED_TOPIC", "PLAYER_ONBOARDED_TOPIC is required"},
+				{"ACCOUNT_BASE_URL が未設定のとき、エラーになる", "ACCOUNT_BASE_URL", "ACCOUNT_BASE_URL is required"},
+				{"INTERNAL_AUTH_PUBLIC_KEY が未設定のとき、エラーになる", "INTERNAL_AUTH_PUBLIC_KEY", "INTERNAL_AUTH_PUBLIC_KEY is required"},
+				{"DATABASE_IAM_AUTH_ENABLED が未設定のとき、エラーになる", "DATABASE_IAM_AUTH_ENABLED", `DATABASE_IAM_AUTH_ENABLED must be "true" or "false"`},
+				{"OUTBOX_POLL_INTERVAL が未設定のとき、エラーになる", "OUTBOX_POLL_INTERVAL", "OUTBOX_POLL_INTERVAL is required"},
+				{"OUTBOX_BATCH_SIZE が未設定のとき、エラーになる", "OUTBOX_BATCH_SIZE", "OUTBOX_BATCH_SIZE is required"},
+				{"OUTBOX_FAILURE_THRESHOLD が未設定のとき、エラーになる", "OUTBOX_FAILURE_THRESHOLD", "OUTBOX_FAILURE_THRESHOLD is required"},
+				{"OUTBOX_VISIBILITY_TIMEOUT が未設定のとき、エラーになる", "OUTBOX_VISIBILITY_TIMEOUT", "OUTBOX_VISIBILITY_TIMEOUT is required"},
+			}
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					setValidEnv(t)
+					t.Setenv(tc.envVar, "")
 
-			cfg, err := FromEnv()
+					got, err := config.FromEnv()
 
-			require.NoError(t, err)
-			assert.Equal(t, 9007, cfg.Port)
-			assert.Equal(t, "dev", cfg.Env)
-			assert.Equal(t, "host=localhost port=5432 dbname=scenario user=scenario password=scenario sslmode=disable", cfg.DatabaseConn)
-			assert.Equal(t, "local:./testdata/stories", cfg.StoryBucket)
-			assert.Equal(t, "scenario-local", cfg.GoogleCloudProjectID)
-			assert.Equal(t, "onboarding-name-set", cfg.OnboardingNameSetTopic)
-			assert.Equal(t, "onboarding-faction-set", cfg.OnboardingFactionSetTopic)
-			assert.Equal(t, "player-onboarded", cfg.PlayerOnboardedTopic)
-			assert.Equal(t, "http://localhost:9001", cfg.AccountBaseURL)
-			assert.Equal(t, testPublicKeyPEM, cfg.InternalAuthPublicKey)
-			assert.Equal(t, time.Second, cfg.OutboxPollInterval)
-			assert.Equal(t, 100, cfg.OutboxBatchSize)
-			assert.Equal(t, 5, cfg.OutboxFailureThreshold)
-			assert.Equal(t, 30*time.Second, cfg.OutboxVisibilityTimeout)
+					require.ErrorContains(t, err, tc.wantErrContains)
+					require.Nil(t, got)
+				})
+			}
 		})
 
-		t.Run("DATABASE_IAM_AUTH_ENABLEDがfalseのとき、CLOUDSQL_CONNECTION_NAMEが未設定でも成功する", func(t *testing.T) {
-			setEnv(t, validEnv)
+		t.Run("型・書式の検証", func(t *testing.T) {
+			cases := []struct {
+				name            string
+				envVar          string
+				value           string
+				wantErrContains string
+			}{
+				{"PORT が数値として解釈できない値のとき、エラーになる", "PORT", "abc", `PORT "abc"`},
+				{"OUTBOX_POLL_INTERVAL が期間として解釈できない値のとき、エラーになる", "OUTBOX_POLL_INTERVAL", "abc", `OUTBOX_POLL_INTERVAL "abc"`},
+				{"OUTBOX_BATCH_SIZE が数値として解釈できない値のとき、エラーになる", "OUTBOX_BATCH_SIZE", "abc", `OUTBOX_BATCH_SIZE "abc"`},
+				{"OUTBOX_FAILURE_THRESHOLD が数値として解釈できない値のとき、エラーになる", "OUTBOX_FAILURE_THRESHOLD", "abc", `OUTBOX_FAILURE_THRESHOLD "abc"`},
+				{"OUTBOX_VISIBILITY_TIMEOUT が期間として解釈できない値のとき、エラーになる", "OUTBOX_VISIBILITY_TIMEOUT", "abc", `OUTBOX_VISIBILITY_TIMEOUT "abc"`},
+			}
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					setValidEnv(t)
+					t.Setenv(tc.envVar, tc.value)
 
-			cfg, err := FromEnv()
+					got, err := config.FromEnv()
 
-			require.NoError(t, err)
-			assert.False(t, cfg.DatabaseIAMAuthEnabled)
-			assert.Empty(t, cfg.CloudSQLConnectionName)
+					require.ErrorContains(t, err, tc.wantErrContains)
+					require.Nil(t, got)
+				})
+			}
 		})
 
-		t.Run("DATABASE_IAM_AUTH_ENABLEDがtrueかつCLOUDSQL_CONNECTION_NAMEが指定されるとき、両方の値がConfigに反映される", func(t *testing.T) {
-			setEnv(t, mergeEnv(validEnv, map[string]string{
-				"DATABASE_IAM_AUTH_ENABLED": "true",
-				"CLOUDSQL_CONNECTION_NAME":  "overload-party-dev:asia-northeast1:overload-party-db",
-			}))
+		t.Run("境界値", func(t *testing.T) {
+			t.Run("下限を下回るとき、エラーになる", func(t *testing.T) {
+				cases := []struct {
+					name            string
+					envVar          string
+					value           string
+					wantErrContains string
+				}{
+					{"OUTBOX_POLL_INTERVAL が 0 以下のとき、エラーになる", "OUTBOX_POLL_INTERVAL", "0s", `OUTBOX_POLL_INTERVAL must be positive, got "0s"`},
+					{"OUTBOX_BATCH_SIZE が 0 以下のとき、エラーになる", "OUTBOX_BATCH_SIZE", "0", `OUTBOX_BATCH_SIZE must be positive, got "0"`},
+					{"OUTBOX_FAILURE_THRESHOLD が 0 以下のとき、エラーになる", "OUTBOX_FAILURE_THRESHOLD", "0", `OUTBOX_FAILURE_THRESHOLD must be positive, got "0"`},
+					{"OUTBOX_VISIBILITY_TIMEOUT が 1 ミリ秒未満のとき、エラーになる", "OUTBOX_VISIBILITY_TIMEOUT", "999us", `OUTBOX_VISIBILITY_TIMEOUT must be >= 1ms, got "999us"`},
+				}
+				for _, tc := range cases {
+					t.Run(tc.name, func(t *testing.T) {
+						setValidEnv(t)
+						t.Setenv(tc.envVar, tc.value)
 
-			cfg, err := FromEnv()
+						got, err := config.FromEnv()
 
-			require.NoError(t, err)
-			assert.True(t, cfg.DatabaseIAMAuthEnabled)
-			assert.Equal(t, "overload-party-dev:asia-northeast1:overload-party-db", cfg.CloudSQLConnectionName)
-		})
-
-		t.Run(`STORY_BUCKETが "local:/tmp/story" のとき、ローカルパス /tmp/storyとして読める`, func(t *testing.T) {
-			setEnv(t, mergeEnv(validEnv, map[string]string{"STORY_BUCKET": "local:/tmp/story"}))
-
-			cfg, err := FromEnv()
-
-			require.NoError(t, err)
-			assert.True(t, cfg.IsLocalStory())
-			assert.Equal(t, "/tmp/story", cfg.StoryLocalPath())
-		})
-
-		t.Run(`STORY_BUCKETが "scenario-story" のとき、ローカルパスにならない`, func(t *testing.T) {
-			setEnv(t, mergeEnv(validEnv, map[string]string{"STORY_BUCKET": "scenario-story"}))
-
-			cfg, err := FromEnv()
-
-			require.NoError(t, err)
-			assert.False(t, cfg.IsLocalStory())
-			assert.Empty(t, cfg.StoryLocalPath())
-		})
-
-		t.Run("OUTBOX_POLL_INTERVALが1nsのとき、その値がConfigに反映される", func(t *testing.T) {
-			setEnv(t, mergeEnv(validEnv, map[string]string{"OUTBOX_POLL_INTERVAL": "1ns"}))
-
-			cfg, err := FromEnv()
-
-			require.NoError(t, err)
-			assert.Equal(t, time.Nanosecond, cfg.OutboxPollInterval)
-		})
-
-		t.Run("OUTBOX_BATCH_SIZEが1のとき、その値がConfigに反映される", func(t *testing.T) {
-			setEnv(t, mergeEnv(validEnv, map[string]string{"OUTBOX_BATCH_SIZE": "1"}))
-
-			cfg, err := FromEnv()
-
-			require.NoError(t, err)
-			assert.Equal(t, 1, cfg.OutboxBatchSize)
-		})
-
-		t.Run("OUTBOX_FAILURE_THRESHOLDが1のとき、その値がConfigに反映される", func(t *testing.T) {
-			setEnv(t, mergeEnv(validEnv, map[string]string{"OUTBOX_FAILURE_THRESHOLD": "1"}))
-
-			cfg, err := FromEnv()
-
-			require.NoError(t, err)
-			assert.Equal(t, 1, cfg.OutboxFailureThreshold)
-		})
-
-		t.Run("OUTBOX_VISIBILITY_TIMEOUTが1msのとき、その値がConfigに反映される", func(t *testing.T) {
-			setEnv(t, mergeEnv(validEnv, map[string]string{"OUTBOX_VISIBILITY_TIMEOUT": "1ms"}))
-
-			cfg, err := FromEnv()
-
-			require.NoError(t, err)
-			assert.Equal(t, time.Millisecond, cfg.OutboxVisibilityTimeout)
-		})
-
-		invalidCases := []struct {
-			name    string
-			envs    map[string]string
-			wantErr string
-		}{
-			{
-				name:    "PORTが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"PORT": ""}),
-				wantErr: "PORT is required",
-			},
-			{
-				name:    "PORTが数値でないとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"PORT": "not-a-number"}),
-				wantErr: "PORT",
-			},
-			{
-				name:    "ENVが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"ENV": ""}),
-				wantErr: "ENV is required",
-			},
-			{
-				name:    "DATABASE_CONNが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"DATABASE_CONN": ""}),
-				wantErr: "DATABASE_CONN is required",
-			},
-			{
-				name:    "STORY_BUCKETが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"STORY_BUCKET": ""}),
-				wantErr: "STORY_BUCKET is required",
-			},
-			{
-				name:    `STORY_BUCKETが "local:" のみでパス部分が空文字のとき、エラーになる`,
-				envs:    mergeEnv(validEnv, map[string]string{"STORY_BUCKET": "local:"}),
-				wantErr: "local path must not be empty",
-			},
-			{
-				name:    "GOOGLE_CLOUD_PROJECT_IDが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"GOOGLE_CLOUD_PROJECT_ID": ""}),
-				wantErr: "GOOGLE_CLOUD_PROJECT_ID is required",
-			},
-			{
-				name:    "ONBOARDING_NAME_SET_TOPICが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"ONBOARDING_NAME_SET_TOPIC": ""}),
-				wantErr: "ONBOARDING_NAME_SET_TOPIC is required",
-			},
-			{
-				name:    "ONBOARDING_FACTION_SET_TOPICが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"ONBOARDING_FACTION_SET_TOPIC": ""}),
-				wantErr: "ONBOARDING_FACTION_SET_TOPIC is required",
-			},
-			{
-				name:    "PLAYER_ONBOARDED_TOPICが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"PLAYER_ONBOARDED_TOPIC": ""}),
-				wantErr: "PLAYER_ONBOARDED_TOPIC is required",
-			},
-			{
-				name:    "ACCOUNT_BASE_URLが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"ACCOUNT_BASE_URL": ""}),
-				wantErr: "ACCOUNT_BASE_URL is required",
-			},
-			{
-				name:    "INTERNAL_AUTH_PUBLIC_KEYが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"INTERNAL_AUTH_PUBLIC_KEY": ""}),
-				wantErr: "INTERNAL_AUTH_PUBLIC_KEY is required",
-			},
-			{
-				name:    "DATABASE_IAM_AUTH_ENABLEDが未設定のとき、変数名を含むエラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"DATABASE_IAM_AUTH_ENABLED": ""}),
-				wantErr: "DATABASE_IAM_AUTH_ENABLED must be",
-			},
-			{
-				name:    `DATABASE_IAM_AUTH_ENABLEDが "true"/"false" 以外の "yes" のとき、変数名を含むエラーになる`,
-				envs:    mergeEnv(validEnv, map[string]string{"DATABASE_IAM_AUTH_ENABLED": "yes"}),
-				wantErr: "DATABASE_IAM_AUTH_ENABLED must be",
-			},
-			{
-				name: "DATABASE_IAM_AUTH_ENABLEDがtrueかつCLOUDSQL_CONNECTION_NAMEが未設定のとき、CLOUDSQL_CONNECTION_NAMEを含むエラーになる",
-				envs: mergeEnv(validEnv, map[string]string{
-					"DATABASE_IAM_AUTH_ENABLED": "true",
-					"CLOUDSQL_CONNECTION_NAME":  "",
-				}),
-				wantErr: "CLOUDSQL_CONNECTION_NAME is required",
-			},
-			{
-				name:    "OUTBOX_POLL_INTERVALが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_POLL_INTERVAL": ""}),
-				wantErr: "OUTBOX_POLL_INTERVAL is required",
-			},
-			{
-				name:    "OUTBOX_POLL_INTERVALがduration形式でないとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_POLL_INTERVAL": "not-a-duration"}),
-				wantErr: "OUTBOX_POLL_INTERVAL",
-			},
-			{
-				name:    "OUTBOX_POLL_INTERVALが0のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_POLL_INTERVAL": "0s"}),
-				wantErr: "OUTBOX_POLL_INTERVAL must be positive",
-			},
-			{
-				name:    "OUTBOX_BATCH_SIZEが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_BATCH_SIZE": ""}),
-				wantErr: "OUTBOX_BATCH_SIZE is required",
-			},
-			{
-				name:    "OUTBOX_BATCH_SIZEが数値でないとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_BATCH_SIZE": "not-a-number"}),
-				wantErr: "OUTBOX_BATCH_SIZE",
-			},
-			{
-				name:    "OUTBOX_BATCH_SIZEが0のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_BATCH_SIZE": "0"}),
-				wantErr: "OUTBOX_BATCH_SIZE must be positive",
-			},
-			{
-				name:    "OUTBOX_FAILURE_THRESHOLDが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_FAILURE_THRESHOLD": ""}),
-				wantErr: "OUTBOX_FAILURE_THRESHOLD is required",
-			},
-			{
-				name:    "OUTBOX_FAILURE_THRESHOLDが数値でないとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_FAILURE_THRESHOLD": "not-a-number"}),
-				wantErr: "OUTBOX_FAILURE_THRESHOLD",
-			},
-			{
-				name:    "OUTBOX_FAILURE_THRESHOLDが0のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_FAILURE_THRESHOLD": "0"}),
-				wantErr: "OUTBOX_FAILURE_THRESHOLD must be positive",
-			},
-			{
-				name:    "OUTBOX_VISIBILITY_TIMEOUTが未設定のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_VISIBILITY_TIMEOUT": ""}),
-				wantErr: "OUTBOX_VISIBILITY_TIMEOUT is required",
-			},
-			{
-				name:    "OUTBOX_VISIBILITY_TIMEOUTがduration形式でないとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_VISIBILITY_TIMEOUT": "not-a-duration"}),
-				wantErr: "OUTBOX_VISIBILITY_TIMEOUT",
-			},
-			{
-				name:    "OUTBOX_VISIBILITY_TIMEOUTが1ms未満のとき、エラーになる",
-				envs:    mergeEnv(validEnv, map[string]string{"OUTBOX_VISIBILITY_TIMEOUT": "500us"}),
-				wantErr: "OUTBOX_VISIBILITY_TIMEOUT must be >= 1ms",
-			},
-		}
-		for _, tc := range invalidCases {
-			t.Run(tc.name, func(t *testing.T) {
-				setEnv(t, tc.envs)
-
-				_, err := FromEnv()
-
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tc.wantErr)
+						require.ErrorContains(t, err, tc.wantErrContains)
+						require.Nil(t, got)
+					})
+				}
 			})
-		}
+
+			t.Run("下限以上のとき、構築が成功する", func(t *testing.T) {
+				cases := []struct {
+					name   string
+					envVar string
+					value  string
+				}{
+					{"OUTBOX_POLL_INTERVAL が正の値のとき、構築が成功する", "OUTBOX_POLL_INTERVAL", "1ns"},
+					{"OUTBOX_BATCH_SIZE が 1 以上のとき、構築が成功する", "OUTBOX_BATCH_SIZE", "1"},
+					{"OUTBOX_FAILURE_THRESHOLD が 1 以上のとき、構築が成功する", "OUTBOX_FAILURE_THRESHOLD", "1"},
+					{"OUTBOX_VISIBILITY_TIMEOUT が 1 ミリ秒以上のとき、構築が成功する", "OUTBOX_VISIBILITY_TIMEOUT", "1ms"},
+				}
+				for _, tc := range cases {
+					t.Run(tc.name, func(t *testing.T) {
+						setValidEnv(t)
+						t.Setenv(tc.envVar, tc.value)
+
+						got, err := config.FromEnv()
+
+						require.NoError(t, err)
+						require.NotNil(t, got)
+					})
+				}
+			})
+		})
+
+		t.Run("STORY_BUCKETの形式分岐", func(t *testing.T) {
+			t.Run(`STORY_BUCKET が "local:" で始まり、それに続くパス部分が空文字のとき、エラーになる`, func(t *testing.T) {
+				setValidEnv(t)
+				t.Setenv("STORY_BUCKET", "local:")
+
+				got, err := config.FromEnv()
+
+				require.ErrorContains(t, err, "must not be empty")
+				require.Nil(t, got)
+			})
+
+			t.Run(`STORY_BUCKET が "local:" で始まり、それに続くパス部分が非空のとき`, func(t *testing.T) {
+				setValidEnv(t)
+				t.Setenv("STORY_BUCKET", "local:/tmp/scenario-stories")
+
+				got, err := config.FromEnv()
+
+				t.Run("構築が成功する", func(t *testing.T) {
+					require.NoError(t, err)
+				})
+				t.Run("ローカルストーリー判定は true になる", func(t *testing.T) {
+					require.NoError(t, err)
+					require.True(t, got.IsLocalStory())
+				})
+				t.Run("ローカルパスとしてそのパス部分が返る", func(t *testing.T) {
+					require.NoError(t, err)
+					require.Equal(t, "/tmp/scenario-stories", got.StoryLocalPath())
+				})
+			})
+
+			t.Run(`STORY_BUCKET が "local:" で始まらないとき`, func(t *testing.T) {
+				setValidEnv(t)
+				t.Setenv("STORY_BUCKET", "scenario-stories-bucket")
+
+				got, err := config.FromEnv()
+
+				t.Run("構築が成功する", func(t *testing.T) {
+					require.NoError(t, err)
+				})
+				t.Run("ローカルストーリー判定は false になる", func(t *testing.T) {
+					require.NoError(t, err)
+					require.False(t, got.IsLocalStory())
+				})
+				t.Run("ローカルパスは空文字になる", func(t *testing.T) {
+					require.NoError(t, err)
+					require.Equal(t, "", got.StoryLocalPath())
+				})
+			})
+		})
+
+		t.Run("DATABASE_IAM_AUTH_ENABLEDの分岐", func(t *testing.T) {
+			cases := []struct {
+				name                   string
+				iamAuthEnabled         string
+				cloudSQLConnectionName string
+				wantErrContains        string
+			}{
+				{`DATABASE_IAM_AUTH_ENABLED が "true" でも "false" でもない値のとき、エラーになる`, "maybe", "", `got "maybe"`},
+				{`DATABASE_IAM_AUTH_ENABLED が "true" で、CLOUDSQL_CONNECTION_NAME が未設定のとき、エラーになる`, "true", "", "CLOUDSQL_CONNECTION_NAME is required"},
+			}
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					setValidEnv(t)
+					t.Setenv("DATABASE_IAM_AUTH_ENABLED", tc.iamAuthEnabled)
+					t.Setenv("CLOUDSQL_CONNECTION_NAME", tc.cloudSQLConnectionName)
+
+					got, err := config.FromEnv()
+
+					require.ErrorContains(t, err, tc.wantErrContains)
+					require.Nil(t, got)
+				})
+			}
+
+			t.Run(`DATABASE_IAM_AUTH_ENABLED が "true" で、CLOUDSQL_CONNECTION_NAME が設定されているとき、構築が成功し、その値が設定に反映される`, func(t *testing.T) {
+				setValidEnv(t)
+				t.Setenv("DATABASE_IAM_AUTH_ENABLED", "true")
+				t.Setenv("CLOUDSQL_CONNECTION_NAME", "test-project:us-central1:test-instance")
+
+				got, err := config.FromEnv()
+
+				require.NoError(t, err)
+				require.True(t, got.DatabaseIAMAuthEnabled)
+				require.Equal(t, "test-project:us-central1:test-instance", got.CloudSQLConnectionName)
+			})
+
+			t.Run(`DATABASE_IAM_AUTH_ENABLED が "false" のとき、CLOUDSQL_CONNECTION_NAME が未設定でも構築が成功する`, func(t *testing.T) {
+				setValidEnv(t)
+				t.Setenv("DATABASE_IAM_AUTH_ENABLED", "false")
+				t.Setenv("CLOUDSQL_CONNECTION_NAME", "")
+
+				got, err := config.FromEnv()
+
+				require.NoError(t, err)
+				require.False(t, got.DatabaseIAMAuthEnabled)
+			})
+		})
+
+		t.Run("全ての必須項目が有効な値で設定されているとき、構築が成功し、各設定値が対応する環境変数の値に一致する", func(t *testing.T) {
+			setValidEnv(t)
+
+			got, err := config.FromEnv()
+
+			require.NoError(t, err)
+			require.Equal(t, 8080, got.Port)
+			require.Equal(t, "production", got.Env)
+			require.Equal(t, "postgres://localhost:5432/scenario", got.DatabaseConn)
+			require.Equal(t, "scenario-stories-bucket", got.StoryBucket)
+			require.Equal(t, "test-project", got.GoogleCloudProjectID)
+			require.Equal(t, "onboarding-name-set", got.OnboardingNameSetTopic)
+			require.Equal(t, "onboarding-faction-set", got.OnboardingFactionSetTopic)
+			require.Equal(t, "player-onboarded", got.PlayerOnboardedTopic)
+			require.Equal(t, "https://account.internal.example.com", got.AccountBaseURL)
+			require.Equal(t, "test-public-key", got.InternalAuthPublicKey)
+			require.False(t, got.DatabaseIAMAuthEnabled)
+			require.Equal(t, 5*time.Second, got.OutboxPollInterval)
+			require.Equal(t, 10, got.OutboxBatchSize)
+			require.Equal(t, 3, got.OutboxFailureThreshold)
+			require.Equal(t, 30*time.Second, got.OutboxVisibilityTimeout)
+		})
 	})
 }
