@@ -15,13 +15,27 @@ import (
 
 func TestGetScript(t *testing.T) {
 	t.Run("[オンボーディング]オンボーディングスクリプト取得", func(t *testing.T) {
-		t.Run("要求言語のスクリプトが存在するとき、その本文が返る", func(t *testing.T) {
-			svc := New(&fakeOnboardingRepo{}, &fakeScriptStore{body: "dummy onboarding script body"}, &fakeNameValidator{}, &fakePlayerReader{})
+		t.Run("要求言語のスクリプトが存在するとき、対応する言語のキーでスクリプトが読み込まれ、その本文が返る", func(t *testing.T) {
+			cases := []struct {
+				name    string
+				lang    string
+				wantKey string
+			}{
+				{name: "要求言語がjaのとき", lang: "ja", wantKey: "scripts/onboarding/ja.ks"},
+				{name: "要求言語がenのとき", lang: "en", wantKey: "scripts/onboarding/en.ks"},
+			}
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					store := &fakeScriptStore{body: "dummy onboarding script body"}
+					svc := New(&fakeOnboardingRepo{}, store, &fakeNameValidator{}, &fakePlayerReader{})
 
-			body, err := svc.GetScript(context.Background(), "TST-0001", "ja")
+					body, err := svc.GetScript(context.Background(), "TST-0001", tc.lang)
 
-			require.NoError(t, err)
-			assert.Equal(t, "dummy onboarding script body", body)
+					require.NoError(t, err)
+					assert.Equal(t, "dummy onboarding script body", body)
+					assert.Equal(t, []string{tc.wantKey}, store.keys)
+				})
+			}
 		})
 
 		t.Run("要求言語のスクリプトが存在しないとき、スクリプト未検出を表すエラーになる", func(t *testing.T) {
@@ -47,11 +61,13 @@ func TestUpdateName(t *testing.T) {
 	t.Run("[オンボーディング]name入力ステップの更新", func(t *testing.T) {
 		t.Run("表示名が有効なとき、name入力ステップ完了イベントがpublishされ、エラーなく完了する", func(t *testing.T) {
 			repo := &fakeOnboardingRepo{}
-			svc := New(repo, &fakeScriptStore{}, &fakeNameValidator{}, &fakePlayerReader{})
+			validator := &fakeNameValidator{}
+			svc := New(repo, &fakeScriptStore{}, validator, &fakePlayerReader{})
 
 			err := svc.UpdateName(context.Background(), "TST-0001", "たろう")
 
 			require.NoError(t, err)
+			assert.Equal(t, []string{"たろう"}, validator.names)
 			require.Len(t, repo.publishedEvents, 1)
 			published := repo.publishedEvents[0]
 			assert.Equal(t, apiscenario.EventTypeOnboardingNameSet, published.EventType)

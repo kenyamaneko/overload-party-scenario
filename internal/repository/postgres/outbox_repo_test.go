@@ -173,6 +173,10 @@ func TestOutboxRepository_ClaimUnpublished(t *testing.T) {
 			require.NoError(t, err)
 			assert.True(t, containsEventID(first, id))
 
+			row, found := findOutboxEvent(t, id)
+			require.True(t, found)
+			assert.NotNil(t, row.LastAttemptedAt)
+
 			second, err := repo.ClaimUnpublished(ctx, 10, outboxDefaultVisibility, outboxDefaultThreshold)
 			require.NoError(t, err)
 			assert.False(t, containsEventID(second, id))

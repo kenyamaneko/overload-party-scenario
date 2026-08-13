@@ -18,15 +18,23 @@ type recordFailureCall struct {
 	errMsg  string
 }
 
+type claimCall struct {
+	limit             int
+	visibilityTimeout time.Duration
+	failureThreshold  int
+}
+
 type fakeOutboxStore struct {
 	claimResult []port.ClaimedOutboxEvent
 	claimErr    error
+	claimCalls  []claimCall
 
 	markPublishedIDs   []uuid.UUID
 	recordFailureCalls []recordFailureCall
 }
 
 func (f *fakeOutboxStore) ClaimUnpublished(ctx context.Context, limit int, visibilityTimeout time.Duration, failureThreshold int) ([]port.ClaimedOutboxEvent, error) {
+	f.claimCalls = append(f.claimCalls, claimCall{limit: limit, visibilityTimeout: visibilityTimeout, failureThreshold: failureThreshold})
 	if f.claimErr != nil {
 		return nil, f.claimErr
 	}
@@ -128,9 +136,9 @@ func TestNew(t *testing.T) {
 
 func TestRunOnce(t *testing.T) {
 	t.Run("[配信]1バッチ分のclaim結果に対するpublish振り分け", func(t *testing.T) {
-		validCfg := Config{BatchSize: 10, FailureThreshold: 3, VisibilityTimeout: time.Minute}
+		validCfg := Config{BatchSize: 1, FailureThreshold: 1, VisibilityTimeout: time.Nanosecond}
 
-		t.Run("claim結果が0件のとき、エラーなく完了する", func(t *testing.T) {
+		t.Run("claim結果が0件のとき、エラーなく完了し、構築時に指定したBatchSize・VisibilityTimeout・FailureThresholdがそのまま未配信取得に渡る", func(t *testing.T) {
 			store := &fakeOutboxStore{claimResult: []port.ClaimedOutboxEvent{}}
 			pub := &fakeRawEventPublisher{}
 			relay, err := New(store, pub, validCfg)
@@ -141,6 +149,8 @@ func TestRunOnce(t *testing.T) {
 			require.NoError(t, err)
 			assert.Empty(t, store.markPublishedIDs)
 			assert.Empty(t, store.recordFailureCalls)
+			require.Len(t, store.claimCalls, 1)
+			assert.Equal(t, claimCall{limit: 1, visibilityTimeout: time.Nanosecond, failureThreshold: 1}, store.claimCalls[0])
 		})
 
 		t.Run("未配信イベントの取得自体が失敗するとき、エラーになる", func(t *testing.T) {

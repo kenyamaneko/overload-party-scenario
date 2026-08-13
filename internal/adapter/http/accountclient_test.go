@@ -28,7 +28,9 @@ func TestAccountClient_ValidateOnboardingName(t *testing.T) {
 	t.Run("[オンボーディング]表示名バリデーション", func(t *testing.T) {
 		t.Run("accountが成功を返すとき、エラーなく完了する", func(t *testing.T) {
 			srv := newTestAccountServer(t)
-			srv.ValidateNameForOnboardingFn = func(apiaccount.ValidateNameForOnboardingRequest) (int, any) {
+			var gotReq apiaccount.ValidateNameForOnboardingRequest
+			srv.ValidateNameForOnboardingFn = func(req apiaccount.ValidateNameForOnboardingRequest) (int, any) {
+				gotReq = req
 				return nethttp.StatusNoContent, nil
 			}
 			c := NewAccountClient(srv.URL())
@@ -36,6 +38,7 @@ func TestAccountClient_ValidateOnboardingName(t *testing.T) {
 			err := c.ValidateOnboardingName(context.Background(), "Kenya")
 
 			assert.NoError(t, err)
+			assert.Equal(t, "Kenya", gotReq.Name)
 		})
 
 		cases := []struct {

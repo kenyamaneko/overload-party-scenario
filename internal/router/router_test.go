@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	internalauth "github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go"
 	gamedesign "github.com/kenyamaneko/overload-party-common/packages/game-design-constants"
+	internalauth "github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go"
 
 	"github.com/kenyamaneko/overload-party-scenario/internal/domain"
 	"github.com/kenyamaneko/overload-party-scenario/internal/handler/rest"
@@ -112,7 +113,7 @@ func authenticatedVerifier() *internalauth.MockVerifier {
 }
 
 func TestNew(t *testing.T) {
-	t.Run("/health", func(t *testing.T) {
+	t.Run("[ルーティング]/health", func(t *testing.T) {
 		t.Run("認証なしでアクセスすると、200が返る", func(t *testing.T) {
 			// VerifyFn 未設定: /health が verifier に到達しないことの検出を兼ねる
 			r := newTestRouter(&internalauth.MockVerifier{})
@@ -150,10 +151,23 @@ func TestNew(t *testing.T) {
 				assert.Equal(t, http.StatusUnauthorized, w.Code)
 			})
 		}
+
+		t.Run("GET /api/v1/scenarios/episodesは、認証トークンが無効だと401が返る", func(t *testing.T) {
+			r := newTestRouter(&internalauth.MockVerifier{
+				VerifyFn: func(string) (string, error) { return "", errors.New("invalid token") },
+			})
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/scenarios/episodes", nil)
+			req.Header.Set(internalauth.HeaderName, "invalid.token")
+			r.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusUnauthorized, w.Code)
+		})
 	})
 
 	t.Run("[ルーティング]認証済みリクエストのルーティング", func(t *testing.T) {
-		t.Run("GET /api/v1/scenarios/episodesは、ListEpisodesハンドラにルーティングされる", func(t *testing.T) {
+		t.Run("GET /api/v1/scenarios/episodesは、エピソード一覧が返る", func(t *testing.T) {
 			r := newTestRouter(authenticatedVerifier())
 
 			w := httptest.NewRecorder()
@@ -167,7 +181,7 @@ func TestNew(t *testing.T) {
 			assert.Len(t, body.Episodes, 0)
 		})
 
-		t.Run("GET /api/v1/scenarios/episodes/:episodeId/scriptは、StoryHandler.GetScriptハンドラにルーティングされる", func(t *testing.T) {
+		t.Run("GET /api/v1/scenarios/episodes/:episodeId/scriptは、該当エピソードのスクリプトが返る", func(t *testing.T) {
 			r := newTestRouter(authenticatedVerifier())
 
 			w := httptest.NewRecorder()
@@ -182,7 +196,7 @@ func TestNew(t *testing.T) {
 			assert.Equal(t, testStoryScriptBody, body.Script)
 		})
 
-		t.Run("POST /api/v1/scenarios/episodes/:episodeId/completeは、StoryHandler.CompleteEpisodeハンドラにルーティングされる", func(t *testing.T) {
+		t.Run("POST /api/v1/scenarios/episodes/:episodeId/completeは、エピソード完了の応答が返る", func(t *testing.T) {
 			r := newTestRouter(authenticatedVerifier())
 
 			w := httptest.NewRecorder()
@@ -197,7 +211,7 @@ func TestNew(t *testing.T) {
 			assert.Equal(t, "episode completed", body.Message)
 		})
 
-		t.Run("GET /api/v1/scenarios/onboarding/scriptは、OnboardingHandler.GetScriptハンドラにルーティングされる", func(t *testing.T) {
+		t.Run("GET /api/v1/scenarios/onboarding/scriptは、オンボーディングスクリプトが返る", func(t *testing.T) {
 			r := newTestRouter(authenticatedVerifier())
 
 			w := httptest.NewRecorder()
@@ -211,7 +225,7 @@ func TestNew(t *testing.T) {
 			assert.Equal(t, testOnboardScriptBody, body.Script)
 		})
 
-		t.Run("PUT /api/v1/scenarios/onboarding/nameは、OnboardingHandler.UpdateNameハンドラにルーティングされる", func(t *testing.T) {
+		t.Run("PUT /api/v1/scenarios/onboarding/nameは、204が返る", func(t *testing.T) {
 			r := newTestRouter(authenticatedVerifier())
 
 			reqBody, err := json.Marshal(apiscenario.OnboardingNameRequest{Name: "TST Name"})
@@ -227,7 +241,7 @@ func TestNew(t *testing.T) {
 			assert.Empty(t, w.Body.Bytes())
 		})
 
-		t.Run("POST /api/v1/scenarios/onboarding/factionは、OnboardingHandler.SelectFactionハンドラにルーティングされる", func(t *testing.T) {
+		t.Run("POST /api/v1/scenarios/onboarding/factionは、204が返る", func(t *testing.T) {
 			r := newTestRouter(authenticatedVerifier())
 
 			reqBody, err := json.Marshal(apiscenario.OnboardingFactionRequest{InitialFactionID: gamedesign.SelectableFactions[0]})
@@ -243,7 +257,7 @@ func TestNew(t *testing.T) {
 			assert.Empty(t, w.Body.Bytes())
 		})
 
-		t.Run("POST /api/v1/scenarios/onboarding/completeは、OnboardingHandler.Completeハンドラにルーティングされる", func(t *testing.T) {
+		t.Run("POST /api/v1/scenarios/onboarding/completeは、オンボーディング完了の応答が返る", func(t *testing.T) {
 			r := newTestRouter(authenticatedVerifier())
 
 			w := httptest.NewRecorder()

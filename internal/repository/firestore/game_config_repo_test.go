@@ -22,8 +22,7 @@ const gameConfigTestProjectID = "overload-party-test"
 
 func TestGameConfigRepository(t *testing.T) {
 	ctx := context.Background()
-
-	resetFirestoreEmulator(t, os.Getenv("FIRESTORE_EMULATOR_HOST"), gameConfigTestProjectID)
+	host := os.Getenv("FIRESTORE_EMULATOR_HOST")
 
 	client, err := firestore.NewClient(ctx, gameConfigTestProjectID)
 	require.NoError(t, err)
@@ -33,6 +32,7 @@ func TestGameConfigRepository(t *testing.T) {
 
 	t.Run("[ゲーム設定]ゲーム設定値の取得", func(t *testing.T) {
 		t.Run("設定が存在するキーを指定したとき、保存された値が返る", func(t *testing.T) {
+			resetFirestoreEmulator(t, host, gameConfigTestProjectID)
 			_, err := client.Collection("game_config").Doc("TST-0001").Set(ctx, map[string]any{"value": int64(40)})
 			require.NoError(t, err)
 
@@ -42,12 +42,14 @@ func TestGameConfigRepository(t *testing.T) {
 		})
 
 		t.Run("設定が存在しないキーを指定したとき、未検出を表すエラーになる", func(t *testing.T) {
+			resetFirestoreEmulator(t, host, gameConfigTestProjectID)
 			_, err := repo.GetInt64(ctx, "TST-0002")
 			require.Error(t, err)
 			assert.ErrorIs(t, err, port.ErrNotFound)
 		})
 
 		t.Run("ドキュメントの値が数値としてパースできない形式のとき、ゲーム設定値のパースエラーになる", func(t *testing.T) {
+			resetFirestoreEmulator(t, host, gameConfigTestProjectID)
 			_, err := client.Collection("game_config").Doc("TST-0003").Set(ctx, map[string]any{"value": "not-a-number"})
 			require.NoError(t, err)
 
@@ -57,6 +59,7 @@ func TestGameConfigRepository(t *testing.T) {
 		})
 
 		t.Run("Firestoreへのアクセス自体が未検出以外のエラーを返すとき、そのエラー内容を含んだエラーになる", func(t *testing.T) {
+			resetFirestoreEmulator(t, host, gameConfigTestProjectID)
 			cancelCtx, cancel := context.WithCancel(ctx)
 			cancel()
 

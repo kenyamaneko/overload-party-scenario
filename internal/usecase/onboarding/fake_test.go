@@ -37,9 +37,11 @@ func (f *fakeOnboardingRepo) MarkComplete(ctx context.Context, playerID string, 
 type fakeScriptStore struct {
 	body string
 	err  error
+	keys []string
 }
 
 func (f *fakeScriptStore) ReadScript(ctx context.Context, key string) (string, error) {
+	f.keys = append(f.keys, key)
 	if f.err != nil {
 		return "", f.err
 	}
@@ -47,10 +49,12 @@ func (f *fakeScriptStore) ReadScript(ctx context.Context, key string) (string, e
 }
 
 type fakeNameValidator struct {
-	err error
+	err   error
+	names []string
 }
 
 func (f *fakeNameValidator) ValidateOnboardingName(ctx context.Context, name string) error {
+	f.names = append(f.names, name)
 	return f.err
 }
 

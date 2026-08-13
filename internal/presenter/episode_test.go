@@ -169,6 +169,48 @@ func TestBuildEpisodeWithStatus(t *testing.T) {
 
 			require.Equal(t, "日本語タイトル", got.Title)
 		})
+
+		t.Run("陣営が設定されているとき、応答の陣営にその値が入る", func(t *testing.T) {
+			faction := "faction-a"
+			ep := &domain.Episode{EpisodeID: "TST-0001", Faction: &faction}
+			uc := &domain.UnlockContext{}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.NotNil(t, got.Faction)
+			require.Equal(t, faction, *got.Faction)
+		})
+
+		t.Run("陣営が未設定(nil)のとき、応答の陣営も未設定になる", func(t *testing.T) {
+			ep := &domain.Episode{EpisodeID: "TST-0001", Faction: nil}
+			uc := &domain.UnlockContext{}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.Nil(t, got.Faction)
+		})
+
+		t.Run("エピソード話数が設定されているとき、応答のエピソード話数にその値が入る", func(t *testing.T) {
+			ep := &domain.Episode{EpisodeID: "TST-0001", EpisodeNumber: 3}
+			uc := &domain.UnlockContext{}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.Equal(t, int64(3), got.EpisodeNumber)
+		})
+
+		t.Run("ロック理由が複数種別にわたるとき、応答のロック理由にそれぞれの理由が含まれる", func(t *testing.T) {
+			ep := &domain.Episode{
+				EpisodeID:        "TST-0001",
+				RequiredLevel:    5,
+				RequiredFactions: []string{"faction-a"},
+			}
+			uc := &domain.UnlockContext{PlayerLevel: 1}
+
+			got := presenter.BuildEpisodeWithStatus(ep, uc, "ja")
+
+			require.Len(t, got.LockReasons, 2)
+		})
 	})
 }
 
