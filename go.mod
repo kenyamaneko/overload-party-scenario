@@ -1,6 +1,6 @@
 module github.com/kenyamaneko/overload-party-scenario
 
-go 1.25.12
+go 1.26.6
 
 require (
 	cloud.google.com/go/cloudsqlconn v1.23.0

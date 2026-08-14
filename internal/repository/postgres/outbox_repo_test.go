@@ -57,13 +57,13 @@ func TestOutboxRepository_ClaimUnpublished(t *testing.T) {
 			wantClaimed  bool
 		}{
 			{
-				name:         "直近visibilityTimeout以内に試行された行は、claim対象に含まれない",
+				name:         "直近の猶予期間内に試行された行は、claim対象に含まれない",
 				failureCount: 0,
 				attemptedAgo: &withinVisibility,
 				wantClaimed:  false,
 			},
 			{
-				name:         "visibilityTimeoutを超えて試行された行は、claim対象に含まれる",
+				name:         "猶予期間を超えて試行された行は、claim対象に含まれる",
 				failureCount: 0,
 				attemptedAgo: &beyondVisibility,
 				wantClaimed:  true,
@@ -75,19 +75,19 @@ func TestOutboxRepository_ClaimUnpublished(t *testing.T) {
 				wantClaimed:  true,
 			},
 			{
-				name:         "failure_countがfailureThreshold未満の行はclaim対象に含まれる",
+				name:         "失敗回数が上限未満の行は、claim対象に含まれる",
 				failureCount: 1,
 				attemptedAgo: &beyondVisibility,
 				wantClaimed:  true,
 			},
 			{
-				name:         "failure_countがfailureThresholdと等しい行はclaim対象に含まれない",
+				name:         "失敗回数が上限に達した行は、claim対象に含まれない",
 				failureCount: outboxDefaultThreshold,
 				attemptedAgo: nil,
 				wantClaimed:  false,
 			},
 			{
-				name:         "failure_countがfailureThresholdの直下(threshold-1)の行はclaim対象に含まれる",
+				name:         "失敗回数が上限のひとつ手前の行は、claim対象に含まれる",
 				failureCount: outboxDefaultThreshold - 1,
 				attemptedAgo: nil,
 				wantClaimed:  true,
@@ -165,7 +165,7 @@ func TestOutboxRepository_ClaimUnpublished(t *testing.T) {
 			assert.Empty(t, claimed)
 		})
 
-		t.Run("claimされた行は試行日時が更新され、以降visibilityTimeout以内は再claim対象から外れる", func(t *testing.T) {
+		t.Run("claimされた行は試行日時が更新され、以降猶予期間内は再claim対象から外れる", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			id := seedClaimCandidate(t, 0, nil)
 
@@ -189,7 +189,7 @@ func TestOutboxRepository_MarkPublished(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("[配信]配信済みの記録", func(t *testing.T) {
-		t.Run("対象行が存在するとき、MarkPublishedを呼ぶとpublish済みとして記録され、以降claim対象から外れる", func(t *testing.T) {
+		t.Run("対象行が存在するとき、配信済みとして記録すると、以降claim対象から外れる", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			id := seedClaimCandidate(t, 0, nil)
 
@@ -204,7 +204,7 @@ func TestOutboxRepository_MarkPublished(t *testing.T) {
 			assert.False(t, containsEventID(claimed, id))
 		})
 
-		t.Run("対象行にエラーが記録されていた場合、MarkPublished呼び出し後はエラー記録がクリアされる", func(t *testing.T) {
+		t.Run("対象行にエラーが記録されていた場合、配信済みとして記録するとエラー記録がクリアされる", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			id := seedClaimCandidate(t, 0, nil)
 			require.NoError(t, repo.RecordFailure(ctx, id, "boom"))
@@ -223,7 +223,7 @@ func TestOutboxRepository_RecordFailure(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("[配信]失敗の記録", func(t *testing.T) {
-		t.Run("対象行が存在するとき、RecordFailureを呼ぶと失敗回数が1増加する", func(t *testing.T) {
+		t.Run("対象行が存在するとき、失敗を記録すると失敗回数が1増加する", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			id := seedClaimCandidate(t, 0, nil)
 
@@ -234,7 +234,7 @@ func TestOutboxRepository_RecordFailure(t *testing.T) {
 			assert.Equal(t, 1, row.FailureCount)
 		})
 
-		t.Run("RecordFailureを呼ぶと、対象行の直近エラー内容が指定したメッセージに更新される", func(t *testing.T) {
+		t.Run("対象行が存在するとき、失敗を記録すると、対象行の直近エラー内容が指定したメッセージに更新される", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			id := seedClaimCandidate(t, 0, nil)
 
@@ -246,7 +246,7 @@ func TestOutboxRepository_RecordFailure(t *testing.T) {
 			assert.Equal(t, "pubsub down", *row.LastError)
 		})
 
-		t.Run("RecordFailureを繰り返すと、失敗回数が呼び出し回数分累積する", func(t *testing.T) {
+		t.Run("対象行が存在するとき、失敗の記録を繰り返すと、失敗回数が呼び出し回数分累積する", func(t *testing.T) {
 			sharedPg.Truncate(t)
 			id := seedClaimCandidate(t, 0, nil)
 

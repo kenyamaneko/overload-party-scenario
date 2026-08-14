@@ -171,6 +171,29 @@ func TestStoryHandler(t *testing.T) {
 
 			assert.Equal(t, http.StatusInternalServerError, w.Code)
 		})
+
+		t.Run("アカウントサービスへの問い合わせが失敗した状態から回復したあと、同じプレイヤーが再度エピソード一覧を取得すると、正常に一覧が返る", func(t *testing.T) {
+			sharedPg.Truncate(t)
+			seedEpisode(t, "TST-EP-0001", 1, "stories/TST-EP-0001/{lang}.ks", true)
+			accountSrv := newAccountFake(t, 10)
+			getPlayerSucceeds := accountSrv.GetPlayerFn
+			accountSrv.GetPlayerFn = func() (int, any) { return http.StatusInternalServerError, nil }
+			h := newStoryHandlerForTest(t.TempDir(), accountSrv.URL())
+			engine := newStoryTestEngine(h)
+
+			wFailed := doAuthedRequest(t, engine, http.MethodGet, "/api/v1/scenarios/episodes", nil)
+			require.Equal(t, http.StatusInternalServerError, wFailed.Code)
+
+			accountSrv.GetPlayerFn = getPlayerSucceeds
+			wRecovered := doAuthedRequest(t, engine, http.MethodGet, "/api/v1/scenarios/episodes", nil)
+
+			require.Equal(t, http.StatusOK, wRecovered.Code)
+			var body apiscenario.EpisodesListResponse
+			require.NoError(t, json.Unmarshal(wRecovered.Body.Bytes(), &body))
+			require.Len(t, body.Episodes, 1)
+			assert.Equal(t, "TST-EP-0001", body.Episodes[0].EpisodeID)
+			assert.True(t, body.Episodes[0].IsUnlocked)
+		})
 	})
 
 	t.Run("[シナリオ]スクリプト取得", func(t *testing.T) {

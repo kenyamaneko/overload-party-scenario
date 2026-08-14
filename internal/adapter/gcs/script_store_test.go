@@ -1,5 +1,3 @@
-//go:build integration
-
 package gcs
 
 import (
@@ -35,8 +33,8 @@ func newTestGCSServer(t *testing.T, objects ...fakestorage.Object) *fakestorage.
 	require.NoError(t, err)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
 
 	return srv
 }
@@ -68,7 +66,7 @@ func TestScriptStore(t *testing.T) {
 
 		t.Run("指定キーのオブジェクトが存在しないとき、スクリプト未検出を表すエラーになる", func(t *testing.T) {
 			srv := newTestGCSServer(t)
-			srv.CreateBucket(testBucketName)
+			srv.CreateBucketWithOpts(fakestorage.CreateBucketOpts{Name: testBucketName})
 			store := newTestScriptStore(t, srv)
 
 			_, err := store.ReadScript(context.Background(), "sample/missing.ks")
