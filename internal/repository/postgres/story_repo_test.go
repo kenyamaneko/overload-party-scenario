@@ -106,6 +106,17 @@ func TestStoryRepository_FindEpisodeByID(t *testing.T) {
 			require.NoError(t, err)
 			assert.False(t, got.IsActive)
 		})
+
+		t.Run("指定IDのエピソードに必須陣営が登録されているとき、その一覧が含まれる", func(t *testing.T) {
+			sharedPg.Truncate(t)
+			seedEpisode(t, "TST-EP-0001", nil, 1, "multi", "Multi", 1, nil, "path/{lang}", 1, true)
+			seedRequiredFaction(t, "TST-EP-0001", "SHE")
+			seedRequiredFaction(t, "TST-EP-0001", "Tenki")
+
+			got, err := repo.FindEpisodeByID(ctx, "TST-EP-0001")
+			require.NoError(t, err)
+			assert.ElementsMatch(t, []string{"SHE", "Tenki"}, got.RequiredFactions)
+		})
 	})
 }
 
@@ -134,6 +145,20 @@ func TestStoryRepository_GetCompletedEpisodeIDs(t *testing.T) {
 			got, err := repo.GetCompletedEpisodeIDs(ctx, playerID)
 			require.NoError(t, err)
 			assert.Empty(t, got)
+		})
+
+		t.Run("複数プレイヤーの完了記録が存在するとき、指定したプレイヤーのエピソードID一覧のみが返る", func(t *testing.T) {
+			sharedPg.Truncate(t)
+			targetPlayerID := uuid.New().String()
+			otherPlayerID := uuid.New().String()
+			seedEpisode(t, "TST-EP-0001", nil, 1, "ep1", "Ep1", 1, nil, "path/{lang}", 1, true)
+			seedEpisode(t, "TST-EP-0002", nil, 2, "ep2", "Ep2", 1, nil, "path/{lang}", 2, true)
+			seedProgress(t, targetPlayerID, "TST-EP-0001")
+			seedProgress(t, otherPlayerID, "TST-EP-0002")
+
+			got, err := repo.GetCompletedEpisodeIDs(ctx, targetPlayerID)
+			require.NoError(t, err)
+			assert.ElementsMatch(t, []string{"TST-EP-0001"}, got)
 		})
 	})
 }

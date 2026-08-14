@@ -43,7 +43,7 @@ func TestNewOutboxTicker(t *testing.T) {
 		t.Run("実行対象がnilのとき、エラーになる", func(t *testing.T) {
 			ticker, err := worker.NewOutboxTicker(nil, tickInterval)
 
-			assert.Error(t, err)
+			assert.ErrorContains(t, err, "runner is nil")
 			assert.Nil(t, ticker)
 		})
 
@@ -60,7 +60,7 @@ func TestNewOutboxTicker(t *testing.T) {
 				t.Run(tc.name, func(t *testing.T) {
 					ticker, err := worker.NewOutboxTicker(&fakeOutboxRunner{}, tc.interval)
 
-					assert.Error(t, err)
+					assert.ErrorContains(t, err, "interval must be positive")
 					assert.Nil(t, ticker)
 				})
 			}
